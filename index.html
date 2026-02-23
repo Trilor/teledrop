@@ -1369,7 +1369,7 @@
        MapLibreのimageソースはWebGLの頂点クリッピングにより高ズーム時に
        画像の端が切れる既知の問題がある。N×Nタイルに分割することで回避する。
        ======================================================== */
-    const KMZ_GRID = 2; // タイル分割数（KMZ_GRID × KMZ_GRID 枚に分割）
+    const KMZ_GRID = 8; // タイル分割数（KMZ_GRID × KMZ_GRID 枚に分割）
 
     /* 双一次補間（Bilinear Interpolation）:
        UV座標（0〜1）を4隅の地理座標から補間してMapLibreのcoordinates点を算出する。
@@ -1987,9 +1987,8 @@
         // 再生ボタンを▶にリセットする
         document.getElementById('play-pause-btn').textContent = '▶';
 
-        // ---- タイムラインパネルと視点ボタンを表示する ----
+        // ---- タイムラインパネルを表示する ----
         document.getElementById('timeline-panel').style.display = 'flex';
-        document.getElementById('view-toggle-btn').style.display = 'block';
 
         // GPX読み込み状態をUIパネルに表示する
         const gpxStatusEl = document.getElementById('gpx-status');
@@ -2163,10 +2162,8 @@
       const pos = interpolateGpxPosition(gpxCurrentTime);
 
       if (pos) {
-        // 現在地マーカーを新しい座標に移動させる
+        // 現在地マーカーを新しい座標に移動させる（カメラは追従しない）
         updateGpxMarker(pos);
-        // 視点モードに応じてカメラを追従させる
-        updateCamera(pos);
       }
 
       // まだ再生中であれば次のフレームをリクエストする
@@ -2255,8 +2252,6 @@
       const pos = interpolateGpxPosition(gpxCurrentTime);
       if (pos) {
         updateGpxMarker(pos);
-        // スクラブ中は3人称視点相当でカメラをそっと更新する（急なカメラ移動を避ける）
-        map.panTo([pos.lng, pos.lat], { duration: 200 });
       }
     });
 
