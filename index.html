@@ -564,11 +564,11 @@
       cursor: default;
     }
 
-    /* 縮尺表示（動的テキスト） */
-    #scale-display {
+    /* 縮尺セレクト（等高線セレクトと同一スタイル） */
+    #sel-scale {
+      flex: 1;
       font-size: 12px;
-      color: #333;
-      white-space: nowrap;
+      padding: 3px 6px;
     }
 
     /* チェックボックスのない行でラベル位置を揃えるスペーサー */
@@ -804,7 +804,16 @@
             <span class="setting-label">縮尺</span>
           </div>
           <div class="setting-right">
-            <span id="scale-display">1 : ---</span>
+            <select id="sel-scale" class="setting-select">
+              <option value="" id="opt-current-scale">1 : ---</option>
+              <option disabled>──────</option>
+              <option value="2500">1 : 2,500</option>
+              <option value="4000">1 : 4,000</option>
+              <option value="5000">1 : 5,000</option>
+              <option value="10000">1 : 10,000</option>
+              <option value="15000">1 : 15,000</option>
+              <option value="25000">1 : 25,000</option>
+            </select>
           </div>
         </div>
 
@@ -2452,7 +2461,7 @@
       icon.textContent = isOpen ? '▼' : '▲';
     });
 
-    // ---- 縮尺表示（動的リアルタイム） ----
+    // ---- 縮尺セレクト（現在の縮尺をリアルタイム表示 ＋ プリセット選択でズーム） ----
     // 画面のDPI（デバイスピクセル比を考慮）
     const SCREEN_DPI = (window.devicePixelRatio || 1) * 96;
 
@@ -2466,18 +2475,35 @@
       return Math.round(groundRes * SCREEN_DPI / 0.0254);
     }
 
-    const scaleDisplay = document.getElementById('scale-display');
+    // 縮尺分母からズームレベルを計算して地図を移動するヘルパー
+    function zoomToScale(targetScale) {
+      if (!targetScale) return;
+      const center = map.getCenter();
+      const targetGroundRes = targetScale * 0.0254 / SCREEN_DPI;
+      const zoom = Math.log2(156543.03392 * Math.cos(center.lat * Math.PI / 180) / targetGroundRes);
+      map.easeTo({ zoom, duration: 600 });
+    }
 
-    // 現在の縮尺をそのまま "1 : 〇〇" 形式で表示する（プリセットへのスナップなし）
+    const selScale = document.getElementById('sel-scale');
+    const optCurrentScale = document.getElementById('opt-current-scale');
+
+    // 先頭オプション（現在の縮尺）のテキストを現在値で更新し、先頭を選択状態に戻す
     function updateScaleDisplay() {
       const s = calcScaleDenominator();
-      scaleDisplay.textContent = '1 : ' + s.toLocaleString();
+      optCurrentScale.textContent = '1 : ' + s.toLocaleString();
+      selScale.selectedIndex = 0; // 常に先頭（現在の縮尺）を選択表示
     }
 
     // 地図の移動・ズームに連動してリアルタイム更新
     map.on('move', updateScaleDisplay);
     map.on('zoom', updateScaleDisplay);
     map.once('idle', updateScaleDisplay);
+
+    // プリセット選択時 → その縮尺にズーム（map.on('move') が発火して先頭オプションに自動復帰）
+    selScale.addEventListener('change', () => {
+      const val = parseInt(selScale.value, 10);
+      if (val) zoomToScale(val);
+    });
 
     // スライダーの初期値をUIに反映（値を設定してからグラデーションを更新する）
     sliderCs.value = CS_INITIAL_OPACITY;
