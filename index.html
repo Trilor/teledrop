@@ -826,10 +826,10 @@
           </div>
           <div class="setting-right">
             <select id="sel-contour-interval" class="setting-select">
-              <option value="1">1 m</option>
+              <option value="1" selected>1 m</option>
               <option value="2">2 m</option>
               <option value="2.5">2.5 m</option>
-              <option value="5" selected>5 m</option>
+              <option value="5">5 m</option>
               <option value="10">10 m</option>
             </select>
           </div>
@@ -1139,6 +1139,9 @@
     let contourLayerIds = [];
 
     // 等高線間隔ごとのzoom threshold設定を生成
+    // mlcontourの仕様: thresholds の値は [minor, major] の順（小さい間隔が先）
+    //   level=0 → minor（主曲線）: intervalM ごとに1本
+    //   level=1 → major（計曲線）: intervalM × 5 ごとに1本
     function buildContourThresholds(intervalM) {
       const major = intervalM * 5;
       // 間隔が細かいほど高ズームからのみ表示（データ量抑制）
@@ -1148,11 +1151,8 @@
       else if (intervalM >= 2) minZoom = 12;
       else minZoom = 13; // 1m
 
-      return {
-        [minZoom]: [major, intervalM]
-      }
-
-        ;
+      // [minor, major] の正しい順序で渡す
+      return { [minZoom]: [intervalM, major] };
     }
 
     // contour-source の tiles URL を生成（demSource は load 内で初期化）
@@ -1193,7 +1193,7 @@
 
         map.addSource('contour-source', {
           type: 'vector',
-          tiles: [buildContourTileUrl(5)], // デフォルト5m
+          tiles: [buildContourTileUrl(1)], // デフォルト1m
           maxzoom: 15,
           attribution: '<a href="https://tiles.gsj.jp/tiles/elev/tiles.html">産総研シームレス標高タイル（等高線）</a>',
         });
@@ -2439,8 +2439,9 @@
       const newUrl = buildContourTileUrl(interval);
 
       if (newUrl && map.getSource('contour-source')) {
-        // MapLibre 4.x: VectorTileSource.setTiles() で動的更新
+        // VectorTileSource.setTiles() でタイルURLを更新し、即座に再描画を要求する
         map.getSource('contour-source').setTiles([newUrl]);
+        map.triggerRepaint();
       }
     });
 
