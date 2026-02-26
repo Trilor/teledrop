@@ -421,6 +421,13 @@
       background: linear-gradient(to right, #4a7c59 var(--pct, 60%), #d0d0d0 var(--pct, 60%));
       outline: none;
     }
+    .opacity-row input[type="range"]:disabled {
+      opacity: 0.35;
+      cursor: default;
+    }
+    .opacity-row input[type="range"]:disabled ~ .opacity-val {
+      color: #aaa;
+    }
 
     .opacity-row input[type="range"]::-webkit-slider-thumb {
       -webkit-appearance: none;
