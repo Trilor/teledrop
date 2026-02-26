@@ -789,7 +789,7 @@
         <div class="layer-row" id="row-cs">
           <div class="layer-label-row">
             <input type="checkbox" id="chk-cs" checked />
-            <label class="layer-name" for="chk-cs">CS立体図（1m）- Q地図（国土地理院）</label>
+            <label class="layer-name" for="chk-cs">CS立体図（1m）- Q地図･国土地理院</label>
           </div>
           <div class="opacity-row">
             <input type="range" id="slider-cs" min="0" max="1" step="0.05" value="1.0" />
@@ -965,24 +965,63 @@
     /*
       ========================================================
       CS立体図をDEMタイルからブラウザ内で動的生成するプロトコル
-      qchizu-project/qchizu-maps-maplibregljs を参考に実装
+      qchizu-project/qchizu-maps-maplibregljs の実装を参考に最適化
       https://github.com/qchizu-project/qchizu-maps-maplibregljs/blob/main/src/protocols/dem2CsProtocol.js
 
-      入力: csdem://{z}/{x}/{y}.webp（Q地図 NumPNG DEMタイル）
-      処理: 周辺9タイルを取得 → ガウシアン平滑化 → 傾斜・曲率計算 → 5レイヤー合成
-      出力: CS立体図PNG画像
+      最適化ポイント（Q地図実装より）:
+        1. ガウシアンカーネルを kernelRadius 単位でキャッシュ（タイルごとの再計算を排除）
+        2. ガウシアン平滑化フェーズ（手動dispose）と合成フェーズ（tf.tidy）を分離
+        3. await tensor.data() で GPU→CPU 転送を非同期化（メインスレッドのブロックを回避）
+        4. 9タイル全て並列fetch（中央タイルの先行fetch を廃止して待機ゼロ化）
+        5. tf.where(condition, x, y) を正しい API で使用
+        6. tf.browser.toPixels(tensor, canvas) でキャンバスに直接書き込み（中間配列不要）
       ========================================================
     */
+
+    // ガウシアンカーネルキャッシュ: kernelRadius → tf.Tensor4D (kept, [kH,kW,1,1])
+    // 同一ズームレベルでは kernelRadius がほぼ一定なので大幅に再計算を削減できる。
+    const _csKernelCache = new Map();
+    function _getCsKernel(kernelRadius, sigma) {
+      if (_csKernelCache.has(kernelRadius)) return _csKernelCache.get(kernelRadius);
+      const kernelDim = kernelRadius * 2 + 1;
+      const kExp = tf.keep(tf.tidy(() => {
+        const [kx, ky] = tf.meshgrid(
+          tf.linspace(-kernelRadius, kernelRadius, kernelDim),
+          tf.linspace(-kernelRadius, kernelRadius, kernelDim)
+        );
+        return tf.exp(tf.neg(kx.square().add(ky.square()).div(2 * sigma * sigma)))
+          .expandDims(2).expandDims(3); // [kH,kW,1,1] — conv2d が要求する形状
+      }));
+      _csKernelCache.set(kernelRadius, kExp);
+      return kExp;
+    }
+
+    // カラーランプ関数（tf.tidy 内で呼び出す）
+    function _csRamp(min, max, c0, c1, t) {
+      const n = t.clipByValue(min, max).sub(min).div(max - min);
+      return tf.stack([
+        n.mul(c1.r - c0.r).add(c0.r).round(),
+        n.mul(c1.g - c0.g).add(c0.g).round(),
+        n.mul(c1.b - c0.b).add(c0.b).round(),
+      ], -1);
+    }
+    function _csRampMid(min, max, c0, c1, c2, t) {
+      const n = t.clipByValue(min, max).sub(min).div(max - min);
+      const half = n.lessEqual(0.5);
+      const r = tf.where(half, n.mul(2).mul(c1.r - c0.r).add(c0.r), n.sub(0.5).mul(2).mul(c2.r - c1.r).add(c1.r)).round();
+      const g = tf.where(half, n.mul(2).mul(c1.g - c0.g).add(c0.g), n.sub(0.5).mul(2).mul(c2.g - c1.g).add(c1.g)).round();
+      const b = tf.where(half, n.mul(2).mul(c1.b - c0.b).add(c0.b), n.sub(0.5).mul(2).mul(c2.b - c1.b).add(c1.b)).round();
+      return tf.stack([r, g, b], -1);
+    }
+
     maplibregl.addProtocol('csdem', async (params, abortController) => {
       const url = params.url.replace('csdem://', 'https://');
-
-      // URLから z/x/y を抽出
       const m = url.match(/\/(\d+)\/(\d+)\/(\d+)\.(png|webp)$/);
       if (!m) return { data: null };
       const zoomLevel = +m[1], tileX = +m[2], tileY = +m[3], ext = m[4];
       const tileSize = 256;
 
-      // ピクセル解像度（m/pixel）― qchizu-project/protocolUtils calculatePixelResolution より
+      // ピクセル解像度（m/pixel）― qchizu-project/protocolUtils.calculatePixelResolution
       const L = 85.05112878;
       const py = 256 * tileY + tileSize / 2;
       const lat = (180 / Math.PI) * Math.asin(
@@ -990,25 +1029,20 @@
       );
       const pixelLength = 156543.04 * Math.cos(lat * Math.PI / 180) / (1 << zoomLevel);
 
-      // NumPNG → 標高変換（Q地図はGSJ NumPNG形式, u=0.01m）
+      // NumPNG → 標高（GSJ/Q地図形式, u=0.01m）
       const toHeight = (r, g, b, a) => {
         const x = r * 65536 + g * 256 + b;
         if (a === 0 || x === 8388608) return -99999;
         return x < 8388608 ? x * 0.01 : (x - 16777216) * 0.01;
       };
 
-      // ガウシアン平滑化パラメータ
+      // ガウシアンパラメータ
       const sigma = Math.min(Math.max(3 / pixelLength, 1.6), 7);
       const kernelRadius = Math.ceil(sigma * 3);
       const buffer = kernelRadius + 1;
       const mergedSize = tileSize + buffer * 2;
-      const kernelDim = kernelRadius * 2 + 1;
 
-      // 中心タイルを先行取得（存在確認）
-      const centerRes = await fetch(url, { signal: abortController.signal });
-      if (!centerRes.ok) return { data: null };
-
-      // 周辺9タイルURLを生成
+      // ── ① 9タイル全て並列fetch（中央タイルの先行fetchを廃止） ──
       const base = url.substring(0, url.lastIndexOf(`/${zoomLevel}/`) + 1) + `${zoomLevel}/`;
       const tileUrls = [
         base + (tileX - 1) + '/' + (tileY - 1) + '.' + ext, // 0:左上
@@ -1022,21 +1056,19 @@
         base + (tileX + 1) + '/' + (tileY + 1) + '.' + ext, // 8:右下
       ];
 
-      // 9タイルを並列取得してマージキャンバスに描画
-      const mergedCanvas = new OffscreenCanvas(mergedSize, mergedSize);
-      const mc = mergedCanvas.getContext('2d');
-
-      const images = await Promise.all(tileUrls.map(async (src, idx) => {
+      const bitmaps = await Promise.all(tileUrls.map(async (src) => {
         try {
-          const r = (idx === 4) ? centerRes : await fetch(src, { signal: abortController.signal });
-          if (!r.ok) return null;
-          return { bmp: await createImageBitmap(await r.blob()), idx };
+          const r = await fetch(src, { signal: abortController.signal });
+          return r.ok ? createImageBitmap(await r.blob()) : null;
         } catch (_) { return null; }
       }));
+      if (!bitmaps[4]) return { data: null }; // 中央タイルが取得できなければ終了
 
-      images.forEach(item => {
-        if (!item) return;
-        const { bmp, idx } = item;
+      // ── ② マージキャンバスに描画 ──
+      const mergedCanvas = new OffscreenCanvas(mergedSize, mergedSize);
+      const mc = mergedCanvas.getContext('2d');
+      bitmaps.forEach((bmp, idx) => {
+        if (!bmp) return;
         const col = idx % 3, row = Math.floor(idx / 3);
         let sx, sy, sw, sh, dx, dy;
         if (idx === 4) {
@@ -1053,7 +1085,7 @@
         bmp.close();
       });
 
-      // マージ画像から標高配列を生成
+      // ── ③ 標高配列生成（Float32Array — Array より高速） ──
       const mergedPx = mc.getImageData(0, 0, mergedSize, mergedSize).data;
       const mergedHeights = new Float32Array(mergedSize * mergedSize);
       for (let i = 0; i < mergedHeights.length; i++) {
@@ -1061,100 +1093,71 @@
         mergedHeights[i] = toHeight(mergedPx[p], mergedPx[p + 1], mergedPx[p + 2], mergedPx[p + 3]);
       }
 
-      // TensorFlow.js でガウシアン平滑化 → 傾斜・曲率計算 → CS立体図合成
-      const csRittaizuTensor = tf.tidy(() => {
+      // ── ④ ガウシアン平滑化（キャッシュ済みカーネル・手動dispose・非同期転送） ──
+      // tf.tidy を使わず手動でdisposeすることで平滑化フェーズのテンソルを早期解放。
+      // await tensor.data() で GPU→CPU を非同期化（dataSync() のブロックを回避）。
+      const kExp = _getCsKernel(kernelRadius, sigma);
+      const hT = tf.tensor2d(mergedHeights, [mergedSize, mergedSize]);
+      const valid = hT.notEqual(-99999);
+      const masked = tf.where(valid, hT, 0);                  // tf.where(condition, x, y) で正しくマスク
+      const kSum = tf.conv2d(
+        valid.cast('float32').expandDims(2).expandDims(0), kExp, 1, 'valid'
+      ).squeeze([0, 3]);
+      const sHRaw = tf.conv2d(
+        masked.expandDims(2).expandDims(0), kExp, 1, 'valid'
+      ).squeeze([0, 3]).div(kSum);
+      const validCrop = valid.slice([buffer, buffer], [tileSize + 2, tileSize + 2]);
+      const sH = tf.where(validCrop, sHRaw, tf.fill([tileSize + 2, tileSize + 2], -99999));
+      const smoothed = await sH.data(); // 非同期 GPU→CPU 転送（メインスレッドをブロックしない）
+      [masked, kSum, sHRaw, validCrop, sH].forEach(t => t.dispose());
 
-        // ガウシアンカーネル作成
-        const [kx, ky] = tf.meshgrid(
-          tf.linspace(-kernelRadius, kernelRadius, kernelDim),
-          tf.linspace(-kernelRadius, kernelRadius, kernelDim)
-        );
-        const kernel = tf.exp(tf.neg(kx.square().add(ky.square()).div(2 * sigma * sigma)));
-
-        // ガウシアン平滑化（無効値をマスクして畳み込み）
-        const hT = tf.tensor2d(mergedHeights, [mergedSize, mergedSize]);
-        const valid = hT.notEqual(-99999);
-        const masked = hT.where(valid, 0);
-        const kExp = kernel.expandDims(2).expandDims(3);
-        const kSum = tf.conv2d(
-          valid.cast('float32').expandDims(2).expandDims(0), kExp, 1, 'valid'
-        ).squeeze([0, 3]);
-        let sH = tf.conv2d(
-          masked.expandDims(2).expandDims(0), kExp, 1, 'valid'
-        ).squeeze([0, 3]).div(kSum);
-        sH = sH.where(valid.slice([buffer, buffer], [tileSize + 2, tileSize + 2]), -99999);
-        const smoothed = sH.dataSync(); // 平滑化標高をJS配列に取り出す
-
-        // 傾斜・曲率計算（JS ループ）
-        const curvatures = new Float32Array(tileSize * tileSize);
-        const slopes = new Float32Array(tileSize * tileSize);
-        const sw2 = tileSize + 2;
-        for (let row = 0; row < tileSize; row++) {
-          for (let col = 0; col < tileSize; col++) {
-            const oi = row * tileSize + col;
-            const mi = (row + buffer) * mergedSize + (col + buffer);
-            const H00 = mergedHeights[mi], H01 = mergedHeights[mi + 1], H10 = mergedHeights[mi + mergedSize];
-            const ddx = H00 - H01, ddy = H00 - H10;
-            slopes[oi] = Math.atan(Math.sqrt(ddx * ddx + ddy * ddy) / pixelLength) * (180 / Math.PI);
-            const si = (row + 1) * sw2 + (col + 1);
-            const z2 = smoothed[si - sw2], z4 = smoothed[si - 1], z5 = smoothed[si],
-                  z6 = smoothed[si + 1],   z8 = smoothed[si + sw2];
-            const cellArea = pixelLength * pixelLength;
-            curvatures[oi] = H00 === -99999 ? -1
-              : -2 * (((z4 + z6) / 2 - z5) / cellArea + ((z2 + z8) / 2 - z5) / cellArea);
-          }
+      // ── ⑤ JS ループ: 傾斜・曲率計算 ──
+      const curvatures = new Float32Array(tileSize * tileSize);
+      const slopes = new Float32Array(tileSize * tileSize);
+      const sw2 = tileSize + 2;
+      for (let row = 0; row < tileSize; row++) {
+        for (let col = 0; col < tileSize; col++) {
+          const oi = row * tileSize + col;
+          const mi = (row + buffer) * mergedSize + (col + buffer);
+          const H00 = mergedHeights[mi], H01 = mergedHeights[mi + 1], H10 = mergedHeights[mi + mergedSize];
+          const ddx = H00 - H01, ddy = H00 - H10;
+          slopes[oi] = Math.atan(Math.sqrt(ddx * ddx + ddy * ddy) / pixelLength) * (180 / Math.PI);
+          const si = (row + 1) * sw2 + (col + 1);
+          const z2 = smoothed[si - sw2], z4 = smoothed[si - 1], z5 = smoothed[si],
+                z6 = smoothed[si + 1],   z8 = smoothed[si + sw2];
+          const cellArea = pixelLength * pixelLength;
+          curvatures[oi] = H00 === -99999 ? -1
+            : -2 * (((z4 + z6) / 2 - z5) / cellArea + ((z2 + z8) / 2 - z5) / cellArea);
         }
+      }
 
-        // 曲率係数（ズームに応じた色調整）
-        const cc = pixelLength < 68
-          ? Math.max(pixelLength / 2, 1.1)
-          : 0.188 * Math.pow(pixelLength, 1.232);
+      // ── ⑥ CS立体図 5レイヤー合成（tf.tidy で中間テンソルを自動解放） ──
+      const cc = pixelLength < 68
+        ? Math.max(pixelLength / 2, 1.1)
+        : 0.188 * Math.pow(pixelLength, 1.232);
 
-        // CS立体図 5レイヤーの作成と合成
+      const csRittaizuTensor = tf.tidy(() => {
         const hCrop = hT.slice([buffer, buffer], [tileSize, tileSize]);
         const cT = tf.tensor1d(curvatures).reshape([tileSize, tileSize]);
         const sT = tf.tensor1d(slopes).reshape([tileSize, tileSize]);
-
-        // カラーランプ（2色）
-        const ramp = (min, max, c0, c1, t) => {
-          const n = t.clipByValue(min, max).sub(min).div(max - min);
-          return tf.stack([
-            n.mul(c1.r - c0.r).add(c0.r).round(),
-            n.mul(c1.g - c0.g).add(c0.g).round(),
-            n.mul(c1.b - c0.b).add(c0.b).round(),
-          ], -1);
-        };
-        // カラーランプ（中間色あり）
-        const rampMid = (min, max, c0, c1, c2, t) => {
-          const n = t.clipByValue(min, max).sub(min).div(max - min);
-          const r = tf.where(n.lessEqual(0.5), n.mul(2).mul(c1.r - c0.r).add(c0.r), n.sub(0.5).mul(2).mul(c2.r - c1.r).add(c1.r)).round();
-          const g = tf.where(n.lessEqual(0.5), n.mul(2).mul(c1.g - c0.g).add(c0.g), n.sub(0.5).mul(2).mul(c2.g - c1.g).add(c1.g)).round();
-          const b = tf.where(n.lessEqual(0.5), n.mul(2).mul(c1.b - c0.b).add(c0.b), n.sub(0.5).mul(2).mul(c2.b - c1.b).add(c1.b)).round();
-          return tf.stack([r, g, b], -1);
-        };
-        const blend = (a, b, alpha) => a.mul(1 - alpha).add(b.mul(alpha));
+        const blend    = (a, b, alpha) => a.mul(1 - alpha).add(b.mul(alpha));
         const mulBlend = (a, b) => a.mul(b.div(255));
-
-        const L1 = ramp(0, 3000, { r: 100, g: 100, b: 100 }, { r: 255, g: 255, b: 255 }, hCrop);          // 標高レイヤ
-        const L2 = ramp(-0.25 / cc, 0.05 / cc, { r: 42, g: 92, b: 170 }, { r: 255, g: 255, b: 255 }, cT); // 立体図曲率
-        const L3 = ramp(0, 60, { r: 255, g: 255, b: 255 }, { r: 189, g: 74, b: 29 }, sT);                  // 立体図傾斜
-        const L4 = rampMid(-0.2 / cc, 0.2 / cc, { r: 0, g: 0, b: 255 }, { r: 255, g: 255, b: 240 }, { r: 255, g: 0, b: 0 }, cT); // 曲率図曲率
-        const L5 = ramp(0, 90, { r: 255, g: 255, b: 255 }, { r: 0, g: 0, b: 0 }, sT);                      // 曲率図傾斜（乗算）
-
-        // CS立体図 = (標高×曲率×傾斜×曲率図) ×乗算× 傾斜図
+        const L1 = _csRamp(0, 3000, { r: 100, g: 100, b: 100 }, { r: 255, g: 255, b: 255 }, hCrop);
+        const L2 = _csRamp(-0.25/cc, 0.05/cc, { r: 42, g: 92, b: 170 }, { r: 255, g: 255, b: 255 }, cT);
+        const L3 = _csRamp(0, 60, { r: 255, g: 255, b: 255 }, { r: 189, g: 74, b: 29 }, sT);
+        const L4 = _csRampMid(-0.2/cc, 0.2/cc, { r: 0, g: 0, b: 255 }, { r: 255, g: 255, b: 240 }, { r: 255, g: 0, b: 0 }, cT);
+        const L5 = _csRamp(0, 90, { r: 255, g: 255, b: 255 }, { r: 0, g: 0, b: 0 }, sT);
         return mulBlend(blend(blend(blend(L1, L2, 0.5), L3, 0.5), L4, 0.5), L5);
       });
+      [hT, valid].forEach(t => t.dispose()); // 平滑化フェーズで使い終わったテンソルを解放
 
-      // 出力: テンソル → Uint8ClampedArray → OffscreenCanvas → ArrayBuffer
-      const pixels = await tf.browser.toPixels(
-        csRittaizuTensor.reshape([tileSize, tileSize, 3]).div(tf.scalar(255))
+      // ── ⑦ 出力: tf.browser.toPixels でキャンバスに直接書き込み（中間配列不要） ──
+      const outCanvas = new OffscreenCanvas(tileSize, tileSize);
+      await tf.browser.toPixels(
+        csRittaizuTensor.reshape([tileSize, tileSize, 3]).div(tf.scalar(255)), outCanvas
       );
       csRittaizuTensor.dispose();
-
-      const outCanvas = new OffscreenCanvas(tileSize, tileSize);
-      outCanvas.getContext('2d').putImageData(new ImageData(pixels, tileSize, tileSize), 0, 0);
-      const outBlob = await outCanvas.convertToBlob({ type: 'image/png' });
-      return { data: await outBlob.arrayBuffer() };
+      return { data: await outCanvas.convertToBlob({ type: 'image/png' }).then(b => b.arrayBuffer()) };
     });
 
 
