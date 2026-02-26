@@ -1093,6 +1093,16 @@
         mergedHeights[i] = toHeight(mergedPx[p], mergedPx[p + 1], mergedPx[p + 2], mergedPx[p + 3]);
       }
 
+      // 中央タイル（256×256）の無効値マスク — 無効ピクセルを透明にするためのアルファ値
+      // mergedHeights の中央領域 (buffer,buffer)〜(buffer+256,buffer+256) を参照
+      const centerAlpha = new Float32Array(tileSize * tileSize);
+      for (let row = 0; row < tileSize; row++) {
+        for (let col = 0; col < tileSize; col++) {
+          const mi = (row + buffer) * mergedSize + (col + buffer);
+          centerAlpha[row * tileSize + col] = mergedHeights[mi] === -99999 ? 0 : 255;
+        }
+      }
+
       // ── ④ ガウシアン平滑化（キャッシュ済みカーネル・手動dispose・非同期転送） ──
       // tf.tidy を使わず手動でdisposeすることで平滑化フェーズのテンソルを早期解放。
       // await tensor.data() で GPU→CPU を非同期化（dataSync() のブロックを回避）。
@@ -1147,14 +1157,18 @@
         const L3 = _csRamp(0, 60, { r: 255, g: 255, b: 255 }, { r: 189, g: 74, b: 29 }, sT);
         const L4 = _csRampMid(-0.2/cc, 0.2/cc, { r: 0, g: 0, b: 255 }, { r: 255, g: 255, b: 240 }, { r: 255, g: 0, b: 0 }, cT);
         const L5 = _csRamp(0, 90, { r: 255, g: 255, b: 255 }, { r: 0, g: 0, b: 0 }, sT);
-        return mulBlend(blend(blend(blend(L1, L2, 0.5), L3, 0.5), L4, 0.5), L5);
+        const rgb = mulBlend(blend(blend(blend(L1, L2, 0.5), L3, 0.5), L4, 0.5), L5);
+        // 無効値（NoData）領域をアルファ0（透明）にするため、centerAlpha を第4チャンネルとして結合
+        const alphaT = tf.tensor1d(centerAlpha, 'float32').reshape([tileSize, tileSize, 1]);
+        return tf.concat([rgb, alphaT], -1); // [256,256,4] RGBA出力
       });
       [hT, valid].forEach(t => t.dispose()); // 平滑化フェーズで使い終わったテンソルを解放
 
       // ── ⑦ 出力: tf.browser.toPixels でキャンバスに直接書き込み（中間配列不要） ──
       const outCanvas = new OffscreenCanvas(tileSize, tileSize);
+      // csRittaizuTensor は [256,256,4] RGBA。div(255) で 0–1 に正規化してそのまま渡す
       await tf.browser.toPixels(
-        csRittaizuTensor.reshape([tileSize, tileSize, 3]).div(tf.scalar(255)), outCanvas
+        csRittaizuTensor.div(tf.scalar(255)), outCanvas
       );
       csRittaizuTensor.dispose();
       return { data: await outCanvas.convertToBlob({ type: 'image/png' }).then(b => b.arrayBuffer()) };
