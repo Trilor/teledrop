@@ -1262,7 +1262,7 @@
         sourceId: 'cs-hyogo', layerId: 'cs-hyogo-layer',
         tileUrl: 'csdem://tiles.gsj.jp/tiles/elev/hyogodem/{z}/{y}/{x}.png',
         label: 'CS立体図（0.5m）— 兵庫県', maxzoom: 18,
-        attribution: '<a href="https://www.geospatial.jp/ckan/dataset/dem05_hyogo" target="_blank">兵庫県CS：産総研PNG標高タイルを加工して作成</a>',
+        attribution: '<a href="https://tiles.gsj.jp/tiles/elev/tiles.html" target="_blank">兵庫県CS：産総研PNG標高タイルを加工して作成</a>',
       },
       // ── 中部（甲信越・東海） ───────────────────────────────
       {
@@ -2734,6 +2734,9 @@
     const chkContour = document.getElementById('chk-contour');
     const selContour = document.getElementById('sel-contour-interval');
 
+    // 等高線OFF前のpitchを保持しておき、ON時に復元する
+    let _savedPitch = map.getPitch();
+
     chkContour.addEventListener('change', () => {
       const vis = chkContour.checked ? 'visible' : 'none';
 
@@ -2742,6 +2745,15 @@
       });
       selContour.disabled = !chkContour.checked;
       document.querySelector('label[for="chk-contour"]').classList.toggle('disabled', !chkContour.checked);
+
+      if (chkContour.checked) {
+        // 等高線ON → 保存していたpitchを復元
+        map.easeTo({ pitch: _savedPitch, duration: 400 });
+      } else {
+        // 等高線OFF → 現在のpitchを保存して平面表示
+        _savedPitch = map.getPitch();
+        map.easeTo({ pitch: 0, duration: 400 });
+      }
     });
 
     // ---- 等高線 間隔セレクト ----
