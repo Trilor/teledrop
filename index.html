@@ -1967,23 +1967,26 @@ async function loadKmz(file) {
     const cosR = Math.cos(rad);
     const sinR = Math.sin(rad);
 
+    // ★追加: 地球の丸みによる経度の縮み（アスペクト比）を中心緯度から計算
+    const latCos = Math.cos(cy * Math.PI / 180);
+
     /*
       回転変換の式：
-        dx' = dx * cos(θ) - dy * sin(θ)
-        dy' = dx * sin(θ) + dy * cos(θ)
-      各コーナーの中心からのオフセット（dx, dy）を回転させ、中心座標に足す。
-
-      コーナーの定義（回転前）：
-        TL: dx = -hw, dy = +hh  （西, 北）
-        TR: dx = +hw, dy = +hh  （東, 北）
-        BR: dx = +hw, dy = -hh  （東, 南）
-        BL: dx = -hw, dy = -hh  （西, 南）
+      経緯度の長さの違いを補正して回転させないと、画像が歪んで角度がズレるため
+      一旦スケールを合わせて回転させ、その後経度を元に戻します。
     */
     function rotateCorner(dx, dy) {
-      return [cx + dx * cosR - dy * sinR,
-      // 回転後の経度
-      cy + dx * sinR + dy * cosR,
-        // 回転後の緯度
+      // 経度方向の差分を、緯度方向と同じスケール比率に合わせる
+      const dxScaled = dx * latCos;
+      
+      // スケールを合わせた状態で回転計算
+      const rxScaled = dxScaled * cosR - dy * sinR;
+      const ry = dxScaled * sinR + dy * cosR;
+      
+      // 経度を元の度単位のスケールに戻して足し合わせる
+      return [
+        cx + (rxScaled / latCos), // 回転後の経度
+        cy + ry                   // 回転後の緯度
       ];
     }
 
@@ -2059,8 +2062,13 @@ async function loadKmz(file) {
         'raster-resampling': 'linear',
       },
     });
-    // レイヤーを確実に最上層へ移動（等高線・CSレイヤーより上に）
-    map.moveLayer(layerId);
+    // レイヤーを確実に上層へ移動（等高線・CSレイヤーより上、GPXレイヤーより下）
+    // GPXレイヤーが存在する場合はその直下に挿入し、GPXが常に最前面になるようにする
+    if (map.getLayer('gpx-track-outline')) {
+      map.moveLayer(layerId, 'gpx-track-outline');
+    } else {
+      map.moveLayer(layerId);
+    }
 
     // --- ステップ⑨ 地図全体が収まる範囲にフィット ---
     // 回転後コーナー座標（coordinates）から正確な BBox を計算する。
@@ -2763,8 +2771,8 @@ let userMagneticInterval = 250;
 //   z11 ≈ 1:150K   →    5km
 //   z12 ≈ 1:75K    →    2km
 //   z13 ≈ 1:35K    →    1km
-//   z14 ≈ 1:17K    →  500m（OL 1:15,000 向け）
-//   z15+ ≈ 1:8K–   → ユーザー設定（デフォルト 250m）
+//   z13.5 ≈ 1:17K    →  500m（OL 1:15,000 向け）
+//   z14+ ≈ 1:8K–   → ユーザー設定（デフォルト 250m）
 function getEffectiveMagneticInterval() {
   const z = map.getZoom();
   if (z <=  1) return 2000000;
@@ -2778,7 +2786,7 @@ function getEffectiveMagneticInterval() {
   if (z <= 11) return    5000;
   if (z <= 12) return    2000;
   if (z <= 13) return    1000;
-  if (z <= 14) return     500;
+  if (z <= 13.5) return     500;
   return userMagneticInterval;
 }
 
