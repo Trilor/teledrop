@@ -799,7 +799,7 @@ body {
   </details>
 
   <!-- ===== 表示設定（縮尺 / 等高線 / 地形誇張） ===== -->
-  <details class="panel-section">
+  <details class="panel-section" open>
     <summary>表示設定</summary>
 
     <!-- 縮尺：1行（chk-spacer でチェックボックス分の左余白を確保してラベルを等高線と揃える） -->
@@ -854,6 +854,7 @@ body {
       <div class="setting-right">
         <select id="sel-contour-interval" class="setting-select">
           <option id="opt-contour-current" value="">1 m</option>
+          <option disabled>──────</option>
           <option value="1">1 m</option>
           <option value="2">2 m</option>
           <option value="2.5">2.5 m</option>
@@ -872,6 +873,7 @@ body {
       <div class="setting-right">
         <select id="sel-magnetic-north-interval">
           <option id="opt-magnetic-north-current" value="">250 m</option>
+          <option disabled>──────</option>
           <option value="120">120 m</option>
           <option value="150">150 m</option>
           <option value="250">250 m</option>
@@ -2663,8 +2665,12 @@ let userMagneticInterval = 250;
 // zoom レベルに応じた有効な磁北線間隔（m）を返す
 function getEffectiveMagneticInterval() {
   const z = map.getZoom();
-  if (z <= 8)  return 10000;
-  if (z <= 11) return 1000;
+  if (z <= 7)  return 100000;
+  if (z <= 8)  return 50000;
+  if (z <= 10)  return 20000;
+  if (z <= 11)  return 10000;
+  if (z <= 12)  return 5000;
+  if (z <= 14) return 1000;
   return userMagneticInterval;
 }
 
@@ -2852,8 +2858,8 @@ let lastAppliedContourInterval = null;
 // zoom レベルに応じた有効な等高線間隔（m）を返す
 function getEffectiveContourInterval() {
   const z = map.getZoom();
-  if (z <= 7)  return 100;
-  if (z <= 11) return 10;
+  if (z <= 12)  return 100;
+  if (z <= 14) return 10;
   return userContourInterval;
 }
 
