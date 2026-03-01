@@ -972,15 +972,6 @@ maplibregl.addProtocol('pmtiles', pmtilesProtocol.tile.bind(pmtilesProtocol));
   ========================================================
 */
 
-// ── 共有 OffscreenCanvas ─────────────────────────────────────────────────────────────
-// JS はシングルスレッドなので await 間は他コードが割り込まない。
-// drawImage+getImageData（同期）や putImageData+createImageBitmap（即スナップショット）の
-// sync ブロック内でのみ使用するため、複数の並行呼び出しでも安全に共有できる。
-// ─ 抽出用（bitmap → ImageData）: toImageData / fetchNumPngData で共有 ─
-// 合成出力用はローカルキャンバスを使用（createImageBitmap の Promise 解決前に並行呼び出しが
-// キャンバスを上書きする危険があるため共有不可）
-let _bmpExtCanvas = null, _bmpExtCtx = null;
-
 async function fetchCompositeDemBitmap(z, x, y, signal) {
   const qUrl  = `${QCHIZU_DEM_BASE}/${z}/${x}/${y}.webp`;
   const sUrl  = `${DEM5A_BASE}/${z}/${x}/${y}.png`;
@@ -992,15 +983,10 @@ async function fetchCompositeDemBitmap(z, x, y, signal) {
       const r = await fetch(url, { signal });
       if (!r.ok) return null;
       const bm = await createImageBitmap(await r.blob());
-      const w = bm.width, h = bm.height;
-      // 共有キャンバスを使用（drawImage+getImageData は同期ブロックなので安全）
-      if (!_bmpExtCanvas || _bmpExtCanvas.width !== w || _bmpExtCanvas.height !== h) {
-        _bmpExtCanvas = new OffscreenCanvas(w, h);
-        _bmpExtCtx    = _bmpExtCanvas.getContext('2d');
-      }
-      _bmpExtCtx.drawImage(bm, 0, 0);
+      const cv = new OffscreenCanvas(bm.width, bm.height);
+      cv.getContext('2d').drawImage(bm, 0, 0);
       bm.close();
-      return _bmpExtCtx.getImageData(0, 0, w, h);
+      return cv.getContext('2d').getImageData(0, 0, cv.width, cv.height);
     } catch { return null; }
   }
 
@@ -1015,11 +1001,9 @@ async function fetchCompositeDemBitmap(z, x, y, signal) {
 
   // 合成先を全 nodata で初期化し、低優先度から順に上書き
   const { width, height: h } = (qData ?? sData ?? lData);
-  // 並行呼び出し（csdem:// の9並列など）で createImageBitmap の Promise 解決前に
-  // キャンバスが上書きされる危険があるため、合成出力はローカルキャンバスを使用する。
-  const compCv  = new OffscreenCanvas(width, h);
-  const compCtx = compCv.getContext('2d');
-  const out = compCtx.createImageData(width, h);
+  const cv  = new OffscreenCanvas(width, h);
+  const ctx = cv.getContext('2d');
+  const out = ctx.createImageData(width, h);
   const o = out.data;
   for (let i = 0; i < o.length; i += 4) { o[i] = 128; o[i + 3] = 255; } // all nodata
 
@@ -1058,8 +1042,8 @@ async function fetchCompositeDemBitmap(z, x, y, signal) {
     }
   }
 
-  compCtx.putImageData(out, 0, 0);
-  return createImageBitmap(compCv);
+  ctx.putImageData(out, 0, 0);
+  return createImageBitmap(cv);
 }
 
 
@@ -1704,15 +1688,10 @@ async function synthesizeLakeElevationTile(url) {
       const r = await _origFetch(src);
       if (!r.ok) return null;
       const bm = await createImageBitmap(await r.blob());
-      const w = bm.width, h = bm.height;
-      // _bmpExtCanvas を fetchCompositeDemBitmap と共有（sync ブロックで使うため安全）
-      if (!_bmpExtCanvas || _bmpExtCanvas.width !== w || _bmpExtCanvas.height !== h) {
-        _bmpExtCanvas = new OffscreenCanvas(w, h);
-        _bmpExtCtx    = _bmpExtCanvas.getContext('2d');
-      }
-      _bmpExtCtx.drawImage(bm, 0, 0);
+      const cv = new OffscreenCanvas(bm.width, bm.height);
+      cv.getContext('2d').drawImage(bm, 0, 0);
       bm.close();
-      return _bmpExtCtx.getImageData(0, 0, w, h);
+      return cv.getContext('2d').getImageData(0, 0, cv.width, cv.height);
     } catch { return null; }
   }
 
