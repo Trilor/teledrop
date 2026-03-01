@@ -1025,10 +1025,32 @@ const _origFetch = window.fetch.bind(window);
 // このキャッシュに含まれるタイルはQ地図フェッチをスキップし、応答を高速化する
 const _qchizuNodataCache = new Set();
 
+// アプリケーションレベルの DEM タイルキャッシュ (z/x/y → Uint8Array PNG)
+// mlcontour の DemSource 内部キャッシュとは独立して動作し、
+// mlcontour がズーム変化でタイルを追い出しても再フェッチが発生しない。
+// これが低解像度劣化の根本的な解決策。
+const _seamlessTileAppCache = new Map();
+const SEAMLESS_APP_CACHE_MAX = 1000; // ~10MB（PNG圧縮済みで ~10KB/タイル想定）
+
+// 空の DEM タイル（全ピクセル nodata）シングルトン — 繰り返し OffscreenCanvas を作らないため
+let _blankTilePng = null;
+async function _getBlankTilePng() {
+  if (_blankTilePng) return _blankTilePng;
+  const cv = new OffscreenCanvas(256, 256);
+  _blankTilePng = new Uint8Array(await (await cv.convertToBlob({ type: 'image/png' })).arrayBuffer());
+  return _blankTilePng;
+}
+
 async function fetchMaskedSeamlessResponse(z, x, y, signal) {
+  const tileKey = `${z}/${x}/${y}`;
+
+  // ① アプリキャッシュにヒットすれば即座に返す（HTTP リクエスト・Canvas 処理なし）
+  if (_seamlessTileAppCache.has(tileKey)) {
+    return new Response(new Blob([_seamlessTileAppCache.get(tileKey)], { type: 'image/png' }));
+  }
+
   const qUrl = `${QCHIZU_DEM_BASE}/${z}/${x}/${y}.webp`;
   const sUrl = `${SEAMLESS_DEM_BASE}/${z}/${y}/${x}.png`; // y/x はAPI仕様
-  const qKey = `${z}/${x}/${y}`;
 
   async function toImgData(url) {
     try {
@@ -1042,42 +1064,51 @@ async function fetchMaskedSeamlessResponse(z, x, y, signal) {
     } catch { return null; }
   }
 
-  // Q地図カバー外と判明済みのタイルはQ地図フェッチをスキップ（応答を2倍速化）
-  const skipQ = _qchizuNodataCache.has(qKey);
+  // ② Q地図カバー外と判明済みのタイルはQ地図フェッチをスキップ（応答を2倍速化）
+  const skipQ = _qchizuNodataCache.has(tileKey);
   const [qData, sData] = await Promise.all([
     skipQ ? Promise.resolve(null) : toImgData(qUrl),
     toImgData(sUrl),
   ]);
 
-  // Q地図が未キャッシュかつ nodata で、かつリクエストがキャンセルされていない場合にキャッシュ登録
-  if (!skipQ && qData === null && !signal?.aborted) {
-    if (_qchizuNodataCache.size > 3000) _qchizuNodataCache.clear(); // 肥大化防止
-    _qchizuNodataCache.add(qKey);
+  // アボートされた場合はキャッシュしない（不完全データを永続化させない）
+  if (signal?.aborted) {
+    return new Response(new Blob([await _getBlankTilePng()], { type: 'image/png' }));
   }
 
-  // シームレスデータなし → 透明タイルを返す（等高線を生成しない）
-  const W = (sData || qData)?.width ?? 256;
-  const H = (sData || qData)?.height ?? 256;
+  // Q地図カバー外を記録（次回からフェッチをスキップ）
+  if (!skipQ && qData === null) {
+    if (_qchizuNodataCache.size > 3000) _qchizuNodataCache.clear();
+    _qchizuNodataCache.add(tileKey);
+  }
+
+  // ③ 合成処理
+  let resultPng;
   if (!sData) {
-    const cv = new OffscreenCanvas(W, H);
-    return new Response(await (await cv.convertToBlob({ type: 'image/png' })).arrayBuffer(),
-      { status: 200, headers: { 'Content-Type': 'image/png' } });
-  }
-
-  const result = new Uint8ClampedArray(sData.data);
-  if (qData) {
-    const d = qData.data;
-    for (let i = 0; i < d.length; i += 4) {
-      // Q地図が有効なピクセルは nodata に上書き → シームレス等高線を非生成化
-      const qValid = !((d[i] === 128 && d[i + 1] === 0 && d[i + 2] === 0) || d[i + 3] !== 255);
-      if (qValid) { result[i] = 128; result[i + 1] = 0; result[i + 2] = 0; result[i + 3] = 255; }
+    // シームレスデータなし → 空タイル（等高線を生成しない）
+    resultPng = await _getBlankTilePng();
+  } else {
+    const result = new Uint8ClampedArray(sData.data);
+    if (qData) {
+      const d = qData.data;
+      for (let i = 0; i < d.length; i += 4) {
+        // Q地図が有効なピクセルは nodata に上書き → シームレス等高線を非生成化
+        const qValid = !((d[i] === 128 && d[i + 1] === 0 && d[i + 2] === 0) || d[i + 3] !== 255);
+        if (qValid) { result[i] = 128; result[i + 1] = 0; result[i + 2] = 0; result[i + 3] = 255; }
+      }
     }
+    const cv = new OffscreenCanvas(sData.width, sData.height);
+    cv.getContext('2d').putImageData(new ImageData(result, sData.width, sData.height), 0, 0);
+    resultPng = new Uint8Array(await (await cv.convertToBlob({ type: 'image/png' })).arrayBuffer());
   }
 
-  const cv = new OffscreenCanvas(sData.width, sData.height);
-  cv.getContext('2d').putImageData(new ImageData(result, sData.width, sData.height), 0, 0);
-  const blob = await cv.convertToBlob({ type: 'image/png' });
-  return new Response(await blob.arrayBuffer(), { status: 200, headers: { 'Content-Type': 'image/png' } });
+  // ④ アプリキャッシュに保存（FIFO 方式で上限を超えたら古いものから削除）
+  if (_seamlessTileAppCache.size >= SEAMLESS_APP_CACHE_MAX) {
+    _seamlessTileAppCache.delete(_seamlessTileAppCache.keys().next().value);
+  }
+  _seamlessTileAppCache.set(tileKey, resultPng);
+
+  return new Response(new Blob([resultPng], { type: 'image/png' }));
 }
 
 // fetch をパッチして仮想 URL を横取りする
