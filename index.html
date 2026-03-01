@@ -1021,9 +1021,14 @@ const MASKED_SEAMLESS_PREFIX = 'https://seamless-masked-dem.omap3d.internal/';
 // オリジナルの fetch を保持（インターセプト内で本物の HTTP 通信に使用）
 const _origFetch = window.fetch.bind(window);
 
+// Q地図DEM が存在しないことが確認済みのタイルキーのキャッシュ (z/x/y)
+// このキャッシュに含まれるタイルはQ地図フェッチをスキップし、応答を高速化する
+const _qchizuNodataCache = new Set();
+
 async function fetchMaskedSeamlessResponse(z, x, y, signal) {
   const qUrl = `${QCHIZU_DEM_BASE}/${z}/${x}/${y}.webp`;
   const sUrl = `${SEAMLESS_DEM_BASE}/${z}/${y}/${x}.png`; // y/x はAPI仕様
+  const qKey = `${z}/${x}/${y}`;
 
   async function toImgData(url) {
     try {
@@ -1037,7 +1042,18 @@ async function fetchMaskedSeamlessResponse(z, x, y, signal) {
     } catch { return null; }
   }
 
-  const [qData, sData] = await Promise.all([toImgData(qUrl), toImgData(sUrl)]);
+  // Q地図カバー外と判明済みのタイルはQ地図フェッチをスキップ（応答を2倍速化）
+  const skipQ = _qchizuNodataCache.has(qKey);
+  const [qData, sData] = await Promise.all([
+    skipQ ? Promise.resolve(null) : toImgData(qUrl),
+    toImgData(sUrl),
+  ]);
+
+  // Q地図が未キャッシュかつ nodata で、かつリクエストがキャンセルされていない場合にキャッシュ登録
+  if (!skipQ && qData === null && !signal?.aborted) {
+    if (_qchizuNodataCache.size > 3000) _qchizuNodataCache.clear(); // 肥大化防止
+    _qchizuNodataCache.add(qKey);
+  }
 
   // シームレスデータなし → 透明タイルを返す（等高線を生成しない）
   const W = (sData || qData)?.width ?? 256;
@@ -1735,9 +1751,12 @@ map.on('load', async () => {
       url: `${MASKED_SEAMLESS_PREFIX}{z}/{x}/{y}.png`,
       encoding: 'numpng',
       minzoom: 0,
-      maxzoom: 15,
+      // maxzoom を 14 に下げることで z=15 でも z=14 の DEM タイルを再利用。
+      // z=14 タイル 1 枚が z=15 の 4 タイル分をカバーするため、DEM フェッチ数が 4 倍削減される。
+      // z=15 でキャッシュ済みタイルが使えれば新規 HTTP リクエストはゼロ → タイル生成が高速化。
+      maxzoom: 14,
       worker: false, // worker:true だと SharedWorker 内の fetch にパッチが効かない
-      cacheSize: 100,
+      cacheSize: 300, // キャッシュを増やしてズーム戻り時の再フェッチを削減
       timeoutMs: 30_000,
     });
     seamlessContourDemSource.setupMaplibre(maplibregl);
