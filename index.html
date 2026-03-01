@@ -1921,7 +1921,16 @@ map.on('load', async () => {
       'contour-regular-lake', 'contour-index-lake',
       'contour-regular-seamless', 'contour-index-seamless',
     ];
-    console.log('DEM5A・湖水深等高線レイヤー追加完了');
+
+    // OriLibre の水域フィルレイヤーが等高線の上に配置されるため、
+    // 全等高線レイヤーをスタック最上位へ移動する。
+    // 順番通りに moveLayer するとリスト末尾の要素が最上位になるため、
+    // lake → DEM5A → Q地図 の順（Q地図が最終的に一番上）に移動する。
+    // CS立体図・KMZ はこの後に追加されるため自動的に等高線より上になる。
+    [...seamlessContourLayerIds, ...contourLayerIds].forEach(id => {
+      if (map.getLayer(id)) map.moveLayer(id);
+    });
+    console.log('DEM5A・湖水深等高線レイヤー追加完了（OriLibre水域より上に移動）');
   }
 
   /*
