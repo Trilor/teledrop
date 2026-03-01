@@ -1728,9 +1728,11 @@ async function synthesizeLakeElevationTile(url) {
   return new Response(blob, { headers: { 'Content-Type': 'image/png' } });
 }
 
-window.fetch = async function(input, init) {
+// async を使わないことで、湖水深以外のリクエスト（地理院タイル・MapLibreタイル等）は
+// _origFetch の Promise をそのまま返し、余分な Promise ラッピングを避ける。
+window.fetch = function(input, init) {
   const url = typeof input === 'string' ? input : (input instanceof Request ? input.url : String(input));
-  if (url && url.startsWith(LAKE_ELEV_PREFIX)) return synthesizeLakeElevationTile(url);
+  if (url.startsWith(LAKE_ELEV_PREFIX)) return synthesizeLakeElevationTile(url);
   return _origFetch(input, init);
 };
 
