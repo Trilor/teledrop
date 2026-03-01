@@ -1611,6 +1611,13 @@ let contourLayerIds = [];
 // シームレス標高タイル等高線レイヤーIDリスト（フォールバック用）
 let seamlessContourLayerIds = [];
 
+// 全等高線レイヤーに visibility を一括設定するヘルパー。
+// [...contourLayerIds, ...seamlessContourLayerIds] の都度スプレッド配列生成を避ける。
+function setAllContourVisibility(vis) {
+  for (const id of contourLayerIds)         if (map.getLayer(id)) map.setLayoutProperty(id, 'visibility', vis);
+  for (const id of seamlessContourLayerIds) if (map.getLayer(id)) map.setLayoutProperty(id, 'visibility', vis);
+}
+
 // 等高線間隔ごとのzoom threshold設定を生成
 // mlcontourの仕様: thresholds の値は [minor, major] の順（小さい間隔が先）
 //   level=0 → minor（主曲線）: intervalM ごとに1本
@@ -3229,6 +3236,7 @@ function updateMagneticNorth() {
 // 都道府県別CS出典の動的表示
 // 要素を lazy に取得し、ビューポートと bounds が重なる都道府県のみ出典を表示する。
 // map.on('load') の外で定義することで chkCs ハンドラーからも呼び出せる。
+let _lastAttrKey = null; // bounds+zoom のキャッシュ（変化がなければ更新をスキップ）
 function updateRegionalAttribution() {
   let attrEl = document.getElementById('regional-cs-attr');
   if (!attrEl) {
@@ -3241,10 +3249,15 @@ function updateRegionalAttribution() {
   const csRegionalOn = document.getElementById('chk-cs-regional')?.checked;
   if (!csRegionalOn) {
     attrEl.innerHTML = '';
+    _lastAttrKey = null;
     return;
   }
   const z = map.getZoom();
   const b = map.getBounds();
+  // bounds + zoom を0.01° / 0.1zoom 精度で文字列化してキャッシュキーにする
+  const key = `${z.toFixed(1)},${b.getWest().toFixed(2)},${b.getSouth().toFixed(2)},${b.getEast().toFixed(2)},${b.getNorth().toFixed(2)}`;
+  if (key === _lastAttrKey) return; // 変化なし → スキップ
+  _lastAttrKey = key;
   const html = REGIONAL_CS_LAYERS
     .filter(l =>
       z >= l.minzoom &&
@@ -3368,6 +3381,8 @@ const optContourCurrent = document.getElementById('opt-contour-current');
 let userContourInterval = 5;
 // 最後に適用した間隔（連続 moveend での無駄な setTiles を防ぐ）
 let lastAppliedContourInterval = null;
+// z≤7 で等高線を非表示済みかどうか（moveend のたびに重複 setLayoutProperty するのを防ぐ）
+let contourHiddenByLowZoom = false;
 
 // zoom レベルに応じた有効な等高線間隔（m）を返す
 // 地理院地形図スケールとの対応：
@@ -3398,9 +3413,7 @@ function applyContourInterval(intervalM) {
   if (!newUrl || !map.getSource('contour-source')) return;
   // MapLibreは高ズーム時に「新タイルが届くまで旧タイルを保持」するため、
   // 一旦 visibility:none で旧タイルを即座に消去してからURLを切り替える
-  [...contourLayerIds, ...seamlessContourLayerIds].forEach(id => {
-    if (map.getLayer(id)) map.setLayoutProperty(id, 'visibility', 'none');
-  });
+  setAllContourVisibility('none');
   map.getSource('contour-source').setTiles([newUrl]);
   if (newUrlSeamless && map.getSource('contour-source-seamless')) {
     map.getSource('contour-source-seamless').setTiles([newUrlSeamless]);
@@ -3413,9 +3426,7 @@ function applyContourInterval(intervalM) {
   // 処理した後）に visibility を復元する。
   requestAnimationFrame(() => {
     if (!chkContour.checked) return;
-    [...contourLayerIds, ...seamlessContourLayerIds].forEach(id => {
-      if (map.getLayer(id)) map.setLayoutProperty(id, 'visibility', 'visible');
-    });
+    setAllContourVisibility('visible');
   });
   lastAppliedContourInterval = intervalM;
 }
@@ -3428,9 +3439,11 @@ function updateContourAutoInterval() {
 
   // zoom ≤ 7 では等高線を非表示（Q地図 + シームレス両方）
   if (z <= 7) {
-    [...contourLayerIds, ...seamlessContourLayerIds].forEach(id => {
-      if (map.getLayer(id)) map.setLayoutProperty(id, 'visibility', 'none');
-    });
+    // 既に非表示済みなら setLayoutProperty の重複呼び出しを省略
+    if (!contourHiddenByLowZoom) {
+      setAllContourVisibility('none');
+      contourHiddenByLowZoom = true;
+    }
     if (optContourCurrent) {
       optContourCurrent.textContent = '非表示';
       selContour.selectedIndex = 0;
@@ -3438,6 +3451,7 @@ function updateContourAutoInterval() {
     lastAppliedContourInterval = null; // zoom上昇時に再描画させる
     return;
   }
+  contourHiddenByLowZoom = false; // z>7 に戻ったらフラグをリセット
 
   const intervalM = getEffectiveContourInterval();
   if (optContourCurrent) {
@@ -3452,9 +3466,7 @@ function updateContourAutoInterval() {
 
 chkContour.addEventListener('change', () => {
   const vis = chkContour.checked ? 'visible' : 'none';
-  [...contourLayerIds, ...seamlessContourLayerIds].forEach(id => {
-    if (map.getLayer(id)) map.setLayoutProperty(id, 'visibility', vis);
-  });
+  setAllContourVisibility(vis);
   selContour.disabled = !chkContour.checked;
   document.querySelector('label[for="chk-contour"]').classList.toggle('disabled', !chkContour.checked);
 });
