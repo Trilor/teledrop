@@ -1910,29 +1910,40 @@ map.on('load', async () => {
       }
     });
 
-    // 低ズームで海が緑一色になるのを防ぐため、水域フィルを最下位（isomizer最初のレイヤーの下）に追加。
-    // OriLibre の water レイヤーは高ズーム時のみ描画されるため、低ズームでは背景の緑が海に透けて見える。
-    // ofm ソースの water ソースレイヤーは z0 から海洋ポリゴン（Natural Earth由来）を保持しているため、
-    // 全ズームで水色を保証できる。このレイヤーは oriLibreLayers に含めることで
-    // ベースマップ切替時にも正しく表示/非表示が制御される。
-    const firstIsomizerLayerId = map.getStyle().layers
-      .find(l => !snapshotBeforeIsomizer.has(l.id))?.id;
-    if (firstIsomizerLayerId) {
-      map.addLayer({
-        id: 'water-lowzoom-fill',
-        type: 'fill',
-        source: 'ofm',
-        'source-layer': 'water',
-        paint: { 'fill-color': '#aad3df' },
-      }, firstIsomizerLayerId);
-    }
-
-    // isomizer が追加したレイヤーを収集（water-lowzoom-fill を含む）
+    // isomizer が追加したレイヤーを収集（ベースマップ切替で一括 visibility 制御するため）
     // contour-source のレイヤーは除外（等高線はベースマップ切替の影響を受けない）
     oriLibreLayers = map.getStyle().layers
       .filter(l => !snapshotBeforeIsomizer.has(l.id) && l.source !== 'contour-source')
       .map(l => ({ id: l.id, defaultVisibility: l.layout?.visibility ?? 'visible' }));
     console.log(`OriLibre レイヤー収集完了: ${oriLibreLayers.length} レイヤー`);
+
+    // ── 低ズームで外洋が緑一色になる問題を修正 ──────────────────────────────
+    // OriLibre の海記号は gsivt/waterarea（国土地理院ベクタータイル、日本域のみ）を使用。
+    // 外洋（太平洋・日本海等）は gsivt の対象外であり、低ズームでは
+    // ofm/landcover（植生フィル）が全域を緑で塗るため、外洋が緑に見える。
+    //
+    // 対策 ①: background レイヤーを海色に変更（外洋 = background 色が残るよう）
+    // 対策 ②: ofm/water フィルを gsivt レイヤー群の直前（ofm/landcover の上）に挿入
+    //          → ofm が ocean ポリゴンを持つズームではより正確に水色を保証
+    //
+    // 結果:  外洋 → background（海色）または ofm/water フィル（海色）
+    //        陸地 → ofm/landcover（緑）が上書き → 高ズームは OriLibre 通常表示
+    const bgLayer = map.getStyle().layers.find(l => l.type === 'background');
+    if (bgLayer) map.setPaintProperty(bgLayer.id, 'background-color', '#aad3df');
+
+    const firstGsivtLayerId = map.getStyle().layers
+      .find(l => !snapshotBeforeIsomizer.has(l.id) && l.source === 'gsivt')?.id;
+    if (firstGsivtLayerId) {
+      map.addLayer({
+        id: 'water-ocean-fill',
+        type: 'fill',
+        source: 'ofm',
+        'source-layer': 'water',
+        paint: { 'fill-color': '#aad3df' },
+      }, firstGsivtLayerId);
+      // ベースマップ切替で非表示にできるよう oriLibreLayers に登録
+      oriLibreLayers.push({ id: 'water-ocean-fill', defaultVisibility: 'visible' });
+    }
 
     // isomizer の project-config.yml が別のcenterを持つ場合があるため、
     // 完了後に京都大学（INITIAL_CENTER）へ強制的に戻す
