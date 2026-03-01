@@ -2092,7 +2092,10 @@ async function loadKmz(file) {
       GroundOverlay は KML の「画像を地図上の指定範囲に貼り付ける」要素です。
       オリエンテーリングマップの KMZ では通常ここにマップ画像の情報が入っています。
     */
-    const groundOverlay = kmlDom.querySelector('GroundOverlay');
+    // getElementsByTagName は XML 名前空間を無視するため、
+    // xmlns="http://www.opengis.net/kml/2.2" 付き KML でも確実に動作する。
+    // querySelector は名前空間あり XML でモバイルブラウザ等において失敗する場合がある。
+    const groundOverlay = kmlDom.getElementsByTagName('GroundOverlay')[0];
 
     if (!groundOverlay) {
       alert('エラー：KMLファイルの中にGroundOverlay要素が見つかりませんでした。\nこのKMZはオーバーレイ画像を含んでいない可能性があります。');
@@ -2104,7 +2107,7 @@ async function loadKmz(file) {
       LatLonBox は画像を貼り付ける矩形の緯度経度範囲と回転角を定義します。
       各タグの textContent を数値に変換して取得します。
     */
-    const latLonBox = groundOverlay.querySelector('LatLonBox');
+    const latLonBox = groundOverlay.getElementsByTagName('LatLonBox')[0];
 
     if (!latLonBox) {
       alert('エラー：GroundOverlay の中に LatLonBox 要素が見つかりませんでした。');
@@ -2112,13 +2115,12 @@ async function loadKmz(file) {
     }
 
     // テキストで書かれた緯度経度を数値に変換する
-    const north = parseFloat(latLonBox.querySelector('north').textContent);
-    const south = parseFloat(latLonBox.querySelector('south').textContent);
-    const east = parseFloat(latLonBox.querySelector('east').textContent);
-    const west = parseFloat(latLonBox.querySelector('west').textContent);
+    const north = parseFloat(latLonBox.getElementsByTagName('north')[0]?.textContent);
+    const south = parseFloat(latLonBox.getElementsByTagName('south')[0]?.textContent);
+    const east  = parseFloat(latLonBox.getElementsByTagName('east')[0]?.textContent);
+    const west  = parseFloat(latLonBox.getElementsByTagName('west')[0]?.textContent);
     // rotation は省略されることもあるので、ない場合は 0 とする
-    const rotation = parseFloat(latLonBox.querySelector('rotation')?.textContent ?? '0'
-    );
+    const rotation = parseFloat(latLonBox.getElementsByTagName('rotation')[0]?.textContent ?? '0');
 
     if (isNaN(north) || isNaN(south) || isNaN(east) || isNaN(west)) {
       alert('エラー：LatLonBox の座標値が正しく読み取れませんでした。');
@@ -2192,7 +2194,8 @@ async function loadKmz(file) {
       GroundOverlay > Icon > href タグに画像ファイルのパスが書かれています。
       そのファイルを ZIP から取り出し、Blob → ObjectURL に変換します。
     */
-    const iconHref = groundOverlay.querySelector('Icon > href')?.textContent?.trim();
+    const iconHref = groundOverlay.getElementsByTagName('Icon')[0]
+      ?.getElementsByTagName('href')[0]?.textContent?.trim();
 
     if (!iconHref) {
       alert('エラー：GroundOverlay に Icon/href が見つかりませんでした。');
