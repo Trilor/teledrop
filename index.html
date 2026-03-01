@@ -1055,35 +1055,48 @@ maplibregl.addProtocol('gsjdem', async (params, abortController) => {
 
 /*
   ========================================================
-  Q地図カバレッジマスクプロトコル (qcov://)
-  Q地図DEMタイルを取得し、有効データ → 白不透明、nodata → 透明 なPNGを返す。
-  このマスクをシームレス等高線の上・Q地図等高線の下に挟むことで、
-  Q地図データがある範囲のシームレス等高線を見えなくする。
+  シームレスDEM + Q地図カバレッジチェック統合プロトコル (gsjseamless://)
+  Q地図DEMタイルが存在する範囲では all-nodata の空PNGを返し、
+  mlcontour がシームレス等高線を生成しないようにする。
+  Q地図データがない範囲では GSJ シームレスDEMタイルを返す。
   ========================================================
 */
-maplibregl.addProtocol('qcov', async (params, abortController) => {
+
+// all-nodata NumPNG タイル（256×256、R=128 G=0 B=0 A=255）のキャッシュ
+let _blankNumpngBytes = null;
+async function getBlankNumpngBuffer() {
+  if (!_blankNumpngBytes) {
+    const cv = new OffscreenCanvas(256, 256);
+    const ctx = cv.getContext('2d');
+    const imgData = ctx.createImageData(256, 256);
+    const d = imgData.data;
+    for (let i = 0; i < d.length; i += 4) {
+      d[i] = 128; d[i + 1] = 0; d[i + 2] = 0; d[i + 3] = 255;
+    }
+    ctx.putImageData(imgData, 0, 0);
+    _blankNumpngBytes = new Uint8Array(await (await cv.convertToBlob({ type: 'image/png' })).arrayBuffer());
+  }
+  return _blankNumpngBytes.buffer.slice(0); // コピーを返す（所有権移譲対策）
+}
+
+maplibregl.addProtocol('gsjseamless', async (params, abortController) => {
   const m = params.url.match(/\/(\d+)\/(\d+)\/(\d+)\.\w+$/);
   if (!m) return { data: new ArrayBuffer(0) };
   const [, z, x, y] = m;
+
+  // Q地図タイルが存在する範囲 → 空タイルでシームレス等高線生成を抑制
   try {
-    const r = await fetch(`${QCHIZU_DEM_BASE}/${z}/${x}/${y}.webp`, { signal: abortController.signal });
-    if (!r.ok) return { data: new ArrayBuffer(0) };
-    const bm = await createImageBitmap(await r.blob());
-    const cv = new OffscreenCanvas(bm.width, bm.height);
-    const ctx = cv.getContext('2d');
-    ctx.drawImage(bm, 0, 0);
-    bm.close();
-    const imgData = ctx.getImageData(0, 0, cv.width, cv.height);
-    const d = imgData.data;
-    for (let i = 0; i < d.length; i += 4) {
-      // NumPNG nodata = R=128,G=0,B=0 または alpha≠255
-      const isNodata = (d[i] === 128 && d[i + 1] === 0 && d[i + 2] === 0) || d[i + 3] !== 255;
-      d[i] = 255; d[i + 1] = 255; d[i + 2] = 255;
-      d[i + 3] = isNodata ? 0 : 255;
-    }
-    ctx.putImageData(imgData, 0, 0);
-    const blob = await cv.convertToBlob({ type: 'image/png' });
-    return { data: await blob.arrayBuffer() };
+    const qr = await fetch(`${QCHIZU_DEM_BASE}/${z}/${x}/${y}.webp`, { signal: abortController.signal });
+    if (qr.ok) return { data: await getBlankNumpngBuffer() };
+  } catch (e) {
+    if (e.name === 'AbortError') return { data: new ArrayBuffer(0) };
+  }
+
+  // Q地図データなし → GSJ シームレスDEMタイルを返す（y/x 逆順が API 仕様）
+  try {
+    const sr = await fetch(`${SEAMLESS_DEM_BASE}/${z}/${y}/${x}.png`, { signal: abortController.signal });
+    if (!sr.ok) return { data: new ArrayBuffer(0) };
+    return { data: await sr.arrayBuffer() };
   } catch {
     return { data: new ArrayBuffer(0) };
   }
@@ -1700,9 +1713,10 @@ map.on('load', async () => {
 
     // シームレス標高タイル等高線フォールバック（Q地図カバー外のみ表示）
     // Q地図と同様に worker: true で SharedWorker 上で並列生成。
-    // GSJタイルは {z}/{y}/{x} の順（y/x 逆転が API 仕様）。
+    // gsjseamless:// プロトコルが Q地図カバレッジチェックを行い、
+    // Q地図データがある範囲は空タイルを返してシームレス等高線を抑制する。
     seamlessContourDemSource = new mlcontour.DemSource({
-      url: `${SEAMLESS_DEM_BASE}/{z}/{y}/{x}.png`,
+      url: 'gsjseamless://{z}/{x}/{y}.png',
       encoding: 'numpng',
       minzoom: 0,
       maxzoom: 14,
@@ -1879,27 +1893,8 @@ map.on('load', async () => {
         'line-blur': 0.5,
       },
     }, firstQchizuId);
-    // Q地図カバレッジマスク: Q地図データが存在するタイルを白で塗りつぶす。
-    // シームレス等高線の上・Q地図等高線の下に挿入することで、
-    // Q地図カバー範囲のシームレス等高線を隠す。
-    map.addSource('qchizu-mask', {
-      type: 'raster',
-      tiles: ['qcov://{z}/{x}/{y}.png'],
-      tileSize: 256,
-      minzoom: 0,
-      maxzoom: 15,
-    });
-    map.addLayer({
-      id: 'qchizu-mask-layer',
-      type: 'raster',
-      source: 'qchizu-mask',
-      paint: {
-        'raster-opacity': 1.0,
-        'raster-fade-duration': 0,
-      },
-    }, firstQchizuId);
-    seamlessContourLayerIds = ['contour-regular-seamless', 'contour-index-seamless', 'qchizu-mask-layer'];
-    console.log('シームレス等高線レイヤー追加完了（Q地図カバレッジマスク含む）');
+    seamlessContourLayerIds = ['contour-regular-seamless', 'contour-index-seamless'];
+    console.log('シームレス等高線レイヤー追加完了');
   }
 
   /*
