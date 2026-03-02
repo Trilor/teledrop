@@ -1099,8 +1099,11 @@ body {
   border: 2px solid rgba(255, 255, 255, 0.25);
 }
 #pc-sim-readmap-inner {
-  width: 100%;
-  height: 100%;
+  position: absolute;
+  width: 150%;
+  height: 150%;
+  top: -25%;
+  left: -25%;
   transform-origin: center center;
   transition: transform 0.08s linear;
 }
@@ -1348,6 +1351,22 @@ body {
       </div>
     </div>
 
+    <!-- 読図マップ 現在位置ドット表示 -->
+    <div class="setting-row">
+      <div class="setting-left">
+        <input type="checkbox" id="chk-readmap-dot" checked />
+        <label for="chk-readmap-dot" class="setting-label">読図に現在位置</label>
+      </div>
+    </div>
+
+    <!-- 3D地形 現在位置マーカー -->
+    <div class="setting-row">
+      <div class="setting-left">
+        <input type="checkbox" id="chk-sim-pos-3d" />
+        <label for="chk-sim-pos-3d" class="setting-label">3Dに現在位置</label>
+      </div>
+    </div>
+
   </details>
 
 
@@ -1377,7 +1396,7 @@ body {
 <!-- PC O-シミュレーター：トグルボタン -->
 <button id="pc-sim-toggle-btn">💻 PCシミュレーター開始</button>
 <!-- PC O-シミュレーター：ヒントバー＆十字照準 -->
-<div id="pc-sim-hint">WASD 移動 ｜ マウス 視点 ｜ ↑↓←→ 視点（代替） ｜ = / - ズーム ｜ Space / 右クリック 読図 ｜ Esc 終了</div>
+<div id="pc-sim-hint">WASD 移動 ｜ マウス / タッチパッド / ↑↓←→ 視点移動 ｜ I / O カメラ距離 ｜ Space / 右クリック 読図 ｜ Esc 終了</div>
 <div id="pc-sim-crosshair"></div>
 <!-- PC O-シミュレーター：読図マップオーバーレイ -->
 <div id="pc-sim-readmap-overlay">
@@ -4287,7 +4306,6 @@ let simJoystick  = null; // nipplejs インスタンス
 let simJoyData   = { force: 0, angle: 0 }; // force: 0〜1, angle: radians
 let simAnimFrame = null; // requestAnimationFrame ID
 // 地形フロア用
-let simBaseZ      = null; // SIM_ZOOM時のカメラ z（mercator単位）—easeTo完了後にキャリブレーション
 let simTargetZoom = SIM_ZOOM; // ユーザーが希望するズームレベル（スライダー/キーで更新）
 
 /* ----------------------------------------------------------------
@@ -4303,7 +4321,6 @@ function toggleSimMode() {
    ---------------------------------------------------------------- */
 function startSimMode() {
   simActive = true;
-  simBaseZ      = null;
   simTargetZoom = SIM_ZOOM;
 
   // ① 通常の地図操作を全て無効化
@@ -4330,8 +4347,6 @@ function startSimMode() {
 
   // ⑤ ミニマップを初期化（easeTo完了後に生成して描画崩れを防ぐ）
   setTimeout(initSimMinimap, 850);
-  // easeTo 完了後にカメラ z をキャリブレーション
-  setTimeout(calibrateSimFloor, 900);
 
   // ⑥ ジョイスティック初期化
   initSimJoystick();
@@ -4339,7 +4354,10 @@ function startSimMode() {
   // ⑦ 視点操作ゾーン初期化
   initSimLookZone();
 
-  // ⑧ アニメーションループ開始
+  // ⑧ 3D現在位置マーカーを追加（チェックボックスON時）
+  if (document.getElementById('chk-sim-pos-3d').checked) addSimPosMarker();
+
+  // ⑨ アニメーションループ開始
   simLoop();
 }
 
@@ -4372,6 +4390,9 @@ function stopSimMode() {
   map.doubleClickZoom.enable();
   map.touchZoomRotate.enable();
   map.keyboard.enable();
+
+  // 3D現在位置マーカーを削除
+  removeSimPosMarker();
 
   // ピッチを戻す
   map.easeTo({ pitch: INITIAL_PITCH, duration: 600 });
@@ -4535,6 +4556,9 @@ function simLoop() {
   // ── 地形フロア（setZoom のみ。setFreeCameraOptions は使用しない） ──
   enforceTerrainFloor();
 
+  // ── 3D現在位置マーカー更新 ──
+  updateSimPosMarker();
+
   simAnimFrame = requestAnimationFrame(simLoop);
 }
 
@@ -4558,16 +4582,68 @@ document.getElementById('sim-toggle-btn').addEventListener('click', toggleSimMod
 
 
 /* ================================================================
+   3D 現在位置マーカー（シム中に map.getCenter() を赤点で表示）
+   ================================================================ */
+let simPosMarker = null; // maplibregl.Marker インスタンス
+
+function addSimPosMarker() {
+  if (simPosMarker) return;
+  const el = document.createElement('div');
+  el.style.cssText = `
+    width: 22px; height: 22px; border-radius: 50%;
+    background: #e63030;
+    border: 4px solid rgba(255,255,255,0.85);
+    box-shadow: 0 0 8px rgba(0,0,0,0.55);
+    pointer-events: none;
+  `;
+  simPosMarker = new maplibregl.Marker({ element: el, anchor: 'center' })
+    .setLngLat(map.getCenter())
+    .addTo(map);
+}
+
+function removeSimPosMarker() {
+  if (simPosMarker) { simPosMarker.remove(); simPosMarker = null; }
+}
+
+function updateSimPosMarker(lng, lat) {
+  if (!simPosMarker) return;
+  if (lng !== undefined) simPosMarker.setLngLat({ lng, lat });
+  else simPosMarker.setLngLat(map.getCenter()); // モバイルシム用
+}
+
+// 読図マップ 現在位置ドット のオン/オフ
+document.getElementById('chk-readmap-dot').addEventListener('change', e => {
+  const d = e.target.checked ? '' : 'none';
+  document.getElementById('pc-sim-readmap-dot').style.display = d;
+  document.getElementById('pc-sim-readmap-arrow').style.display = d;
+});
+
+// 3D 現在位置マーカーのオン/オフ（シム中に切り替えた場合も即反映）
+document.getElementById('chk-sim-pos-3d').addEventListener('change', e => {
+  if (e.target.checked && (simActive || pcSimActive)) addSimPosMarker();
+  else removeSimPosMarker();
+});
+
+/* ================================================================
    PC O-シミュレーターモード
    Pointer Lock API + WASD + マウス視点 + Space/右クリック読図
    ================================================================ */
 
 // ---- 状態変数 ----
-let pcSimActive   = false;
+let pcSimActive    = false;
 let pcSimAnimFrame = null;
 let pcSimLastTime  = null;
 let pcSimReadMap   = null;  // 読図用 MapLibre インスタンス
 let pcSimReadOpen  = false; // 読図マップ表示中か
+
+// ---- フォローカメラ用パラメータ ----
+let pcPlayerLng  = null;  // プレイヤーの経度
+let pcPlayerLat  = null;  // プレイヤーの緯度
+let pcBearing    = 0;     // カメラの向き（deg, 北=0）
+let pcPitch      = SIM_PITCH; // カメラのピッチ（deg, 0=真下 ～ 85=水平）
+let pcCamDistM   = 50;    // カメラ ↔ プレイヤー間の距離（m）
+const PC_CAM_DIST_MIN = 5;
+const PC_CAM_DIST_MAX = 500;
 
 // キー押下状態（Pointer Lock 有無に関わらず追跡）
 const pcSimKeys = {
@@ -4613,9 +4689,7 @@ document.addEventListener('pointerlockchange', () => {
    onPcSimLocked: Pointer Lock 成功後の初期化処理
    ---------------------------------------------------------------- */
 function onPcSimLocked() {
-  pcSimActive   = true;
-  simBaseZ      = null;
-  simTargetZoom = SIM_ZOOM;
+  pcSimActive = true;
 
   // ① 地図操作を全て無効化
   map.dragPan.disable();
@@ -4625,19 +4699,27 @@ function onPcSimLocked() {
   map.touchZoomRotate.disable();
   map.keyboard.disable();
 
-  // ② カメラをシム視点へ
-  map.easeTo({ zoom: SIM_ZOOM, pitch: SIM_PITCH, duration: 800 });
+  // ② プレイヤー位置・カメラパラメータを現在のマップ状態から初期化
+  const c    = map.getCenter();
+  pcPlayerLng = c.lng;
+  pcPlayerLat = c.lat;
+  pcBearing   = map.getBearing();
+  pcPitch     = SIM_PITCH;
+  pcCamDistM  = 50;
 
-  // ③ UIを更新
+  // ③ カメラをプレイヤー視点へ即配置
+  setCameraFromPlayer();
+
+  // ④ UIを更新
   const btn = document.getElementById('pc-sim-toggle-btn');
   btn.textContent = '⏹ PCシミュ終了';
   btn.classList.add('pc-sim-active');
   document.getElementById('pc-sim-hint').style.display = 'block';
   document.getElementById('pc-sim-crosshair').style.display = 'block';
 
-  // ④ 読図マップを初期化、カメラ z をキャリブレーション（カメラ遷移後）
-  setTimeout(initPcReadMap, 900);
-  setTimeout(calibrateSimFloor, 900);
+  // ⑤ 読図マップを初期化
+  setTimeout(initPcReadMap, 100);
+  if (document.getElementById('chk-sim-pos-3d').checked) addSimPosMarker();
 
   // ⑤ イベントリスナー登録
   document.addEventListener('mousemove',    onPcSimMouseMove);
@@ -4661,6 +4743,9 @@ function stopPcSim() {
   // 読図マップを閉じて破棄
   closePcReadMap();
   if (pcSimReadMap) { pcSimReadMap.remove(); pcSimReadMap = null; }
+
+  // 3D現在位置マーカーを削除
+  removeSimPosMarker();
 
   // キー状態リセット
   Object.keys(pcSimKeys).forEach(k => { pcSimKeys[k] = false; });
@@ -4689,71 +4774,101 @@ function stopPcSim() {
 }
 
 /* ----------------------------------------------------------------
-   calibrateSimFloor: SIM_ZOOM 時のカメラ z（mercator）を1回読み取って記録する
-   - setFreeCameraOptions は呼ばない（読み取りのみ）
-   - easeTo 完了後（900ms）に呼ぶことで正確な値を取得
+   enforceTerrainFloor: カメラ altitude を地形の上に保つ
+   設計方針:
+   - simBaseZ に頼らず fc.position.z（実際のカメラ altitude）で毎フレーム直接判定
+   - サンプル範囲: カメラ eye → center → 前方 SIM_LOOKAHEAD_KM
+     ※ ピッチが高いほど eye が center から遠く、後方から前方まで広くカバー
+   - zoom変換: alt(z) = cameraZ * 2^(currentZoom − z) より
+       floorZoom = currentZoom − log2(floorAltMerc / cameraZ)
+   - zoom-out（地面回避）は即座（factor 1.0）、zoom-in（復帰）はゆっくり（0.05）
    ---------------------------------------------------------------- */
-function calibrateSimFloor() {
-  if (!simActive && !pcSimActive) return;
-  const fc = map.getFreeCameraOptions();
-  if (fc?.position?.z) simBaseZ = fc.position.z;
-}
+const SIM_FLOOR_SAMPLE_N = 12;   // サンプル点数（N+1 点）
+const SIM_LOOKAHEAD_KM   = 0.03; // center 前方ルックアヘッド距離（30m）
 
 /* ----------------------------------------------------------------
-   enforceTerrainFloor: 周囲 25m 以内の最高標高を基準にズームを調整
-   - setFreeCameraOptions は使用しない（setZoom のみ）
-   - floorZoom = SIM_ZOOM - log2(floorAlt / baseAlt)
-     ※ alt ∝ 2^(−zoom) の関係を利用
-   - effectiveZoom = min(simTargetZoom, floorZoom) でユーザー希望ズームを上限に
-   - 斜面に近づく → 素早くズームアウト（factor 0.2）
-   - 平坦に戻る  → ゆっくりズームイン（factor 0.05）
+   setCameraFromPlayer: PCシム用フォローカメラ
+   - map.jumpTo({ center: player, bearing, pitch, zoom }) を使用
+   - center = player なので player は常に画面中央に固定される
+   - pcCamDistM → zoom を数式で変換（lat補正込み）
    ---------------------------------------------------------------- */
-const SIM_FLOOR_SAMPLE_KM = 0.025; // サンプル半径 25m
-// 8方向 + 中心の標高サンプルオフセット [right, forward] 単位ベクトル
-const SIM_FLOOR_OFFSETS = [
-  [0, 0], [0, 1], [0.7, 0.7], [1, 0], [0.7, -0.7],
-  [0, -1], [-0.7, -0.7], [-1, 0], [-0.7, 0.7],
-];
+function setCameraFromPlayer() {
+  if (pcPlayerLng === null) return;
+
+  // pcCamDistM (m) → zoom に変換
+  // MapLibre: cameraAlt = (H / (2*tan(fov/2))) * (2π*R*cos(lat)) / (512 * 2^zoom)
+  // 逆算: zoom = log2(H * 2π*R*cos(lat) / (1024 * tan(fov/2) * pcCamDistM))
+  const H       = map.getCanvas().height || 600;
+  const fov_rad = 0.6435; // MapLibre デフォルト垂直FOV ≈ 36.87°
+  const R       = 6371008.8;
+  const lat_rad = pcPlayerLat * Math.PI / 180;
+  const targetZoom = Math.log2(
+    H * 2 * Math.PI * R * Math.cos(lat_rad) /
+    (1024 * Math.tan(fov_rad / 2) * pcCamDistM)
+  );
+
+  map.jumpTo({
+    center:  [pcPlayerLng, pcPlayerLat],
+    bearing: pcBearing,
+    pitch:   Math.min(pcPitch, map.getMaxPitch()),
+    zoom:    Math.max(12, Math.min(22, targetZoom))
+  });
+}
 
 function enforceTerrainFloor() {
-  if (!map.getTerrain() || simBaseZ === null) return;
+  if (pcSimActive) return; // PCシムは setCameraFromPlayer で制御
+  if (!map.getTerrain()) return;
 
   const center  = map.getCenter();
   const bearing = map.getBearing();
   const exag    = map.getTerrain()?.exaggeration ?? 1.0;
 
-  // 周囲 25m を 8 方向 + 中心でサンプリング → 最高標高を求める
+  const fc = map.getFreeCameraOptions();
+  if (!fc?.position) return;
+  const eyeLL  = fc.position.toLngLat?.() ?? center;
+  const cameraZ = fc.position.z; // カメラの実際の altitude（mercator単位）
+
+  // center 前方 SIM_LOOKAHEAD_KM の点（進行方向の地形を先読み）
+  const fwdPt = turf.destination([center.lng, center.lat], SIM_LOOKAHEAD_KM, bearing);
+  const fwdLL = { lng: fwdPt.geometry.coordinates[0], lat: fwdPt.geometry.coordinates[1] };
+
+  // eye → center → fwdLL を SIM_FLOOR_SAMPLE_N+1 点でサンプリング
+  // t=0: eye, t=0.75: center, t=1.0: fwdLL
   let maxElevM = 0;
-  for (const [dx, dy] of SIM_FLOOR_OFFSETS) {
-    let lngLat;
-    if (dx === 0 && dy === 0) {
-      lngLat = center;
+  for (let i = 0; i <= SIM_FLOOR_SAMPLE_N; i++) {
+    const t = i / SIM_FLOOR_SAMPLE_N;
+    let lng, lat;
+    if (t <= 0.75) {
+      // eye → center（全サンプルの 75%）
+      const s = t / 0.75;
+      lng = eyeLL.lng + (center.lng - eyeLL.lng) * s;
+      lat = eyeLL.lat + (center.lat - eyeLL.lat) * s;
     } else {
-      const b   = bearing + Math.atan2(dx, dy) * (180 / Math.PI);
-      const len = Math.sqrt(dx * dx + dy * dy);
-      const pt  = turf.destination([center.lng, center.lat], SIM_FLOOR_SAMPLE_KM * len, b);
-      lngLat = { lng: pt.geometry.coordinates[0], lat: pt.geometry.coordinates[1] };
+      // center → fwdLL（残り 25%）
+      const s = (t - 0.75) / 0.25;
+      lng = center.lng + (fwdLL.lng - center.lng) * s;
+      lat = center.lat + (fwdLL.lat - center.lat) * s;
     }
-    const e = map.queryTerrainElevation(lngLat, { exaggerated: false });
+    const e = map.queryTerrainElevation({ lng, lat }, { exaggerated: false });
     if (e !== null) maxElevM = Math.max(maxElevM, e);
   }
 
-  // フロア高度（メートル）→ mercator 単位
-  const floorAltM    = Math.max(SIM_FLOOR_CLEARANCE_M, maxElevM * exag + SIM_FLOOR_CLEARANCE_M);
+  // 必要なフロア altitude → mercator 単位
   const zpm          = maplibregl.MercatorCoordinate.fromLngLat([center.lng, center.lat], 1).z;
+  const floorAltM    = Math.max(SIM_FLOOR_CLEARANCE_M, maxElevM * exag + SIM_FLOOR_CLEARANCE_M);
   const floorAltMerc = floorAltM * zpm;
 
-  // フロアズーム: SIM_ZOOM のカメラ z が floorAltMerc に達するズームレベル
-  // alt(z) = simBaseZ * 2^(SIM_ZOOM − z)  →  z = SIM_ZOOM − log2(floorAltMerc / simBaseZ)
-  const floorZoom    = SIM_ZOOM - Math.log2(floorAltMerc / simBaseZ);
+  // 現在カメラ altitude から必要なズームを計算
+  // alt(z) = cameraZ * 2^(currentZoom − z)  →  floorZoom = currentZoom − log2(floorAltMerc / cameraZ)
+  const currentZoom   = map.getZoom();
+  const floorZoom     = currentZoom - Math.log2(floorAltMerc / cameraZ);
   const effectiveZoom = Math.min(simTargetZoom, floorZoom);
 
-  const currentZoom = map.getZoom();
-  const diff        = effectiveZoom - currentZoom;
+  const diff = effectiveZoom - currentZoom;
   if (Math.abs(diff) < 0.005) return;
 
-  // 斜面に近づく（zoom out 方向）は素早く、平坦に戻る（zoom in 方向）はゆっくり
-  const factor = diff < 0 ? 0.2 : 0.05;
+  // zoom-out（地面に近い）は即座に修正、zoom-in（地形を離れた後）はゆっくり戻す
+  const factor = diff < 0 ? 1.0 : 0.05;
   map.setZoom(currentZoom + diff * factor);
 }
 
@@ -4770,49 +4885,40 @@ function pcSimLoop(timestamp) {
   const dt = pcSimLastTime ? Math.min((timestamp - pcSimLastTime) / 1000, 0.1) : 0.016;
   pcSimLastTime = timestamp;
 
-  // ── WASD 移動 ──────────────────────────────────────────────────
+  // ── WASD 移動（pcPlayerLng/Lat を直接更新） ──────────────────────
   const fwd   = (pcSimKeys.KeyW ? 1 : 0) - (pcSimKeys.KeyS ? 1 : 0);
   const right = (pcSimKeys.KeyD ? 1 : 0) - (pcSimKeys.KeyA ? 1 : 0);
 
   if (fwd !== 0 || right !== 0) {
-    // 斜め移動でも速度が √2 倍にならないようベクトルを正規化
-    const len = Math.sqrt(fwd * fwd + right * right);
-    const nx  = right / len; // 正規化された右成分
-    const ny  = fwd   / len; // 正規化された前進成分
-
-    // 速度から距離を計算: km/h → km/frame
-    const distKm = (getPcSimSpeedKmh() / 3600) * dt;
-
-    // atan2(nx, ny): ny軸=北(0°) に対して nx 方向の角度 → カメラ bearing からのオフセット
-    const moveBearing = map.getBearing() + Math.atan2(nx, ny) * (180 / Math.PI);
-
-    const c    = map.getCenter();
-    const dest = turf.destination([c.lng, c.lat], distKm, moveBearing);
-    map.setCenter(dest.geometry.coordinates);
+    const len        = Math.sqrt(fwd * fwd + right * right);
+    const distKm     = (getPcSimSpeedKmh() / 3600) * dt;
+    const moveBearing = pcBearing + Math.atan2(right / len, fwd / len) * (180 / Math.PI);
+    const dest = turf.destination([pcPlayerLng, pcPlayerLat], distKm, moveBearing);
+    pcPlayerLng = dest.geometry.coordinates[0];
+    pcPlayerLat = dest.geometry.coordinates[1];
   }
 
-  // ── 矢印キー視点（ノートPC向け救済） ──────────────────────────
+  // ── 矢印キー視点（pcBearing / pcPitch を更新） ───────────────────
   const ARROW_BEARING_RATE = 90;  // deg/s
   const ARROW_PITCH_RATE   = 60;  // deg/s
 
-  let bDelta = 0, pDelta = 0;
-  if (pcSimKeys.ArrowLeft)  bDelta -= ARROW_BEARING_RATE * dt;
-  if (pcSimKeys.ArrowRight) bDelta += ARROW_BEARING_RATE * dt;
-  if (pcSimKeys.ArrowUp)    pDelta += ARROW_PITCH_RATE   * dt; // より水平に
-  if (pcSimKeys.ArrowDown)  pDelta -= ARROW_PITCH_RATE   * dt; // より俯瞰に
+  if (pcSimKeys.ArrowLeft)  pcBearing = (pcBearing - ARROW_BEARING_RATE * dt + 360) % 360;
+  if (pcSimKeys.ArrowRight) pcBearing = (pcBearing + ARROW_BEARING_RATE * dt) % 360;
+  if (pcSimKeys.ArrowUp)    pcPitch   = Math.min(85, pcPitch + ARROW_PITCH_RATE * dt);
+  if (pcSimKeys.ArrowDown)  pcPitch   = Math.max(0,  pcPitch - ARROW_PITCH_RATE * dt);
 
-  if (bDelta !== 0) map.setBearing(map.getBearing() + bDelta);
-  if (pDelta !== 0) map.setPitch(Math.max(0, Math.min(85, map.getPitch() + pDelta)));
+  // ── カメラを配置（プレイヤーを常に画面中央に） ───────────────────
+  setCameraFromPlayer();
 
   // ── 読図マップ同期 ──────────────────────────────────────────────
   if (pcSimReadOpen && pcSimReadMap) {
-    pcSimReadMap.setCenter(map.getCenter());
+    pcSimReadMap.setCenter([pcPlayerLng, pcPlayerLat]);
     document.getElementById('pc-sim-readmap-inner').style.transform =
-      `rotate(${-map.getBearing()}deg)`;
+      `rotate(${-pcBearing}deg)`;
   }
 
-  // ── 地形フロア（setZoom のみ。setFreeCameraOptions は使用しない） ──
-  enforceTerrainFloor();
+  // ── 3D現在位置マーカー更新 ──
+  updateSimPosMarker(pcPlayerLng, pcPlayerLat);
 
   pcSimAnimFrame = requestAnimationFrame(pcSimLoop);
 }
@@ -4826,9 +4932,9 @@ function onPcSimMouseMove(e) {
   const MOUSE_BEARING_SENS = 0.15; // deg/px
   const MOUSE_PITCH_SENS   = 0.10; // deg/px
 
-  map.setBearing(map.getBearing() + e.movementX * MOUSE_BEARING_SENS);
-  // movementY < 0（上移動）→ pitch 増加（より水平視点）
-  map.setPitch(Math.max(0, Math.min(85, map.getPitch() - e.movementY * MOUSE_PITCH_SENS)));
+  pcBearing = (pcBearing + e.movementX * MOUSE_BEARING_SENS + 360) % 360;
+  // movementY < 0（マウス上移動）→ pitch 増加（より水平視点）
+  pcPitch = Math.max(0, Math.min(85, pcPitch - e.movementY * MOUSE_PITCH_SENS));
 }
 
 function onPcSimMouseDown(e) {
@@ -4858,12 +4964,11 @@ document.addEventListener('keydown', (e) => {
     e.preventDefault();
     openPcReadMap();
   }
-  // = キーでズームイン、- キーでズームアウト（PC シム中のみ）
-  if (pcSimActive && (e.code === 'Equal' || e.code === 'Minus')) {
+  // I キーで距離を縮める（近づく）、O キーで距離を伸ばす（遠ざかる）（PCシム中のみ）
+  if (pcSimActive && (e.code === 'KeyI' || e.code === 'KeyO')) {
     e.preventDefault();
-    const delta = e.code === 'Equal' ? 1 : -1;
-    simTargetZoom = Math.max(16, Math.min(24, simTargetZoom + delta));
-    map.setZoom(simTargetZoom);
+    if (e.code === 'KeyI') pcCamDistM = Math.max(PC_CAM_DIST_MIN, pcCamDistM * 0.7);
+    else                   pcCamDistM = Math.min(PC_CAM_DIST_MAX, pcCamDistM * 1.4);
   }
 });
 
@@ -4943,9 +5048,9 @@ function openPcReadMap() {
   overlay.classList.add('visible');
 
   if (pcSimReadMap) {
-    pcSimReadMap.setCenter(map.getCenter());
+    pcSimReadMap.setCenter([pcPlayerLng ?? map.getCenter().lng, pcPlayerLat ?? map.getCenter().lat]);
     document.getElementById('pc-sim-readmap-inner').style.transform =
-      `rotate(${-map.getBearing()}deg)`;
+      `rotate(${-pcBearing}deg)`;
     pcSimReadMap.resize(); // hidden 後の初回表示でサイズ再計算
   }
 }
