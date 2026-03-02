@@ -4242,6 +4242,7 @@ const SIM_PITCH = 80; // 初期ピッチ（低空ドローン視点）
 // キロ5分 = 時速12km = 秒速3.333m
 const SIM_MAX_SPEED_MPS = 12000 / 3600;
 const SIM_MINIMAP_ZOOM  = 16;
+const SIM_FLOOR_CLEARANCE_M = 4; // 地形上の最低クリアランス（メートル）
 
 // ---- 状態変数 ----
 let simActive    = false;
@@ -4272,11 +4273,7 @@ function startSimMode() {
   map.touchZoomRotate.disable();
   map.keyboard.disable();
 
-  // ② ズームをロック（min=max=20）
-  map.setMinZoom(SIM_ZOOM);
-  map.setMaxZoom(SIM_ZOOM);
-
-  // ③ カメラをシム視点へ（完了後にミニマップを初期化）
+  // ② カメラをシム視点へ（完了後にミニマップを初期化）
   map.easeTo({ zoom: SIM_ZOOM, pitch: SIM_PITCH, duration: 800 });
 
   // ④ UIを切り替え
@@ -4327,10 +4324,6 @@ function stopSimMode() {
   map.doubleClickZoom.enable();
   map.touchZoomRotate.enable();
   map.keyboard.enable();
-
-  // ズーム制限を解除
-  map.setMinZoom(undefined);
-  map.setMaxZoom(undefined);
 
   // ピッチを戻す
   map.easeTo({ pitch: INITIAL_PITCH, duration: 600 });
@@ -4491,6 +4484,9 @@ function simLoop() {
       `rotate(${-b}deg)`;
   }
 
+  // ── 地形フロア適用 ──────────────────────────────────────────────
+  enforceTerrainFloor();
+
   simAnimFrame = requestAnimationFrame(simLoop);
 }
 
@@ -4579,9 +4575,7 @@ function onPcSimLocked() {
   map.touchZoomRotate.disable();
   map.keyboard.disable();
 
-  // ② ズームをロック
-  map.setMinZoom(SIM_ZOOM);
-  map.setMaxZoom(SIM_ZOOM);
+  // ② カメラをシム視点へ
   map.easeTo({ zoom: SIM_ZOOM, pitch: SIM_PITCH, duration: 800 });
 
   // ③ UIを更新
@@ -4634,8 +4628,6 @@ function stopPcSim() {
   map.doubleClickZoom.enable();
   map.touchZoomRotate.enable();
   map.keyboard.enable();
-  map.setMinZoom(undefined);
-  map.setMaxZoom(undefined);
   map.easeTo({ pitch: INITIAL_PITCH, duration: 600 });
 
   // イベントリスナー解除
@@ -4643,6 +4635,43 @@ function stopPcSim() {
   document.removeEventListener('mousedown',   onPcSimMouseDown);
   document.removeEventListener('mouseup',     onPcSimMouseUp);
   document.removeEventListener('contextmenu', onPcSimContextMenu);
+}
+
+/* ----------------------------------------------------------------
+   enforceTerrainFloor: カメラが地形にめり込まないよう高度フロアを保証する
+   - queryTerrainElevation で現在地点と前方3mの標高を取得
+   - terrain exaggeration を考慮した視覚的地形高 + クリアランス を下限に設定
+   - モバイル・PC シム両方のループから毎フレーム呼ばれる
+   ---------------------------------------------------------------- */
+function enforceTerrainFloor() {
+  if (!map.getTerrain()) return;
+  const center  = map.getCenter();
+  const bearing = map.getBearing();
+  const exag    = map.getTerrain()?.exaggeration ?? 1.0;
+
+  // 現在地点と前方3mの標高を取得し、高い方をフロア基準にする（上り斜面対応）
+  const aheadPt = turf.destination([center.lng, center.lat], 0.003, bearing);
+  const aheadLL = { lng: aheadPt.geometry.coordinates[0], lat: aheadPt.geometry.coordinates[1] };
+  const e0 = map.queryTerrainElevation(center,  { exaggerated: false }) ?? 0;
+  const e1 = map.queryTerrainElevation(aheadLL, { exaggerated: false }) ?? e0;
+  // 視覚的地形高 = 実標高 × exaggeration、そこへクリアランスを加算
+  const minCamAltM = Math.max(e0, e1) * exag + SIM_FLOOR_CLEARANCE_M;
+
+  const freeCam = map.getFreeCameraOptions();
+  if (!freeCam?.position) return;
+
+  // MercatorCoordinate の z → メートル 変換係数（緯度依存）
+  const zPerMeter = maplibregl.MercatorCoordinate.fromLngLat([center.lng, center.lat], 1).z;
+  const camAltM   = freeCam.position.z / zPerMeter;
+
+  if (camAltM < minCamAltM) {
+    freeCam.position = new maplibregl.MercatorCoordinate(
+      freeCam.position.x,
+      freeCam.position.y,
+      minCamAltM * zPerMeter
+    );
+    map.setFreeCameraOptions(freeCam);
+  }
 }
 
 /* ----------------------------------------------------------------
@@ -4698,6 +4727,9 @@ function pcSimLoop(timestamp) {
     document.getElementById('pc-sim-readmap-inner').style.transform =
       `rotate(${-map.getBearing()}deg)`;
   }
+
+  // ── 地形フロア適用 ──────────────────────────────────────────────
+  enforceTerrainFloor();
 
   pcSimAnimFrame = requestAnimationFrame(pcSimLoop);
 }
