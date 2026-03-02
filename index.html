@@ -323,12 +323,16 @@ body {
   padding-right: 8px;
   border-right: 1px solid #ddd;
 }
-/* 区切り線なし・フル幅行（読図地図に現在地を表示など） */
+/* 区切り線なし・ラベル左＋トグル右行 */
 .setting-row.no-divider .setting-left {
   width: auto;
   flex: 1;
   border-right: none;
   padding-right: 0;
+}
+.setting-row.no-divider .setting-right {
+  flex: 0 0 auto;
+  padding-left: 8px;
 }
 
 .setting-right {
@@ -1368,13 +1372,10 @@ label.setting-label {
     </div>
 
 
-    <!-- 等高線：1行 -->
+    <!-- 等高線：1行（ラベル左・プルダウン中・トグル右） -->
     <div class="setting-row">
       <div class="setting-left">
-        <label class="toggle-switch">
-          <input type="checkbox" id="chk-contour" checked />
-          <span class="toggle-slider"></span>
-        </label>
+        <span class="chk-spacer"></span>
         <label for="chk-contour" class="setting-label">等高線</label>
       </div>
       <div class="setting-right">
@@ -1387,16 +1388,17 @@ label.setting-label {
           <option value="5">5 m</option>
           <option value="10">10 m</option>
         </select>
+        <label class="toggle-switch">
+          <input type="checkbox" id="chk-contour" checked />
+          <span class="toggle-slider"></span>
+        </label>
       </div>
     </div>
 
-    <!-- 磁北線：1行 -->
+    <!-- 磁北線：1行（ラベル左・プルダウン中・トグル右） -->
     <div class="setting-row">
       <div class="setting-left">
-        <label class="toggle-switch">
-          <input type="checkbox" id="chk-magnetic-north" checked />
-          <span class="toggle-slider"></span>
-        </label>
+        <span class="chk-spacer"></span>
         <label for="chk-magnetic-north" class="setting-label">磁北線</label>
       </div>
       <div class="setting-right">
@@ -1409,22 +1411,27 @@ label.setting-label {
           <option value="300">300 m</option>
           <option value="500">500 m</option>
         </select>
+        <label class="toggle-switch">
+          <input type="checkbox" id="chk-magnetic-north" checked />
+          <span class="toggle-slider"></span>
+        </label>
       </div>
     </div>
 
-    <!-- 3D表示：1行 -->
+    <!-- 3D表示：1行（ラベル左・スライダー中・トグル右） -->
     <div class="setting-row">
       <div class="setting-left">
-        <label class="toggle-switch">
-          <input type="checkbox" id="chk-exaggeration" checked />
-          <span class="toggle-slider"></span>
-        </label>
+        <span class="chk-spacer"></span>
         <label for="chk-exaggeration" class="setting-label">3D表示</label>
       </div>
       <div class="setting-right">
         <input type="range" id="slider-exaggeration" min="0.5" max="3" step="0.1" value="1.0"
           class="setting-slider" />
         <span class="opacity-val" id="val-exaggeration">1.0×</span>
+        <label class="toggle-switch">
+          <input type="checkbox" id="chk-exaggeration" checked />
+          <span class="toggle-slider"></span>
+        </label>
       </div>
     </div>
 
@@ -1446,11 +1453,16 @@ label.setting-label {
       </div>
     </div>
 
-    <!-- 読図マップ 現在位置ドット表示 -->
+    <!-- 読図マップ 現在位置ドット表示（ラベル左・トグル右） -->
     <div class="setting-row no-divider">
       <div class="setting-left">
-        <input type="checkbox" id="chk-readmap-dot" checked />
-        <label for="chk-readmap-dot" class="setting-label">読図地図に現在位置を表示</label>
+        <label for="chk-readmap-dot" class="setting-label">読図地図に現在地を表示</label>
+      </div>
+      <div class="setting-right">
+        <label class="toggle-switch">
+          <input type="checkbox" id="chk-readmap-dot" checked />
+          <span class="toggle-slider"></span>
+        </label>
       </div>
     </div>
 
