@@ -127,9 +127,9 @@ body {
   border-radius: 4px;
   padding: 0;
   box-shadow: 0 1px 4px rgba(0, 0, 0, 0.18);
-  font-size: 12px;
-  min-width: 220px;
-  max-width: 260px;
+  font-size: 13px;
+  min-width: 240px;
+  max-width: 300px;
   color: #333;
 }
 
@@ -202,13 +202,12 @@ body {
   background: #f0f0f0;
   border-top: 1px solid #d8d8d8;
   border-bottom: 1px solid #d8d8d8;
-  padding: 5px 10px;
-  font-size: 11px;
+  padding: 6px 10px;
+  font-size: 12px;
   font-weight: bold;
   color: #555;
   letter-spacing: 0.02em;
   list-style: none;
-  /* デフォルト▶を非表示 */
   cursor: pointer;
   display: flex;
   align-items: center;
@@ -224,7 +223,7 @@ body {
 /* 開閉インジケーター: 開 = ▲、閉 = ▼ */
 .panel-section>summary::after {
   content: '▲';
-  font-size: 9px;
+  font-size: 11px;
   color: #888;
   flex-shrink: 0;
 }
@@ -238,7 +237,7 @@ body {
   display: flex;
   align-items: center;
   gap: 5px;
-  padding: 5px 10px;
+  padding: 7px 12px;
   border-bottom: 1px solid #ebebeb;
 }
 .setting-row:last-child { border-bottom: none; }
@@ -254,7 +253,7 @@ body {
 }
 
 .setting-label {
-  font-size: 11px;
+  font-size: 12px;
   color: #333;
   white-space: nowrap;
   flex-shrink: 0;
@@ -318,8 +317,8 @@ body {
   align-items: center;
   gap: 5px;
   flex-shrink: 0;
-  width: 76px;
-  padding-right: 6px;
+  width: 84px;
+  padding-right: 8px;
   border-right: 1px solid #ddd;
 }
 /* 区切り線なし・ラベル左＋トグル右行 */
@@ -369,7 +368,7 @@ body {
 
 .layer-name {
   flex: 1;
-  font-size: 12px;
+  font-size: 13px;
   color: #222;
   white-space: nowrap;
   overflow: hidden;
@@ -523,17 +522,60 @@ label.setting-label {
 }
 
 /* KMZアップロードボタン */
+/* ---- パネル内共通ボタン基底（セカンダリ：アウトライン） ---- */
+.panel-btn-outline {
+  display: block;
+  width: calc(100% - 20px);
+  margin: 6px 10px;
+  padding: 6px 12px;
+  background: #fff;
+  color: #4a7c59;
+  border: 1.5px solid #4a7c59;
+  border-radius: 4px;
+  font-size: 12px;
+  font-weight: 600;
+  font-family: inherit;
+  cursor: pointer;
+  transition: background 0.15s, color 0.15s;
+  text-align: center;
+  letter-spacing: 0.02em;
+}
+.panel-btn-outline:hover {
+  background: #4a7c59;
+  color: #fff;
+}
+
+/* ---- パネル内共通ボタン基底（プライマリ：塗りつぶし） ---- */
+.panel-btn-primary {
+  display: block;
+  width: calc(100% - 20px);
+  margin: 6px 10px 8px;
+  padding: 7px 12px;
+  background: #4a7c59;
+  color: #fff;
+  border: none;
+  border-radius: 4px;
+  font-size: 12px;
+  font-weight: 600;
+  font-family: inherit;
+  cursor: pointer;
+  transition: background 0.15s;
+  text-align: center;
+  letter-spacing: 0.04em;
+}
+.panel-btn-primary:hover { background: #3a6449; }
+
 #kmz-upload-btn {
   display: block;
   width: calc(100% - 20px);
   margin: 6px 10px;
-  padding: 5px 10px;
+  padding: 6px 12px;
   background: #fff;
   color: #4a7c59;
-  border: 1px solid #4a7c59;
-  border-radius: 3px;
+  border: 1.5px solid #4a7c59;
+  border-radius: 4px;
   font-size: 12px;
-  font-weight: bold;
+  font-weight: 600;
   cursor: pointer;
   transition: background 0.15s, color 0.15s;
   text-align: center;
@@ -546,8 +588,9 @@ label.setting-label {
 
 /* 地名検索 */
 #place-search-wrap {
-  padding: 7px 10px;
+  padding: 8px 10px;
   border-bottom: 1px solid #d8d8d8;
+  position: relative; /* 検索結果ドロップダウンの基準 */
 }
 #place-search-row {
   display: flex;
@@ -556,10 +599,10 @@ label.setting-label {
 #place-search-input {
   flex: 1;
   min-width: 0;
-  padding: 4px 7px;
+  padding: 5px 8px;
   border: 1px solid #b0b8b0;
-  border-radius: 3px;
-  font-size: 11px;
+  border-radius: 4px;
+  font-size: 12px;
   color: #333;
   background: #f9f9f9;
   outline: none;
@@ -569,12 +612,12 @@ label.setting-label {
   background: #fff;
 }
 #place-search-btn {
-  padding: 4px 8px;
+  padding: 5px 10px;
   background: #4a7c59;
   color: #fff;
   border: none;
-  border-radius: 3px;
-  font-size: 11px;
+  border-radius: 4px;
+  font-size: 12px;
   font-weight: bold;
   cursor: pointer;
   flex-shrink: 0;
@@ -593,12 +636,18 @@ label.setting-label {
   margin-top: 3px;
 }
 #place-search-results {
-  margin-top: 4px;
+  position: absolute;
+  top: 100%;
+  left: 0;
+  width: 100%;
+  z-index: 100;
   border: 1px solid #c8c8c8;
-  border-radius: 3px;
+  border-top: none;
+  border-radius: 0 0 4px 4px;
   overflow-y: auto;
-  max-height: 160px;
+  max-height: 200px;
   background: #fff;
+  box-shadow: 0 4px 8px rgba(0,0,0,0.12);
 }
 .place-result-item {
   display: flex;
@@ -790,13 +839,13 @@ label.setting-label {
   display: block;
   width: calc(100% - 20px);
   margin: 6px 10px 4px;
-  padding: 5px 10px;
+  padding: 6px 12px;
   background: #fff;
   color: #5a7a8a;
-  border: 1px solid #5a7a8a;
-  border-radius: 3px;
+  border: 1.5px solid #5a7a8a;
+  border-radius: 4px;
   font-size: 12px;
-  font-weight: bold;
+  font-weight: 600;
   cursor: pointer;
   transition: background 0.15s, color 0.15s;
   text-align: center;
@@ -1090,33 +1139,27 @@ label.setting-label {
    PC O-シミュレーターモード
    ================================================================ */
 
-/* PCシムトグルボタン（シミュレーター設定セクション内に配置） */
+/* PCシムトグルボタン（シミュレーター設定セクション内） */
 #pc-sim-toggle-btn {
   display: block;
   width: calc(100% - 20px);
   margin: 6px 10px 8px;
-  padding: 6px 12px;
+  padding: 7px 12px;
   background: #4a7c59;
   color: #fff;
   border: none;
   border-radius: 4px;
-  font-size: 11px;
-  font-weight: bold;
+  font-size: 12px;
+  font-weight: 600;
   font-family: inherit;
   letter-spacing: 0.04em;
   cursor: pointer;
   text-align: center;
   transition: background 0.15s;
 }
-#pc-sim-toggle-btn:hover {
-  background: #3a6449;
-}
-#pc-sim-toggle-btn.pc-sim-active {
-  background: #b33a2a;
-}
-#pc-sim-toggle-btn.pc-sim-active:hover {
-  background: #962d20;
-}
+#pc-sim-toggle-btn:hover { background: #3a6449; }
+#pc-sim-toggle-btn.pc-sim-active { background: #b33a2a; }
+#pc-sim-toggle-btn.pc-sim-active:hover { background: #962d20; }
 
 /* 操作ヒントバー（画面上部中央・Pointer Lock 中に表示） */
 #pc-sim-hint {
@@ -1241,6 +1284,54 @@ label.setting-label {
   white-space: nowrap;
   pointer-events: none;
   z-index: 3;
+}
+
+/* ================================================================
+   スマホアドレスバー対応 / Attribution折り返し / レスポンシブ
+   ================================================================ */
+
+/* 100dvh: スマホのアドレスバーによる下部隠れを防止 */
+@supports (height: 100dvh) {
+  body { height: 100dvh; }
+}
+
+/* MapLibre 出典テキスト: 長い文字列を折り返して全文表示 */
+.maplibregl-ctrl-attrib-inner {
+  white-space: normal !important;
+  max-width: 80vw;
+  text-align: right;
+}
+.maplibregl-ctrl-attrib {
+  max-width: 85vw;
+}
+
+/* スマホ向けパネル最適化 */
+@media (max-width: 600px) {
+  #ui-panel {
+    top: 6px;
+    left: 6px;
+    right: 6px;
+    max-width: calc(100vw - 12px);
+    font-size: 14px;
+  }
+
+  .setting-row {
+    padding: 9px 12px;
+  }
+
+  #ui-panel-body {
+    max-height: calc(50dvh - 36px);
+  }
+
+  /* 検索入力・ボタンを大きめに */
+  #place-search-input,
+  #place-search-btn {
+    font-size: 14px;
+    padding: 7px 10px;
+  }
+
+  /* シミュレーターボタン（PCシム）はスマホで非表示 → JS でも制御 */
+  #pc-sim-toggle-btn { display: none !important; }
 }
 </style>
 </head>
@@ -5183,6 +5274,26 @@ function closePcReadMap() {
 
 // ---- PCシムボタンのイベント ----
 document.getElementById('pc-sim-toggle-btn').addEventListener('click', startPcSim);
+
+/* ----------------------------------------------------------------
+   デバイス判定：タッチデバイス → モバイルシムボタンのみ表示
+                  PC → パネル内PCシムボタンのみ表示
+   ---------------------------------------------------------------- */
+(function applySimButtonVisibility() {
+  const isTouch = ('ontouchstart' in window) || navigator.maxTouchPoints > 0;
+  const isNarrow = window.innerWidth < 768;
+  const isMobileEnv = isTouch || isNarrow;
+
+  if (isMobileEnv) {
+    // スマホ：パネル内PCシムボタンを非表示
+    const pcBtn = document.getElementById('pc-sim-toggle-btn');
+    if (pcBtn) pcBtn.style.display = 'none';
+  } else {
+    // PC：右下のモバイルシムボタンを非表示
+    const mobileBtn = document.getElementById('sim-toggle-btn');
+    if (mobileBtn) mobileBtn.style.display = 'none';
+  }
+})();
 
 </script>
 </body>
