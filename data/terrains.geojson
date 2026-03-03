@@ -1,0 +1,92 @@
+{
+  "type": "FeatureCollection",
+  "features": [
+    {
+      "type": "Feature",
+      "id": "terrain_yoshida",
+      "properties": {
+        "name":            "吉田キャンパス",
+        "prefecture":      "京都府",
+        "terrain_type":    "sprint",
+        "terrain_subtype": "campus",
+        "description":     "京大のメインキャンパス"
+      },
+      "geometry": {
+        "type": "Polygon",
+        "coordinates": [[
+          [135.7785, 35.0285],
+          [135.7880, 35.0280],
+          [135.7875, 35.0215],
+          [135.7830, 35.0210],
+          [135.7790, 35.0215],
+          [135.7785, 35.0285]
+        ]]
+      }
+    },
+    {
+      "type": "Feature",
+      "id": "terrain_yoshida_stadium",
+      "properties": {
+        "name":            "吉田スタジアム",
+        "prefecture":      "京都府",
+        "terrain_type":    "sprint",
+        "terrain_subtype": "stadium",
+        "description":     "総合体育館"
+      },
+      "geometry": {
+        "type": "Polygon",
+        "coordinates": [[
+          [135.7814, 35.0245],
+          [135.7840, 35.0246],
+          [135.7842, 35.0230],
+          [135.7816, 35.0229],
+          [135.7814, 35.0245]
+        ]]
+      }
+    },
+    {
+      "type": "Feature",
+      "id": "terrain_takaragaike",
+      "properties": {
+        "name":            "宝ヶ池",
+        "prefecture":      "京都府",
+        "terrain_type":    "forest",
+        "terrain_subtype": "park",
+        "description":     "宝ヶ池公園"
+      },
+      "geometry": {
+        "type": "Polygon",
+        "coordinates": [[
+          [135.7780, 35.0765],
+          [135.7895, 35.0760],
+          [135.7900, 35.0700],
+          [135.7870, 35.0648],
+          [135.7785, 35.0645],
+          [135.7780, 35.0765]
+        ]]
+      }
+    },
+    {
+      "type": "Feature",
+      "id": "terrain_daimonji",
+      "properties": {
+        "name":            "大文字山",
+        "prefecture":      "京都府",
+        "terrain_type":    "forest",
+        "terrain_subtype": null,
+        "description":     "火床周辺の急斜面エリア"
+      },
+      "geometry": {
+        "type": "Polygon",
+        "coordinates": [[
+          [135.8090, 35.0150],
+          [135.8255, 35.0148],
+          [135.8260, 35.0060],
+          [135.8200, 35.0010],
+          [135.8092, 35.0012],
+          [135.8090, 35.0150]
+        ]]
+      }
+    }
+  ]
+}
