@@ -3437,6 +3437,11 @@ function toRasterOpacity(opacity) {
   return map.getTerrain() ? Math.pow(opacity, 3) : opacity;
 }
 
+// HTML 特殊文字をエスケープしてインジェクションを防ぐ
+function escHtml(str) {
+  return String(str ?? '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+}
+
 /* ========================================================
     GPX リプレイ機能：状態管理変数
     ======================================================== */
