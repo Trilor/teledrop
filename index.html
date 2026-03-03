@@ -2842,7 +2842,7 @@ map.on('load', async () => {
     type: 'raster',
     tiles: [CS_RELIEF_URL],
     tileSize: 256,
-    minzoom: 0,
+    minzoom: 5,
     maxzoom: 17,
     attribution: '',
   });
@@ -4269,8 +4269,8 @@ function updateRegionalAttribution() {
 function updateCsVisibility() {
   const mode = document.querySelector('input[name="cs-mode"]:checked')?.value ?? 'none';
   const z = map.getZoom();
-  const show1m  = z > 4 && ((mode === '1m') || (mode === '0.5m' && z < 17));
-  const show05m = z > 4 && (mode === '0.5m') && z >= 17;
+  const show1m  = (mode === '1m') || (mode === '0.5m' && z < 17);
+  const show05m = (mode === '0.5m') && z >= 17;
 
   if (map.getLayer('cs-relief-layer')) {
     map.setLayoutProperty('cs-relief-layer', 'visibility', show1m ? 'visible' : 'none');
