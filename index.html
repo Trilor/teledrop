@@ -1007,7 +1007,7 @@ label.setting-label {
 /* トグルボタン（右下固定） */
 /* モバイルシムボタン：PCシムと同じインパネルスタイル */
 #sim-toggle-btn {
-  display: block;
+  display: none; /* モバイルシミュレーターは非表示 */
   width: calc(100% - 20px);
   margin: 6px 10px 8px;
   padding: 7px 12px;
@@ -4652,7 +4652,8 @@ updateSliderGradient(sliderExaggeration, '#6a8fa0'); // 値変更後に再計算
 
 // ---- 定数 ----
 const SIM_ZOOM  = 22;
-const SIM_PITCH = 80; // 初期ピッチ（低空ドローン視点）
+const SIM_PITCH    = 80; // モバイルシム用ピッチ（低空ドローン視点）
+const PC_SIM_PITCH = 55; // PCシム用ピッチ（斜め上後方視点：鉛直から55°= 地平線より35°上）
 // キロ5分 = 時速12km = 秒速3.333m
 const SIM_MAX_SPEED_MPS = 12000 / 3600;
 const SIM_MINIMAP_ZOOM  = 16;
@@ -5059,8 +5060,8 @@ function onPcSimLocked() {
   pcPlayerLng = c.lng;
   pcPlayerLat = c.lat;
   pcBearing   = map.getBearing();
-  pcPitch     = SIM_PITCH;
-  pcCamDistM  = 50;
+  pcPitch     = PC_SIM_PITCH; // 斜め上後方視点（55°）
+  pcCamDistM  = 100;          // カメラ距離を広めに（100m）
 
   // ③ カメラをプレイヤー視点へ即配置
   setCameraFromPlayer();
@@ -5535,7 +5536,8 @@ document.getElementById('sel-readmap-bg').addEventListener('change', () => {
 /* ----------------------------------------------------------------
    シミュレーターボタン：スマホ・PC 両方を常時表示
    ---------------------------------------------------------------- */
-document.getElementById('sim-toggle-btn').style.display    = 'block';
+// モバイルシミュレーターは非表示のまま維持（CSS の display:none を上書きしない）
+// document.getElementById('sim-toggle-btn').style.display    = 'block';
 document.getElementById('pc-sim-toggle-btn').style.display = 'block';
 
 </script>
