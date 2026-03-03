@@ -1310,26 +1310,24 @@ label.setting-label {
 /* MapLibre 出典テキスト: 全幅まで使ってから折り返し */
 .maplibregl-ctrl-attrib-inner {
   white-space: normal !important;
-  max-width: calc(100vw - 26px);
 }
 .maplibregl-ctrl-attrib {
   max-width: calc(100vw - 10px);
 }
-/* 展開時: Flexboxで(i)をテキスト最終行の右端に表示（空白行なし・開閉で位置固定） */
+/*
+  展開時: (i)ボタンを position:absolute; bottom:0; right:0 で右下に固定。
+  コンテナは bottom-right アンカーなので bottom:0/right:0 = 画面座標不変。
+  inner に padding-right を付けてテキストとボタンが重ならないようにする。
+*/
 .maplibregl-ctrl-attrib.maplibregl-compact-show {
-  display: flex;
-  align-items: flex-end;
-  padding: 2px 8px;
+  padding: 2px 0 2px 8px; /* 右側は inner の padding-right に委ねる */
 }
 .maplibregl-ctrl-attrib.maplibregl-compact-show .maplibregl-ctrl-attrib-inner {
-  flex: 1;
-  order: 1; /* DOM順はボタンが先だが、視覚的にテキストを左へ */
+  padding-right: 26px; /* ボタン 24px + 余白 2px */
 }
 .maplibregl-ctrl-attrib.maplibregl-compact-show .maplibregl-ctrl-attrib-button {
-  position: static; /* absolute を解除してフロー内に配置 */
-  flex-shrink: 0;
-  align-self: flex-end;
-  order: 2; /* テキストの後ろ＝右端に表示 */
+  top: auto;
+  bottom: 0; /* position:absolute のまま右下固定 */
 }
 
 /* スマホ向けパネル最適化 */
@@ -2243,7 +2241,7 @@ const CS_INITIAL_OPACITY = 0.6;
 // ベースマップ定義（url/maxzoom があるものはラスタータイル、ないものはベクター）
 // setStyle() を使わず visibility 切替で実現するため、load 時に全ソース/レイヤーを追加しておく。
 const RASTER_BASEMAPS = {
-  'orilibre':  { attr: '<a href="https://github.com/tjmsy/orilibre?tab=readme-ov-file#japan-map" target="_blank">OriLibre</a>' },
+  'orilibre':  { attr: '<a href="https://github.com/tjmsy/orilibre" target="_blank">OriLibre</a>' },
   'gsi-std':   { url: 'https://cyberjapandata.gsi.go.jp/xyz/std/{z}/{x}/{y}.png',           maxzoom: 18,
                  attr: '<a href="https://maps.gsi.go.jp/development/ichiran.html" target="_blank">地理院タイル</a>' },
   'gsi-pale':  { url: 'https://cyberjapandata.gsi.go.jp/xyz/pale/{z}/{x}/{y}.png',          maxzoom: 18,
