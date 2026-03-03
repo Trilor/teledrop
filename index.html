@@ -127,8 +127,8 @@ body {
   padding: 0;
   box-shadow: 0 1px 4px rgba(0, 0, 0, 0.18);
   font-size: 13px;
-  min-width: 240px;
-  max-width: 300px;
+  min-width: 192px;
+  max-width: 240px;
   color: #333;
 }
 
@@ -252,7 +252,7 @@ body {
 }
 
 .setting-label {
-  font-size: 12px;
+  font-size: 11px;
   color: #333;
   white-space: nowrap;
   flex-shrink: 0;
@@ -275,7 +275,9 @@ body {
   font-size: 11px;
   cursor: pointer;
   outline: none;
-  flex-shrink: 0;
+  flex: 1;
+  min-width: 0;
+  width: 100%;
 }
 
 .setting-slider {
@@ -316,7 +318,7 @@ body {
   align-items: center;
   gap: 5px;
   flex-shrink: 0;
-  width: 84px;
+  width: 72px;
   padding-right: 8px;
   border-right: 1px solid #ddd;
 }
@@ -341,13 +343,18 @@ body {
   padding-left: 4px;
 }
 
-/* コントロール（select/slider）を右端に寄せる行 */
-.setting-row.ctrl-right .setting-right {
+/* ラベルを区切り線の左に右揃え、コントロールを右端に寄せる行 */
+.setting-row.ctrl-right .setting-left {
   justify-content: flex-end;
 }
-/* ラベルを区切り線に押し付けて右寄せ、トグルは setting-right 側に移動した行 */
+/* ラベル右揃え（コントロール側は通常レイアウト）*/
 .setting-row.label-right .setting-left {
   justify-content: flex-end;
+}
+/* トグルを区切り線の左に置く行：[ラベル][トグル] | [select/slider] */
+.setting-row.toggle-left .setting-left {
+  justify-content: flex-end;
+  width: 80px;
 }
 
 .setting-label.disabled {
@@ -1475,16 +1482,16 @@ label.setting-label {
     </div>
 
 
-    <!-- 等高線：ラベル右寄せ | [トグル][プルダウン] -->
-    <div class="setting-row label-right">
+    <!-- 等高線：[ラベル][トグル] | [プルダウン] -->
+    <div class="setting-row toggle-left">
       <div class="setting-left">
         <label for="chk-contour" class="setting-label">等高線</label>
-      </div>
-      <div class="setting-right">
         <label class="toggle-switch">
           <input type="checkbox" id="chk-contour" checked />
           <span class="toggle-slider"></span>
         </label>
+      </div>
+      <div class="setting-right">
         <select id="sel-contour-interval" class="setting-select">
           <option id="opt-contour-current" value="">1 m</option>
           <option disabled>──────</option>
@@ -1497,16 +1504,16 @@ label.setting-label {
       </div>
     </div>
 
-    <!-- 磁北線：ラベル右寄せ | [トグル][プルダウン] -->
-    <div class="setting-row label-right">
+    <!-- 磁北線：[ラベル][トグル] | [プルダウン] -->
+    <div class="setting-row toggle-left">
       <div class="setting-left">
         <label for="chk-magnetic-north" class="setting-label">磁北線</label>
-      </div>
-      <div class="setting-right">
         <label class="toggle-switch">
           <input type="checkbox" id="chk-magnetic-north" checked />
           <span class="toggle-slider"></span>
         </label>
+      </div>
+      <div class="setting-right">
         <select id="sel-magnetic-north-interval" class="setting-select">
           <option id="opt-magnetic-north-current" value="">300 m</option>
           <option disabled>──────</option>
@@ -1519,16 +1526,16 @@ label.setting-label {
       </div>
     </div>
 
-    <!-- 3D表示：ラベル右寄せ | [トグル][スライダー] -->
-    <div class="setting-row label-right">
+    <!-- 3D表示：[ラベル][トグル] | [スライダー] -->
+    <div class="setting-row toggle-left">
       <div class="setting-left">
         <label for="chk-exaggeration" class="setting-label">3D表示</label>
-      </div>
-      <div class="setting-right">
         <label class="toggle-switch">
           <input type="checkbox" id="chk-exaggeration" checked />
           <span class="toggle-slider"></span>
         </label>
+      </div>
+      <div class="setting-right">
         <input type="range" id="slider-exaggeration" min="0.5" max="3" step="0.1" value="1.0"
           class="setting-slider" />
         <span class="opacity-val" id="val-exaggeration">1.0×</span>
@@ -1542,7 +1549,7 @@ label.setting-label {
     <summary>シミュレーター設定</summary>
 
     <!-- 移動速度 -->
-    <div class="setting-row">
+    <div class="setting-row ctrl-right">
       <div class="setting-left">
         <span class="setting-label">移動速度</span>
       </div>
@@ -2929,10 +2936,12 @@ map.on('load', async () => {
   });
   map.on('moveend', updateContourAutoInterval);
 
-  // 初期ベースマップ（OriLibre）の出典を表示（AttributionControlのDOM生成を待ってリトライ）
-  (function retryUpdateAttr(attempts) {
-    if (!updateBasemapAttribution() && attempts > 0) {
-      setTimeout(() => retryUpdateAttr(attempts - 1), 300);
+  // 初期ベースマップ（OriLibre）の出典を表示
+  // MapLibreはsource追加のたびに .maplibregl-ctrl-attrib-inner を書き換えるため
+  // MutationObserver で監視し、書き換えられるたびに先頭スパンを再挿入する
+  (function retryInitAttr(attempts) {
+    if (!initAttributionObserver() && attempts > 0) {
+      setTimeout(() => retryInitAttr(attempts - 1), 300);
     }
   })(15);
 
@@ -4180,17 +4189,37 @@ function updateMagneticNorth() {
 // map.on('load') の外で定義することで chkCs ハンドラーからも呼び出せる。
 let _lastAttrKey = null; // bounds+zoom のキャッシュ（変化がなければ更新をスキップ）
 // ベースマップ切替時に出典の先頭を更新する（OriLibreのみリンクを表示）
+// MapLibreが出典テキストを書き換えるたびに先頭スパンを再挿入するObserver
+let _attrObserver = null;
+
 function updateBasemapAttribution() {
+  const attrInner = document.querySelector('.maplibregl-ctrl-attrib-inner');
+  if (!attrInner) return;
   let attrEl = document.getElementById('basemap-attr');
   if (!attrEl) {
-    const attrInner = document.querySelector('.maplibregl-ctrl-attrib-inner');
-    if (!attrInner) return false; // DOM未準備
     attrEl = document.createElement('span');
     attrEl.id = 'basemap-attr';
+    attrInner.insertBefore(attrEl, attrInner.firstChild);
+  } else if (attrEl.parentNode !== attrInner) {
+    // MapLibreの書き換えで別の場所に移動した場合は先頭に戻す
     attrInner.insertBefore(attrEl, attrInner.firstChild);
   }
   const attr = RASTER_BASEMAPS[currentBasemap]?.attr;
   attrEl.innerHTML = attr ? attr + ' | ' : '';
+}
+
+function initAttributionObserver() {
+  const attrInner = document.querySelector('.maplibregl-ctrl-attrib-inner');
+  if (!attrInner) return false; // DOM未準備
+  if (_attrObserver) _attrObserver.disconnect();
+  _attrObserver = new MutationObserver(() => {
+    // 監視を一時停止してDOM操作し、無限ループを防ぐ
+    _attrObserver.disconnect();
+    updateBasemapAttribution();
+    _attrObserver.observe(attrInner, { childList: true, subtree: true });
+  });
+  _attrObserver.observe(attrInner, { childList: true, subtree: true });
+  updateBasemapAttribution();
   return true;
 }
 
