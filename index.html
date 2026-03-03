@@ -725,6 +725,87 @@ label.setting-label {
 .frame-badge.forest   { background: #e8f5e9; color: #2e7d32; border: 1px solid #a5d6a7; }
 .frame-badge.subtype  { background: #f5f5f5; color: #666;    border: 1px solid #ddd; }
 
+/* ===== タブバー ===== */
+.tab-bar {
+  display: flex;
+  border-bottom: 1px solid #ddd;
+  background: #f7f7f7;
+}
+.tab-btn {
+  flex: 1;
+  padding: 8px 0;
+  font-size: 12px;
+  font-weight: 600;
+  color: #666;
+  background: none;
+  border: none;
+  border-bottom: 2px solid transparent;
+  cursor: pointer;
+  transition: color 0.15s, border-color 0.15s;
+  letter-spacing: 0.02em;
+}
+.tab-btn:hover { color: #333; }
+.tab-btn.active { color: #4a7c59; border-bottom-color: #4a7c59; }
+.tab-panel { display: none; }
+.tab-panel.active { display: block; }
+
+/* ===== map_type チップフィルター ===== */
+.map-type-chips {
+  display: flex;
+  gap: 5px;
+  padding: 6px 10px 4px;
+  flex-wrap: wrap;
+}
+.type-chip {
+  padding: 2px 9px;
+  font-size: 11px;
+  font-weight: 600;
+  border-radius: 12px;
+  border: 1px solid #ccc;
+  background: #f5f5f5;
+  color: #555;
+  cursor: pointer;
+  transition: background 0.12s, color 0.12s, border-color 0.12s;
+  letter-spacing: 0.02em;
+}
+.type-chip.active { background: #4a7c59; color: #fff; border-color: #4a7c59; }
+.type-chip:hover:not(.active) { background: #e8f0ea; border-color: #4a7c59; color: #4a7c59; }
+
+/* ===== シミュレーター中 Esc ボタン ===== */
+#sim-esc-btn {
+  position: fixed;
+  top: 12px;
+  left: 12px;
+  z-index: 1200;
+  padding: 8px 14px;
+  background: rgba(30, 30, 30, 0.82);
+  color: #fff;
+  border: none;
+  border-radius: 6px;
+  font-size: 13px;
+  cursor: pointer;
+  backdrop-filter: blur(4px);
+  letter-spacing: 0.02em;
+}
+#sim-esc-btn:hover { background: rgba(50, 50, 50, 0.9); }
+
+/* 都道府県グループ（3段ツリーの最上位） */
+.pref-group {
+  border-bottom: 1px solid #e8e8e8;
+}
+.pref-group > summary {
+  padding: 5px 10px;
+  font-size: 10px;
+  font-weight: 700;
+  color: #888;
+  letter-spacing: 0.06em;
+  cursor: pointer;
+  list-style: none;
+  text-transform: uppercase;
+  user-select: none;
+}
+.pref-group > summary::-webkit-details-marker { display: none; }
+
 /* 画像ピッカーボタン（小） */
 .frame-img-pick-btn {
   flex-shrink: 0;
@@ -1729,6 +1810,15 @@ label.setting-label {
 <div id="ui-panel-header">OMAP 3D <span id="panel-toggle-icon">▲</span></div>
 <div id="ui-panel-body">
 
+  <!-- ===== タブバー ===== -->
+  <div class="tab-bar">
+    <button class="tab-btn active" data-tab="map">地図</button>
+    <button class="tab-btn" data-tab="settings">設定</button>
+  </div>
+
+  <!-- ===== 地図タブ ===== -->
+  <div class="tab-panel active" id="tab-map">
+
   <!-- ===== 地名検索 ===== -->
   <div id="place-search-wrap">
     <div id="place-search-row">
@@ -1755,6 +1845,12 @@ label.setting-label {
     <div class="catalog-search-wrap">
       <input id="catalog-search" type="text" placeholder="テレイン・大会名で検索…" autocomplete="off" />
     </div>
+    <!-- map_type チップフィルター -->
+    <div class="map-type-chips">
+      <button class="type-chip active" data-type="">すべて</button>
+      <button class="type-chip" data-type="sprint">スプリント</button>
+      <button class="type-chip" data-type="forest">フォレスト</button>
+    </div>
     <!-- テレイングループ一覧（JS生成） -->
     <div id="catalog-frame-list"></div>
     <!-- GeoJSON 読み込みボタン -->
@@ -1779,6 +1875,11 @@ label.setting-label {
     <button id="gpx-upload-btn">＋ GPXファイルを読み込む</button>
     <p class="privacy-note">※ 読み込んだファイルはブラウザ内でのみ処理されます。サーバーへ送信・保存されることは一切ありません。</p>
   </details>
+
+  </div><!-- /tab-map -->
+
+  <!-- ===== 設定タブ ===== -->
+  <div class="tab-panel" id="tab-settings">
 
   <!-- ===== CS立体図（ラジオボタンで排他選択） ===== -->
   <details class="panel-section">
@@ -1985,9 +2086,12 @@ label.setting-label {
 
   </details>
 
+  </div><!-- /tab-settings -->
 
 </div>
 </div>
+<!-- シミュレーター中のEscボタン -->
+<button id="sim-esc-btn" style="display:none">⬛ Esc でシミュレーター終了</button>
 <!-- 視点切り替えトグルボタン（GPX読み込み後に表示） -->
 <button id="view-toggle-btn">🗺 3人称視点</button>
 <!-- タイムライン・コントロールパネル（画面下部、GPX読み込み後に表示） -->
@@ -3424,8 +3528,8 @@ map.on('load', async () => {
   // MapLibre v5 以降で利用可能。高ズームではメルカトルに自動移行する。
   map.setProjection({ type: 'globe' });
 
-  // ⑤ フレームベース 地図カタログを自動読み込みする
-  autoLoadFrames();
+  // ⑤ テレインマスタ → フレームの順で自動読み込みする
+  autoLoadTerrains();
 
   console.log('3D OMap Viewer 初期化完了（OriLibreベースマップ）');
 });
@@ -3454,6 +3558,7 @@ function toRasterOpacity(opacity) {
 // 地図種別・サブタイプの日本語表示マップ
 const MAP_TYPE_JA    = { sprint: 'スプリント', forest: 'フォレスト' };
 const MAP_SUBTYPE_JA = { stadium: 'スタジアム', school: '学校', park: '公園', urban: '市街地', campus: 'キャンパス' };
+const SUBTYPE_EMOJI  = { stadium: '🏟️', school: '🏫', park: '🌳', urban: '🏙️', campus: '🎓' };
 
 // HTML 特殊文字をエスケープしてインジェクションを防ぐ
 function escHtml(str) {
@@ -3969,18 +4074,9 @@ async function executeImgwPlace() {
 /* ====================================================================
    フレームベース 地図カタログ システム
    mapFrames: GeoJSON から読み込んだフレーム（枠）を管理する配列
-
-// map_subtype/map_type に基づくカラー式（frames-src・terrain-boundary-src 共用）
-const FRAME_COLOR_EXPR = [
-  'case',
-  ['==', ['get', 'map_subtype'], 'stadium'], '#7c3fff',
-  ['==', ['get', 'map_type'],    'forest'],  '#c8a000',
-  ['==', ['get', 'map_type'],    'sprint'],  '#ff7700',
-  '#888888',
-];
    各エントリ構造:
    · id            — GeoJSON feature.id（文字列）
-   · properties    — GeoJSON の properties オブジェクト
+   · properties    — GeoJSON の properties オブジェクト（terrain_id 含む）
    · coordinates   — 4隅 [[lng,lat],...] (TL→TR→BR→BL)
    · opacity       — 透過率 0–1（画像切り替え時も維持）
    · images        — [{ id, name, url }] 割り当て済み画像
@@ -3988,7 +4084,21 @@ const FRAME_COLOR_EXPR = [
    · sourceId      — MapLibre image source ID（null = 未割当）
    · layerId       — MapLibre raster layer ID（null = 未割当）
    ==================================================================== */
+
+// terrain_type/terrain_subtype に基づくカラー式（frames-src・terrain-boundary-src 共用）
+// terrain_type/terrain_subtype は updateFrameGeoJsonSource/updateTerrainBoundarySource で terrainMap から注入される
+const FRAME_COLOR_EXPR = [
+  'case',
+  ['==', ['get', 'terrain_subtype'], 'stadium'], '#7c3fff',
+  ['==', ['get', 'terrain_type'],    'forest'],  '#c8a000',
+  ['==', ['get', 'terrain_type'],    'sprint'],  '#ff7700',
+  '#888888',
+];
+
 const mapFrames = [];
+const terrainMap = new Map(); // terrain_id → { name, prefecture, terrain_type, terrain_subtype, description, geometry }
+let   activeTypeFilter   = '';   // '' | 'sprint' | 'forest'
+let   selectedTerrainId  = null; // クリック時にハイライト中のテレインID
 let   frameImgCounter    = 0;   // 画像ごとのユニーク ID カウンター
 let   currentFramePicker = null; // 現在画像ピッカーを開いているフレーム ID
 let   frameHoverPopup    = null; // ホバー用ポップアップ（単一共有）
@@ -4066,15 +4176,23 @@ function updateFrameGeoJsonSource() {
   // 現在の mapFrames 全件を含む FeatureCollection を生成する
   const fc = {
     type: 'FeatureCollection',
-    features: mapFrames.map(f => ({
-      type: 'Feature',
-      id:   f.id,
-      properties: { ...f.properties, _hasImage: f.images.length > 0 },
-      geometry: {
-        type: 'Polygon',
-        coordinates: [[ ...f.coordinates, f.coordinates[0] ]],
-      },
-    })),
+    features: mapFrames.map(f => {
+      const t = terrainMap.get(f.properties.terrain_id) ?? {};
+      return {
+        type: 'Feature',
+        id:   f.id,
+        properties: {
+          ...f.properties,
+          terrain_type:    t.terrain_type    ?? '',
+          terrain_subtype: t.terrain_subtype ?? '',
+          _hasImage: f.images.length > 0,
+        },
+        geometry: {
+          type: 'Polygon',
+          coordinates: [[ ...f.coordinates, f.coordinates[0] ]],
+        },
+      };
+    }),
   };
 
   if (map.getSource('frames-src')) {
@@ -4109,28 +4227,20 @@ function updateFrameGeoJsonSource() {
 }
 
 // ---- テレイン境界 GeoJSON ソース / レイヤーを作成または更新する ----
-// terrain_polygon プロパティ（[[lng,lat],...]）を持つフレームから
-// terrain_name ごとにユニーク化したテレイン境界を描画する。
+// terrains.geojson の geometry を使用してテレイン境界を描画する。
+// クリック時の selected feature-state でハイライト表示に対応する。
 function updateTerrainBoundarySource() {
-  const seen = new Set();
   const features = [];
-  for (const f of mapFrames) {
-    const poly = f.properties.terrain_polygon;
-    if (!Array.isArray(poly) || poly.length < 3) continue;
-    const tn = f.properties.terrain_name ?? '';
-    if (seen.has(tn)) continue;
-    seen.add(tn);
+  for (const [id, t] of terrainMap) {
+    if (!t.geometry) continue;
     features.push({
       type: 'Feature',
+      id,
       properties: {
-        terrain_name: tn,
-        map_type:     f.properties.map_type    ?? '',
-        map_subtype:  f.properties.map_subtype ?? '',
+        terrain_type:    t.terrain_type    ?? '',
+        terrain_subtype: t.terrain_subtype ?? '',
       },
-      geometry: {
-        type: 'Polygon',
-        coordinates: [[ ...poly, poly[0] ]],
-      },
+      geometry: t.geometry,
     });
   }
 
@@ -4149,7 +4259,14 @@ function updateTerrainBoundarySource() {
   const beforeHover = map.getLayer('frames-hover') ? 'frames-hover' : undefined;
   map.addLayer({
     id: 'terrain-boundary-fill', type: 'fill', source: 'terrain-boundary-src',
-    paint: { 'fill-color': FRAME_COLOR_EXPR, 'fill-opacity': 0.06 },
+    paint: {
+      'fill-color': FRAME_COLOR_EXPR,
+      'fill-opacity': [
+        'case',
+        ['boolean', ['feature-state', 'selected'], false], 0.15,
+        0.06,
+      ],
+    },
   }, beforeHover);
 
   // テレイン境界: 破線アウトライン
@@ -4157,10 +4274,21 @@ function updateTerrainBoundarySource() {
     id: 'terrain-boundary-outline', type: 'line', source: 'terrain-boundary-src',
     paint: {
       'line-color': FRAME_COLOR_EXPR,
-      'line-width': 1.5,
+      'line-width': ['case', ['boolean', ['feature-state', 'selected'], false], 2.0, 1.5],
       'line-dasharray': [5, 4],
     },
   }, beforeHover);
+}
+
+// ---- テレイン選択ハイライトを更新する ----
+function selectTerrain(terrainId) {
+  if (selectedTerrainId && map.getSource('terrain-boundary-src')) {
+    map.setFeatureState({ source: 'terrain-boundary-src', id: selectedTerrainId }, { selected: false });
+  }
+  selectedTerrainId = terrainId;
+  if (selectedTerrainId && map.getSource('terrain-boundary-src')) {
+    map.setFeatureState({ source: 'terrain-boundary-src', id: selectedTerrainId }, { selected: true });
+  }
 }
 
 // ---- フレーム feature-state を更新する ----
@@ -4175,59 +4303,82 @@ function updateFrameFeatureState(frameId) {
   updateFrameGeoJsonSource();
 }
 
-// ---- サイドパネル: フレーム一覧を描画する ----
+// ---- サイドパネル: フレーム一覧を描画する（3段ツリー: 都道府県 → テレイン → フレーム）----
 function renderFrameList(query) {
   const listEl = document.getElementById('catalog-frame-list');
   if (!listEl) return;
 
-  const q = (query ?? '').trim().toLowerCase();
+  const q = (query ?? document.getElementById('catalog-search')?.value ?? '').trim().toLowerCase();
 
-  // フレームを terrain_name でグループ化し、event_date で降順ソートする
-  const groups = new Map(); // terrain_name → frame[]
-  for (const f of mapFrames) {
-    const tn = f.properties.terrain_name ?? '（未分類）';
-    if (!groups.has(tn)) groups.set(tn, []);
-    groups.get(tn).push(f);
+  // 1. activeTypeFilter + 検索クエリでフレームを絞り込む
+  const filtered = mapFrames.filter(f => {
+    const t = terrainMap.get(f.properties.terrain_id);
+    if (activeTypeFilter && (t?.terrain_type ?? '') !== activeTypeFilter) return false;
+    if (!q) return true;
+    const en = (f.properties.event_name ?? '').toLowerCase();
+    const tn = (t?.name ?? f.properties.terrain_id ?? '').toLowerCase();
+    const pref = (t?.prefecture ?? '').toLowerCase();
+    return en.includes(q) || tn.includes(q) || pref.includes(q);
+  });
+
+  // 2. 都道府県 → terrain_id → frames[] の3段 Map を構築
+  const prefMap = new Map(); // prefecture → Map<terrain_id, frame[]>
+  for (const f of filtered) {
+    const t    = terrainMap.get(f.properties.terrain_id);
+    const pref = t?.prefecture ?? '（未分類）';
+    const tid  = f.properties.terrain_id ?? '__orphan__';
+    if (!prefMap.has(pref)) prefMap.set(pref, new Map());
+    const terrainGroup = prefMap.get(pref);
+    if (!terrainGroup.has(tid)) terrainGroup.set(tid, []);
+    terrainGroup.get(tid).push(f);
   }
-  // 各グループ内を event_date 降順でソートする
-  for (const arr of groups.values()) {
-    arr.sort((a, b) => (b.properties.event_date ?? '').localeCompare(a.properties.event_date ?? ''));
+  // 各テレイングループを event_date 降順でソートする
+  for (const tg of prefMap.values()) {
+    for (const arr of tg.values()) {
+      arr.sort((a, b) => (b.properties.event_date ?? '').localeCompare(a.properties.event_date ?? ''));
+    }
   }
 
   listEl.innerHTML = '';
 
-  for (const [terrainName, frames] of groups) {
-    // 検索フィルター
-    const matched = frames.filter(f => {
-      if (!q) return true;
-      const en = (f.properties.event_name ?? '').toLowerCase();
-      const tn = terrainName.toLowerCase();
-      return en.includes(q) || tn.includes(q);
-    });
-    if (matched.length === 0) continue;
+  for (const [pref, terrainGroups] of prefMap) {
+    // 都道府県グループ <details>
+    const prefDetails = document.createElement('details');
+    prefDetails.className = 'pref-group';
+    prefDetails.open = true;
+    const prefSummary = document.createElement('summary');
+    prefSummary.textContent = pref;
+    prefDetails.appendChild(prefSummary);
 
-    const details = document.createElement('details');
-    details.className = 'terrain-group';
-    details.open = true;
+    for (const [tid, frames] of terrainGroups) {
+      const t = terrainMap.get(tid);
+      const terrainName   = t?.name ?? tid;
+      const terrainType   = t?.terrain_type    ?? '';
+      const terrainSubtype = t?.terrain_subtype ?? '';
 
-    // グループ内のユニークな type / subtype を収集してヘッダーバッジに表示する
-    const uniqueTypes    = [...new Set(matched.map(f => f.properties.map_type).filter(Boolean))];
-    const uniqueSubtypes = [...new Set(matched.map(f => f.properties.map_subtype).filter(Boolean))];
-    const typeBadgesH    = uniqueTypes.map(k =>
-      `<span class="frame-badge ${k}">${escHtml(MAP_TYPE_JA[k] ?? k)}</span>`).join('');
-    const subtypeBadgesH = uniqueSubtypes.map(k =>
-      `<span class="frame-badge subtype">${escHtml(MAP_SUBTYPE_JA[k] ?? k)}</span>`).join('');
+      // テレイングループ <details>
+      const details = document.createElement('details');
+      details.className = 'terrain-group';
+      details.open = true;
+      details.dataset.terrainId = tid;
 
-    const summary = document.createElement('summary');
-    const loadedCount = matched.filter(f => f.images.length > 0).length;
-    summary.innerHTML =
-      `${escHtml(terrainName)}${typeBadgesH}${subtypeBadgesH}<span class="terrain-group-count">${loadedCount}/${matched.length}</span>`;
-    details.appendChild(summary);
+      const typeBadgeH = terrainType
+        ? `<span class="frame-badge ${terrainType}">${escHtml(MAP_TYPE_JA[terrainType] ?? terrainType)}</span>` : '';
+      const subtypeBadgeH = terrainSubtype
+        ? `<span class="frame-badge subtype">${escHtml((SUBTYPE_EMOJI[terrainSubtype] ?? '') + ' ' + (MAP_SUBTYPE_JA[terrainSubtype] ?? terrainSubtype))}</span>` : '';
+      const loadedCount = frames.filter(f => f.images.length > 0).length;
 
-    for (const frame of matched) {
-      details.appendChild(buildFrameEntryEl(frame));
+      const summary = document.createElement('summary');
+      summary.innerHTML =
+        `${escHtml(terrainName)}${typeBadgeH}${subtypeBadgeH}<span class="terrain-group-count">${loadedCount}/${frames.length}</span>`;
+      details.appendChild(summary);
+
+      for (const frame of frames) {
+        details.appendChild(buildFrameEntryEl(frame));
+      }
+      prefDetails.appendChild(details);
     }
-    listEl.appendChild(details);
+    listEl.appendChild(prefDetails);
   }
 
   if (listEl.innerHTML === '' && mapFrames.length > 0) {
@@ -4400,7 +4551,7 @@ function showFrameClickPopup(lngLat, frameIds) {
         return `<li class="frame-overlap-item" onclick="_selectOverlapFrame('${fid}')" data-fid="${fid}">
           <span style="color:${f?.images.length > 0 ? '#4a7c59' : '#bbb'}">${dot}</span>
           <span>${escHtml(p.event_name ?? fid)}</span>
-          ${p.map_type ? `<span class="frame-badge ${p.map_type}" style="font-size:9px">${escHtml(MAP_TYPE_JA[p.map_type] ?? p.map_type)}</span>` : ''}
+          ${(() => { const _t = terrainMap.get(p.terrain_id); return _t?.terrain_type ? `<span class="frame-badge ${_t.terrain_type}" style="font-size:9px">${escHtml(MAP_TYPE_JA[_t.terrain_type] ?? _t.terrain_type)}</span>` : ''; })()}
         </li>`;
       }).join('') +
       `</ul></div>`;
@@ -4418,17 +4569,19 @@ function buildFramePopupHtml(frameId) {
   if (!frame) return '';
   const p         = frame.properties;
   const hasImages = frame.images.length > 0;
-  const typeKey    = p.map_type    ?? '';
-  const subtypeKey = p.map_subtype ?? '';
+  const t          = terrainMap.get(p.terrain_id) ?? {};
+  const typeKey    = t.terrain_type    ?? '';
+  const subtypeKey = t.terrain_subtype ?? '';
+  const terrainName = t.name ?? p.terrain_id ?? '';
   const typeBadgeH    = typeKey    ? `<span class="frame-badge ${typeKey}">${escHtml(MAP_TYPE_JA[typeKey] ?? typeKey)}</span>` : '';
-  const subtypeBadgeH = subtypeKey ? `<span class="frame-badge subtype">${escHtml(MAP_SUBTYPE_JA[subtypeKey] ?? subtypeKey)}</span>` : '';
+  const subtypeBadgeH = subtypeKey ? `<span class="frame-badge subtype">${escHtml((SUBTYPE_EMOJI[subtypeKey] ?? '') + ' ' + (MAP_SUBTYPE_JA[subtypeKey] ?? subtypeKey))}</span>` : '';
 
   return `<div class="frame-popup">
     <div class="frame-popup-title">
       ${escHtml(p.event_name ?? '（名称なし）')}
     </div>
     <div class="frame-popup-meta">
-      📍 ${escHtml(p.terrain_name ?? '')} ${typeBadgeH}${subtypeBadgeH}
+      📍 ${escHtml(terrainName)} ${typeBadgeH}${subtypeBadgeH}
       ${p.event_date ? ` ／ 📅 ${escHtml(p.event_date)}` : ''}
       ${p.description ? `<br><span style="color:#999">${escHtml(p.description)}</span>` : ''}
     </div>
@@ -4444,7 +4597,22 @@ function buildFramePopupHtml(frameId) {
   </div>`;
 }
 
-// ---- 起動時に data/frames.geojson を自動読み込みする ----
+// ---- 起動時に data/terrains.geojson → data/frames.geojson の順で自動読み込みする ----
+async function autoLoadTerrains() {
+  try {
+    const res = await fetch('./data/terrains.geojson');
+    if (res.ok) {
+      const data = await res.json();
+      for (const f of (data.features ?? [])) {
+        if (!f.id) continue;
+        terrainMap.set(String(f.id), { ...f.properties, geometry: f.geometry });
+      }
+    }
+  } catch (_) { /* ローカルファイルシステムでは fetch が失敗する場合があるため無視する */ }
+  // terrains 読み込み後にフレームを読み込む
+  await autoLoadFrames();
+}
+
 async function autoLoadFrames() {
   try {
     const res = await fetch('./data/frames.geojson');
@@ -5232,16 +5400,40 @@ document.getElementById('frame-img-input').addEventListener('change', async (e) 
 });
 
 // ---- 地図カタログ: 検索バー ----
-document.getElementById('catalog-search').addEventListener('input', (e) => {
-  renderFrameList(e.target.value);
+document.getElementById('catalog-search').addEventListener('input', () => {
+  renderFrameList();
 });
 
-// ---- 地図カタログ: 地図クリックでフレームポップアップ ----
+// ---- タブ切替 ----
+document.querySelectorAll('.tab-btn').forEach(btn => {
+  btn.addEventListener('click', () => {
+    const tab = btn.dataset.tab;
+    document.querySelectorAll('.tab-btn').forEach(b => b.classList.toggle('active', b.dataset.tab === tab));
+    document.querySelectorAll('.tab-panel').forEach(p => p.classList.toggle('active', p.id === 'tab-' + tab));
+  });
+});
+
+// ---- map_type チップフィルター ----
+document.querySelectorAll('.type-chip').forEach(chip => {
+  chip.addEventListener('click', () => {
+    activeTypeFilter = chip.dataset.type;
+    document.querySelectorAll('.type-chip').forEach(c => c.classList.toggle('active', c.dataset.type === activeTypeFilter));
+    renderFrameList();
+  });
+});
+
+// ---- 地図カタログ: 地図クリックでフレームポップアップ + テレインハイライト ----
 map.on('click', (e) => {
   if (!map.getLayer('frames-fill')) return;
   const features = map.queryRenderedFeatures(e.point, { layers: ['frames-fill'] });
-  if (features.length === 0) return;
+  if (features.length === 0) {
+    selectTerrain(null); // フレーム外クリックでハイライト解除
+    return;
+  }
   showFrameClickPopup(e.lngLat, features.map(f => String(f.id)));
+  // クリックしたフレームの親テレインをハイライト
+  const clickedFrame = mapFrames.find(f => f.id === String(features[0].id));
+  if (clickedFrame) selectTerrain(clickedFrame.properties.terrain_id ?? null);
 });
 
 // ---- 地図カタログ: ホバーで枠をハイライト ----
@@ -5992,6 +6184,8 @@ function startSimMode() {
   map.easeTo({ zoom: SIM_ZOOM, pitch: SIM_PITCH, duration: 800 });
 
   // ④ UIを切り替え
+  document.getElementById('ui-panel').style.display = 'none';
+  document.getElementById('sim-esc-btn').style.display = 'block';
   document.getElementById('sim-overlay').style.display = 'flex';
   const btn = document.getElementById('sim-toggle-btn');
   btn.textContent = 'モバイルシミュレーター終了';
@@ -6035,6 +6229,8 @@ function stopSimMode() {
   if (simMiniMap) { simMiniMap.remove(); simMiniMap = null; }
 
   // UIを元に戻す
+  document.getElementById('ui-panel').style.display = '';
+  document.getElementById('sim-esc-btn').style.display = 'none';
   document.getElementById('sim-overlay').style.display = 'none';
   const btn = document.getElementById('sim-toggle-btn');
   btn.textContent = 'モバイルシミュレーター開始';
@@ -6364,6 +6560,8 @@ function onPcSimLocked() {
   setCameraFromPlayer();
 
   // ④ UIを更新
+  document.getElementById('ui-panel').style.display = 'none';
+  document.getElementById('sim-esc-btn').style.display = 'block';
   const btn = document.getElementById('pc-sim-toggle-btn');
   btn.textContent = '[Esc]でシミュレーター終了';
   btn.classList.add('pc-sim-active');
@@ -6405,6 +6603,8 @@ function stopPcSim() {
   smoothedSlopeAdj = 0;
 
   // UI 復元
+  document.getElementById('ui-panel').style.display = '';
+  document.getElementById('sim-esc-btn').style.display = 'none';
   const btn = document.getElementById('pc-sim-toggle-btn');
   btn.textContent = 'PC シミュレーター開始';
   btn.classList.remove('pc-sim-active');
@@ -6817,6 +7017,12 @@ function closePcReadMap() {
 
 // ---- PCシムボタンのイベント ----
 document.getElementById('pc-sim-toggle-btn').addEventListener('click', startPcSim);
+
+// ---- シミュレーター中の Esc ボタン ----
+document.getElementById('sim-esc-btn').addEventListener('click', () => {
+  if (pcSimActive)  stopPcSim();
+  if (simActive)    stopSimMode();
+});
 
 // ---- 読図地図セレクト変更 ----
 // PC シム起動中に変更した場合は読図マップを即座に再構築する。
