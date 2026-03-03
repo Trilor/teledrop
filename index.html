@@ -2274,6 +2274,7 @@ const map = new maplibregl.Map({
         type: 'raster-dem',
         tiles: [TERRAIN_URL],
         tileSize: 256,
+        minzoom: 8,
         maxzoom: 15,
         encoding: 'terrarium',
         attribution: '',
@@ -4356,42 +4357,6 @@ sliderExaggeration.addEventListener('input', () => {
   valExaggeration.textContent = v.toFixed(1) + '×';
   updateSliderGradient(sliderExaggeration, '#6a8fa0');
   map.setTerrain({ source: 'terrain-dem', exaggeration: v });
-});
-
-// ---- ズーム7以下で3D地形を自動無効化・ズーム8以上で自動復元 ----
-// globe 投影では広域表示（低ズーム）で terrain が不要なため自動制御する
-let _terrainHiddenByLowZoom = false;
-map.on('zoomend', () => {
-  const z = map.getZoom();
-  if (z <= 7) {
-    // terrain が有効なら無効化
-    if (!_terrainHiddenByLowZoom && map.getTerrain()) {
-      _terrainHiddenByLowZoom = true;
-      map.setTerrain(null);
-      if (map.getLayer('building-3d')) {
-        map.setLayoutProperty('building-3d', 'visibility', 'none');
-      }
-      kmzLayers.forEach(entry => {
-        if (map.getLayer(entry.layerId)) {
-          map.setPaintProperty(entry.layerId, 'raster-opacity', toRasterOpacity(entry.opacity));
-        }
-      });
-    }
-  } else if (_terrainHiddenByLowZoom) {
-    // 自動無効化していた場合のみ復元（チェックがOFFなら復元しない）
-    _terrainHiddenByLowZoom = false;
-    if (chkExaggeration.checked) {
-      map.setTerrain({ source: 'terrain-dem', exaggeration: parseFloat(sliderExaggeration.value) });
-      if (map.getLayer('building-3d')) {
-        map.setLayoutProperty('building-3d', 'visibility', 'visible');
-      }
-      kmzLayers.forEach(entry => {
-        if (map.getLayer(entry.layerId)) {
-          map.setPaintProperty(entry.layerId, 'raster-opacity', toRasterOpacity(entry.opacity));
-        }
-      });
-    }
-  }
 });
 
 // ---- 等高線 チェックボックス ----
