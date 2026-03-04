@@ -516,6 +516,12 @@ label.setting-label {
   padding-left: 18px;
   padding-right: 10px;
 }
+.opacity-row-label {
+  font-size: 10px;
+  color: #999;
+  white-space: nowrap;
+  flex-shrink: 0;
+}
 
 .opacity-row input[type="range"] {
   flex: 1;
@@ -1964,6 +1970,7 @@ label.setting-label {
     </div>
     <!-- CS立体図 透明度（ベースマップ・オーバーレイ共通） -->
     <div class="opacity-row">
+      <span class="opacity-row-label">透明度</span>
       <input type="range" id="slider-cs" min="0" max="1" step="0.05" value="1.0" disabled />
       <span class="opacity-val" id="val-cs">100%</span>
     </div>
@@ -2037,8 +2044,8 @@ label.setting-label {
       <div class="setting-right">
         <select id="sel-building" class="setting-select">
           <option value="none">非表示</option>
+          <option value="plateau" selected>PLATEAU</option>
           <option value="ofm">OpenFreeMap</option>
-          <option value="plateau" selected>PLATEAU（全国）</option>
         </select>
       </div>
     </div>
