@@ -1689,28 +1689,33 @@ label.setting-label {
   background: rgba(0, 0, 0, 0.65);
   color: #fff;
   font-size: 11px;
-  padding: 5px 14px;
+  padding: 8px 16px;
   border-radius: 16px;
   white-space: nowrap;
   pointer-events: none;
   align-items: center;
   gap: 0;
+  transition: opacity 0.5s ease;
+}
+#pc-sim-hint.fade-out {
+  opacity: 0.2;
 }
 #pc-sim-hint .hint-group {
   display: inline-flex;
   align-items: center;
-  gap: 3px;
+  gap: 6px;
 }
 #pc-sim-hint .hint-action {
-  color: rgba(255,255,255,0.7);
+  color: rgba(255,255,255,0.9);
+  font-size: 11px;
   margin-left: 2px;
 }
 #pc-sim-hint .hint-sep {
   display: inline-block;
   width: 1px;
-  height: 11px;
-  background: rgba(255,255,255,0.25);
-  margin: 0 10px;
+  height: 14px;
+  background: rgba(255,255,255,0.4);
+  margin: 0 12px;
   vertical-align: middle;
 }
 #pc-sim-hint kbd {
@@ -1827,11 +1832,11 @@ label.setting-label {
   top: 8px;
   left: 50%;
   transform: translateX(-50%);
-  background: rgba(0,0,0,0.55);
-  color: #fff;
+  background: rgba(0,0,0,0.65);
+  color: rgba(255,255,255,0.9);
   font-size: 11px;
-  padding: 2px 10px;
-  border-radius: 10px;
+  padding: 8px 16px;
+  border-radius: 16px;
   white-space: nowrap;
   pointer-events: none;
   z-index: 3;
@@ -2317,11 +2322,11 @@ label.setting-label {
 <div id="pc-sim-hint">
   <span class="hint-group"><kbd>W</kbd><kbd>A</kbd><kbd>S</kbd><kbd>D</kbd><span class="hint-action">移動</span></span>
   <span class="hint-sep"></span>
-  <span class="hint-group">マウス<span class="hint-or">/</span>タッチパッド<span class="hint-or">/</span><kbd>↑</kbd><kbd>↓</kbd><kbd>←</kbd><kbd>→</kbd><span class="hint-action">視点</span></span>
+  <span class="hint-group"><kbd>マウス</kbd><span class="hint-or">/</span><kbd>タッチパッド</kbd><span class="hint-or">/</span><kbd>↑</kbd><kbd>↓</kbd><kbd>←</kbd><kbd>→</kbd><span class="hint-action">視点移動</span></span>
   <span class="hint-sep"></span>
-  <span class="hint-group"><kbd>+</kbd><span class="hint-or"><kbd>-</kbd><span class="hint-action">ズーム</span></span>
+  <span class="hint-group"><kbd>+</kbd><span class="hint-or"><kbd>–</kbd><span class="hint-action">ズームイン / アウト</span></span>
   <span class="hint-sep"></span>
-  <span class="hint-group"><kbd>Space</kbd><span class="hint-or">/</span>右クリック<span class="hint-action">読図</span></span>
+  <span class="hint-group"><kbd>Space</kbd><span class="hint-or">/</span><kbd>右クリック</kbd><span class="hint-action">読図</span></span>
   <span class="hint-sep"></span>
   <span class="hint-group"><kbd>Esc</kbd><span class="hint-action">終了</span></span>
 </div>
@@ -6770,6 +6775,7 @@ function onPcSimLocked() {
   btn.classList.add('pc-sim-active');
   document.getElementById('pc-sim-hint').style.display = 'block';
   document.getElementById('pc-sim-crosshair').style.display = 'block';
+  startHintFadeTimer();
 
   addSimPosMarker(); // 3D現在位置マーカーは常時ON
   // 読図マップは初回 openPcReadMap() 時に遅延初期化（非表示コンテナでのWebGL失敗を防ぐ）
@@ -6812,6 +6818,8 @@ function stopPcSim() {
   btn.textContent = 'PC シミュレーター開始';
   btn.classList.remove('pc-sim-active');
   document.getElementById('pc-sim-hint').style.display = 'none';
+  document.getElementById('pc-sim-hint').classList.remove('fade-out');
+  clearHintFadeTimer();
   document.getElementById('pc-sim-crosshair').style.display = 'none';
 
   // 地図操作を復元
@@ -7032,8 +7040,27 @@ function pcSimLoop(timestamp) {
 /* ----------------------------------------------------------------
    マウスイベントハンドラ
    ---------------------------------------------------------------- */
+// ---- ヒントパネル フェードタイマー ----
+let _hintFadeTimer = null;
+function startHintFadeTimer() {
+  clearHintFadeTimer();
+  _hintFadeTimer = setTimeout(() => {
+    document.getElementById('pc-sim-hint')?.classList.add('fade-out');
+  }, 4000);
+}
+function clearHintFadeTimer() {
+  if (_hintFadeTimer) { clearTimeout(_hintFadeTimer); _hintFadeTimer = null; }
+}
+
 function onPcSimMouseMove(e) {
   if (!pcSimActive || !document.pointerLockElement) return;
+
+  // マウス操作でヒントを再表示し、タイマーをリセット
+  const hint = document.getElementById('pc-sim-hint');
+  if (hint?.classList.contains('fade-out')) {
+    hint.classList.remove('fade-out');
+    startHintFadeTimer();
+  }
 
   const MOUSE_BEARING_SENS = 0.15; // deg/px
   const MOUSE_PITCH_SENS   = 0.10; // deg/px
