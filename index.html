@@ -2098,7 +2098,7 @@ label.setting-label {
     <!-- 3D表示（地形誇張） -->
     <div class="setting-row toggle-left">
       <div class="setting-left">
-        <label for="chk-exaggeration" class="setting-label">3D表示</label>
+        <label for="chk-exaggeration" class="setting-label">3D地形</label>
         <label class="toggle-switch">
           <input type="checkbox" id="chk-exaggeration" checked />
           <span class="toggle-slider"></span>
@@ -5963,8 +5963,8 @@ sliderCs.addEventListener('input', () => {
 
 
 // ---- 3D建物レイヤー切替 ----
-/* 建物モード: 'none' | 'ofm'（OpenFreeMap） | 'plateau'（PLATEAU LOD1 全国）
-   3D地形 OFF 時は建物も非表示にする。 */
+/* 建物モード: 'ofm'（OpenFreeMap） | 'plateau'（PLATEAU LOD1 全国）
+   3D地形の ON/OFF とは独立して制御可能。 */
 const BUILDING_CFG = {
   ofm: {
     source:      'ofm',
@@ -5983,12 +5983,11 @@ const BUILDING_CFG = {
 function updateBuildingLayer() {
   const mode       = document.getElementById('sel-building')?.value ?? 'plateau';
   const buildingOn = document.getElementById('chk-building')?.checked ?? true;
-  const is3dOn     = document.getElementById('chk-exaggeration')?.checked ?? true;
 
   // 既存レイヤーを一旦削除
   if (map.getLayer('building-3d')) map.removeLayer('building-3d');
 
-  if (!buildingOn || !is3dOn) return;
+  if (!buildingOn) return;
 
   const cfg = BUILDING_CFG[mode];
   if (!cfg || !map.getSource(cfg.source)) return; // ソース未追加なら無視
@@ -6030,8 +6029,6 @@ chkExaggeration.addEventListener('change', () => {
   } else {
     map.setTerrain(null);
   }
-  // 地形 ON/OFF に連動して建物3Dレイヤーも再評価
-  updateBuildingLayer();
   // 地形 ON/OFF で raster-opacity の補正有無が変わるため、全KMZレイヤーを再適用する
   kmzLayers.forEach(entry => {
     if (map.getLayer(entry.layerId)) {
