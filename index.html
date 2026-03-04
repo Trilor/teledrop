@@ -1878,10 +1878,10 @@ label.setting-label {
   z-index: 10;
 }
 .scale-ctrl-select {
-  background: rgba(255, 255, 255, 0.92);
+  background: rgba(255, 255, 255, 0.75);
   border: 1px solid #c8c8c8;
   border-radius: 4px;
-  padding: 4px 8px;
+  padding: 4px 18px 4px 8px;
   font-size: 11px;
   color: #333;
   box-shadow: 0 1px 4px rgba(0, 0, 0, 0.18);
@@ -1891,7 +1891,7 @@ label.setting-label {
   transition: background 0.15s;
 }
 .scale-ctrl-select:hover {
-  background: rgba(240, 240, 240, 0.95);
+  background: rgba(240, 240, 240, 0.85);
 }
 
 /* スマホ向けパネル最適化 */
@@ -1919,10 +1919,6 @@ label.setting-label {
   }
 
   /* PCシムボタンはスマホでも表示する */
-
-  #scale-ctrl-container {
-    bottom: 34px;
-  }
 }
 </style>
 </head>
@@ -6294,6 +6290,18 @@ selScale.addEventListener('change', () => {
   const val = parseInt(selScale.value, 10);
   if (val) zoomToScale(val);
 });
+
+// 縮尺コントロールを出典（右下コントロール群）の直上に配置し、出典の開閉に連動して追従する
+function updateScalePosition() {
+  const br = document.querySelector('.maplibregl-ctrl-bottom-right');
+  const scaleEl = document.getElementById('scale-ctrl-container');
+  if (!br || !scaleEl) return;
+  scaleEl.style.bottom = (br.offsetHeight + 4) + 'px';
+}
+// 出典の開閉（高さ変化）を監視して自動追従
+const _brCtrl = document.querySelector('.maplibregl-ctrl-bottom-right');
+if (_brCtrl) new ResizeObserver(updateScalePosition).observe(_brCtrl);
+map.once('idle', updateScalePosition);
 
 
 // スライダーの初期値をUIに反映（値を設定してからグラデーションを更新する）
