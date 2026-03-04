@@ -511,7 +511,7 @@ label.setting-label {
 /* オーバーレイ 2段組みレイアウト */
 .setting-row.overlay-stacked {
   align-items: stretch;
-  padding: 0;
+  padding: 0 12px; /* 左右は他の行と同じ12px、上下は子行が担当 */
 }
 .setting-row.overlay-stacked .setting-left {
   align-items: center;
@@ -522,19 +522,23 @@ label.setting-label {
   min-width: 0;
   display: flex;
   flex-direction: column;
+  overflow: hidden;
 }
 .overlay-ctrl-top {
   display: flex;
   align-items: center;
-  padding: 5px 6px 4px 4px;
+  padding: 5px 0 4px 4px; /* setting-right に合わせ左4px、右0 */
   gap: 5px;
 }
 .overlay-ctrl-bottom {
   display: flex;
   align-items: center;
-  gap: 6px;
-  padding: 3px 10px 4px 4px;
+  gap: 5px;
+  padding: 3px 0 4px 4px;
   border-top: 1px solid #f0f0f0;
+}
+.overlay-ctrl-bottom input[type="range"] {
+  max-width: 64px; /* スライダーを短く */
 }
 
 /* 透明度スライダー行 */
