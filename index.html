@@ -1886,7 +1886,7 @@ label.setting-label {
         <span class="setting-label">移動速度</span>
       </div>
       <div class="setting-right">
-        <input type="range" id="pc-sim-speed" min="10" max="120" step="5" value="50"
+        <input type="range" id="pc-sim-speed" min="10" max="200" step="5" value="50"
           class="setting-slider" />
         <span class="opacity-val" id="pc-sim-speed-val">50km/h</span>
       </div>
@@ -2032,8 +2032,7 @@ label.setting-label {
       </div>
       <div class="setting-right">
         <select id="sel-building" class="setting-select">
-          <option value="none">なし</option>
-          <option disabled>──────</option>
+          <option value="none">非表示</option>
           <option value="ofm">OpenFreeMap</option>
           <option value="plateau" selected>PLATEAU（全国）</option>
         </select>
@@ -6994,14 +6993,16 @@ document.addEventListener('keyup', (e) => {
 
 /* ----------------------------------------------------------------
    getReadmapBaseStyle: 選択された背景キーに対応する MapLibre style を返す
-   KMZ選択時は地理院淡色をベース、OriLibreは地理院標準にフォールバック。
    ---------------------------------------------------------------- */
 function getReadmapBaseStyle(bgKey) {
-  // KMZ選択時 → 地理院淡色を薄い下地として使用（KMZ自体が主役）
-  // OriLibre はラスタータイルで代替（isomizer を再実行できないため gsi-std を使用）
+  // OriLibre はスタイル URL をそのまま返す（ベクタースタイルを直接利用）
+  if (bgKey === 'orilibre') {
+    return 'https://tjmsy.github.io/orilibre/japan/style.json';
+  }
+  // KMZ選択時 → 地理院淡色を薄い下地として使用
   const tileKey = bgKey.startsWith('kmz-')
     ? 'gsi-pale'
-    : (bgKey === 'orilibre' || !RASTER_BASEMAPS[bgKey]) ? 'gsi-std' : bgKey;
+    : (!RASTER_BASEMAPS[bgKey] ? 'gsi-std' : bgKey);
 
   const bm = RASTER_BASEMAPS[tileKey];
   return {
