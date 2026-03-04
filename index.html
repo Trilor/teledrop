@@ -3277,7 +3277,7 @@ map.on('load', async () => {
     contourDemSource.setupMaplibre(maplibregl);
     map.addSource('contour-source', {
       type: 'vector',
-      tiles: [buildContourTileUrl(1)], // デフォルト1m
+      tiles: [buildContourTileUrl(userContourInterval)],
       maxzoom: 15,
       attribution: '',
     });
@@ -3297,7 +3297,7 @@ map.on('load', async () => {
     seamlessContourDemSource.setupMaplibre(maplibregl);
     map.addSource('contour-source-seamless', {
       type: 'vector',
-      tiles: [buildSeamlessContourTileUrl(1)],
+      tiles: [buildSeamlessContourTileUrl(userContourInterval)],
       maxzoom: 15,
       attribution: '',
     });
@@ -3317,7 +3317,7 @@ map.on('load', async () => {
     lakeContourDemSource.setupMaplibre(maplibregl);
     map.addSource('contour-source-lake', {
       type: 'vector',
-      tiles: [buildLakeContourTileUrl(1)],
+      tiles: [buildLakeContourTileUrl(userContourInterval)],
       maxzoom: 15,
       attribution: '',
     });
