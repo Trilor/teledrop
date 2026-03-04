@@ -1988,6 +1988,22 @@ label.setting-label {
       </div>
     </div>
 
+    <!-- 3D建物 -->
+    <div class="setting-row ctrl-right">
+      <div class="setting-left">
+        <span class="chk-spacer"></span>
+        <span class="setting-label">3D建物</span>
+      </div>
+      <div class="setting-right">
+        <select id="sel-building" class="setting-select">
+          <option value="none">なし</option>
+          <option disabled>──────</option>
+          <option value="ofm">OpenFreeMap</option>
+          <option value="plateau" selected>PLATEAU（全国）</option>
+        </select>
+      </div>
+    </div>
+
     <!-- 縮尺 -->
     <div class="setting-row ctrl-right">
       <div class="setting-left">
@@ -3241,28 +3257,15 @@ map.on('load', async () => {
       oriLibreLayers.push({ id: 'water-ocean-fill', defaultVisibility: 'visible' });
     }
 
-    // ── 3D建物レイヤー（国土交通省 Project PLATEAU 東京23区 LOD2）──────────────
-    // 3D地形 ON/OFF（chk-exaggeration）で表示制御する。ベースマップ切替では変化しない。
-    map.addSource('plateau-bldg', {
+    // ── 3D建物ソース（PLATEAU 全国 LOD1 PMTiles）──────────────────────────────
+    // レイヤーの追加は updateBuildingLayer() が担当する。
+    map.addSource('plateau-lod1', {
       type: 'vector',
-      tiles: ['https://indigo-lab.github.io/plateau-lod2-mvt/{z}/{x}/{y}.pbf'],
-      minzoom: 10,
-      maxzoom: 16,
+      url: 'pmtiles://https://shiworks.xsrv.jp/pmtiles-data/plateau/PLATEAU_2022_LOD1.pmtiles',
     });
-    map.addLayer({
-      id: 'building-3d',
-      type: 'fill-extrusion',
-      source: 'plateau-bldg',
-      'source-layer': 'bldg',
-      minzoom: 14,
-      paint: {
-        // PLATEAUの実測高さ（measuredHeight）を使用、なければ 3m 固定
-        'fill-extrusion-height': ['coalesce', ['get', 'measuredHeight'], 3],
-        'fill-extrusion-base': 0,
-        'fill-extrusion-color': 'rgb(150, 150, 150)',
-        'fill-extrusion-opacity': 0.7,
-      },
-    });
+    // ofm ソースは isomizer が追加済み（OriLibre 使用時のみ存在）
+    // 初期レイヤーを追加（デフォルト: PLATEAU）
+    updateBuildingLayer();
 
     // isomizer の project-config.yml が別のcenterを持つ場合があるため、
     // 完了後に京都大学（INITIAL_CENTER）へ強制的に戻す
@@ -5832,6 +5835,53 @@ sliderCs.addEventListener('input', () => {
 });
 
 
+// ---- 3D建物レイヤー切替 ----
+/* 建物モード: 'none' | 'ofm'（OpenFreeMap） | 'plateau'（PLATEAU LOD1 全国）
+   3D地形 OFF 時は建物も非表示にする。 */
+const BUILDING_CFG = {
+  ofm: {
+    source:      'ofm',
+    sourceLayer: 'building',
+    height: ['coalesce', ['get', 'render_height'], 3],
+    base:   ['coalesce', ['get', 'render_min_height'], 0],
+  },
+  plateau: {
+    source:      'plateau-lod1',
+    sourceLayer: 'PLATEAU_2022_LOD1',
+    height: ['coalesce', ['get', 'measuredHeight'], ['get', 'bldg:measuredHeight'], 3],
+    base:   0,
+  },
+};
+
+function updateBuildingLayer() {
+  const mode  = document.getElementById('sel-building')?.value ?? 'plateau';
+  const is3dOn = document.getElementById('chk-exaggeration')?.checked ?? true;
+
+  // 既存レイヤーを一旦削除
+  if (map.getLayer('building-3d')) map.removeLayer('building-3d');
+
+  if (mode === 'none' || !is3dOn) return;
+
+  const cfg = BUILDING_CFG[mode];
+  if (!cfg || !map.getSource(cfg.source)) return; // ソース未追加なら無視
+
+  map.addLayer({
+    id: 'building-3d',
+    type: 'fill-extrusion',
+    source: cfg.source,
+    'source-layer': cfg.sourceLayer,
+    minzoom: 14,
+    paint: {
+      'fill-extrusion-height':  cfg.height,
+      'fill-extrusion-base':    cfg.base,
+      'fill-extrusion-color':   'rgb(150, 150, 150)',
+      'fill-extrusion-opacity': 0.7,
+    },
+  });
+}
+
+document.getElementById('sel-building').addEventListener('change', updateBuildingLayer);
+
 // ---- 地形誇張 チェックボックス + スライダー ----
 const chkExaggeration = document.getElementById('chk-exaggeration');
 const sliderExaggeration = document.getElementById('slider-exaggeration');
@@ -5851,10 +5901,8 @@ chkExaggeration.addEventListener('change', () => {
   } else {
     map.setTerrain(null);
   }
-  // 地形 ON/OFF に連動して建物3Dレイヤーの表示も切り替える
-  if (map.getLayer('building-3d')) {
-    map.setLayoutProperty('building-3d', 'visibility', isOn ? 'visible' : 'none');
-  }
+  // 地形 ON/OFF に連動して建物3Dレイヤーも再評価
+  updateBuildingLayer();
   // 地形 ON/OFF で raster-opacity の補正有無が変わるため、全KMZレイヤーを再適用する
   kmzLayers.forEach(entry => {
     if (map.getLayer(entry.layerId)) {
