@@ -3229,11 +3229,22 @@ async function synthesizeLakeElevationTile(url) {
   return new Response(blob, { headers: { 'Content-Type': 'image/png' } });
 }
 
-// async を使わないことで、湖水深以外のリクエスト（地理院タイル・MapLibreタイル等）は
+// Q地図 DEM タイルが 404 のとき DEM5A にフォールバックする（等高線用）。
+// contourDemSource は worker:false で動くため window.fetch が呼ばれる。
+async function _fetchQchizuWithFallback(input, init, url) {
+  const res = await _origFetch(input, init);
+  if (res.ok) return res;
+  const m = url.match(/\/(\d+)\/(\d+)\/(\d+)\.\w+$/);
+  if (!m) return res;
+  return _origFetch(`${DEM5A_BASE}/${m[1]}/${m[2]}/${m[3]}.png`, init);
+}
+
+// async を使わないことで、湖水深・Q地図以外のリクエストは
 // _origFetch の Promise をそのまま返し、余分な Promise ラッピングを避ける。
 window.fetch = function(input, init) {
   const url = typeof input === 'string' ? input : (input instanceof Request ? input.url : String(input));
   if (url.startsWith(LAKE_ELEV_PREFIX)) return synthesizeLakeElevationTile(url);
+  if (url.startsWith(QCHIZU_DEM_BASE + '/')) return _fetchQchizuWithFallback(input, init, url);
   return _origFetch(input, init);
 };
 
@@ -3290,7 +3301,7 @@ map.on('load', async () => {
       encoding: 'numpng',
       minzoom: 0,
       maxzoom: 17,
-      worker: true,
+      worker: false, // window.fetch オーバーライド（DEM5A フォールバック）を有効にするため
       cacheSize: 100,
       timeoutMs: 30_000,
     });
@@ -3298,26 +3309,6 @@ map.on('load', async () => {
     map.addSource('contour-source', {
       type: 'vector',
       tiles: [buildContourTileUrl(userContourInterval)],
-      maxzoom: 15,
-      attribution: '',
-    });
-
-    // DEM5A 等高線フォールバック（Q地図カバー外の陸域）
-    // mlcontour の DEM fetch は maplibregl カスタムプロトコルを経由しないため
-    // 直接 HTTPS URL を使用し worker: true で SharedWorker から並列生成する。
-    seamlessContourDemSource = new mlcontour.DemSource({
-      url: `${DEM5A_BASE}/{z}/{x}/{y}.png`,
-      encoding: 'numpng',
-      minzoom: 1,
-      maxzoom: 15,
-      worker: true,
-      cacheSize: 100,
-      timeoutMs: 30_000,
-    });
-    seamlessContourDemSource.setupMaplibre(maplibregl);
-    map.addSource('contour-source-seamless', {
-      type: 'vector',
-      tiles: [buildSeamlessContourTileUrl(userContourInterval)],
       maxzoom: 15,
       attribution: '',
     });
@@ -3341,7 +3332,7 @@ map.on('load', async () => {
       maxzoom: 15,
       attribution: '',
     });
-    console.log('等高線ソース登録完了（Q地図 + DEM5A + 湖水深）');
+    console.log('等高線ソース登録完了（Q地図[DEM5Aフォールバック] + 湖水深）');
   }
 
   catch (e) {
@@ -3511,69 +3502,38 @@ map.on('load', async () => {
     console.log('等高線レイヤー（フォールバック生成）:', contourLayerIds);
   }
 
-  // DEM5A・湖水深等高線レイヤー（Q地図等高線の下に挿入）
-  // Q地図カバー範囲では Q地図レイヤーが上に重なるため実質カバー外のみ目立つ。
-  // DEM5A は 5m メッシュのため Q地図(1m)と若干ズレが出る場合があるが、
-  // opacity を低めにして Q地図レイヤーが視覚的に優先されるよう調整する。
-  if (map.getSource('contour-source-seamless') && contourLayerIds.length > 0) {
+  // 湖水深等高線レイヤー（Q地図等高線の下に挿入）
+  if (map.getSource('contour-source-lake') && contourLayerIds.length > 0) {
     const firstQchizuId = contourLayerIds[0];
 
-    // 湖水深等高線（最下層）
-    if (map.getSource('contour-source-lake')) {
-      map.addLayer({
-        id: 'contour-regular-lake',
-        type: 'line',
-        source: 'contour-source-lake',
-        'source-layer': 'contours',
-        filter: ['==', ['get', 'level'], 0],
-        layout: { 'line-join': 'round', 'line-cap': 'round' },
-        paint: { 'line-color': '#4a90d9', 'line-width': 0.8, 'line-opacity': 0.75, 'line-blur': 0.5 },
-      }, firstQchizuId);
-      map.addLayer({
-        id: 'contour-index-lake',
-        type: 'line',
-        source: 'contour-source-lake',
-        'source-layer': 'contours',
-        filter: ['==', ['get', 'level'], 1],
-        layout: { 'line-join': 'round', 'line-cap': 'round' },
-        paint: { 'line-color': '#4a90d9', 'line-width': 1.4, 'line-opacity': 0.85, 'line-blur': 0.5 },
-      }, firstQchizuId);
-    }
-
-    // DEM5A 等高線（湖水深の上、Q地図の下）
     map.addLayer({
-      id: 'contour-regular-seamless',
+      id: 'contour-regular-lake',
       type: 'line',
-      source: 'contour-source-seamless',
+      source: 'contour-source-lake',
       'source-layer': 'contours',
       filter: ['==', ['get', 'level'], 0],
       layout: { 'line-join': 'round', 'line-cap': 'round' },
-      paint: { 'line-color': '#c86400', 'line-width': 0.8, 'line-opacity': 0.7, 'line-blur': 0.5 },
+      paint: { 'line-color': '#4a90d9', 'line-width': 0.8, 'line-opacity': 0.75, 'line-blur': 0.5 },
     }, firstQchizuId);
     map.addLayer({
-      id: 'contour-index-seamless',
+      id: 'contour-index-lake',
       type: 'line',
-      source: 'contour-source-seamless',
+      source: 'contour-source-lake',
       'source-layer': 'contours',
       filter: ['==', ['get', 'level'], 1],
       layout: { 'line-join': 'round', 'line-cap': 'round' },
-      paint: { 'line-color': '#c86400', 'line-width': 1.4, 'line-opacity': 0.75, 'line-blur': 0.5 },
+      paint: { 'line-color': '#4a90d9', 'line-width': 1.4, 'line-opacity': 0.85, 'line-blur': 0.5 },
     }, firstQchizuId);
 
-    seamlessContourLayerIds = [
-      'contour-regular-lake', 'contour-index-lake',
-      'contour-regular-seamless', 'contour-index-seamless',
-    ];
+    seamlessContourLayerIds = ['contour-regular-lake', 'contour-index-lake'];
 
     // OriLibre の水域フィルレイヤーが等高線の上に配置されるため、
     // 全等高線レイヤーをスタック最上位へ移動する。
-    // 順番通りに moveLayer するとリスト末尾の要素が最上位になるため、
-    // lake → DEM5A → Q地図 の順（Q地図が最終的に一番上）に移動する。
-    // CS立体図・KMZ はこの後に追加されるため自動的に等高線より上になる。
+    // lake → Q地図 の順（Q地図が最終的に一番上）。
     [...seamlessContourLayerIds, ...contourLayerIds].forEach(id => {
       if (map.getLayer(id)) map.moveLayer(id);
     });
-    console.log('DEM5A・湖水深等高線レイヤー追加完了（OriLibre水域より上に移動）');
+    console.log('湖水深等高線レイヤー追加完了（OriLibre水域より上に移動）');
   }
 
   /*
@@ -6143,19 +6103,15 @@ function getEffectiveContourInterval() {
 }
 
 // 等高線タイルを intervalM に切り替える（旧タイルをフラッシュしてから URL を更新）
-// Q地図 + DEM5A + 湖水深の全ソースを同時に更新する。
+// Q地図[DEM5Aフォールバック] + 湖水深ソースを同時に更新する。
 function applyContourInterval(intervalM) {
   const newUrl = buildContourTileUrl(intervalM);
-  const newUrlSeamless = buildSeamlessContourTileUrl(intervalM);
   const newUrlLake = buildLakeContourTileUrl(intervalM);
   if (!newUrl || !map.getSource('contour-source')) return;
   // MapLibreは高ズーム時に「新タイルが届くまで旧タイルを保持」するため、
   // 一旦 visibility:none で旧タイルを即座に消去してからURLを切り替える
   setAllContourVisibility('none');
   map.getSource('contour-source').setTiles([newUrl]);
-  if (newUrlSeamless && map.getSource('contour-source-seamless')) {
-    map.getSource('contour-source-seamless').setTiles([newUrlSeamless]);
-  }
   if (newUrlLake && map.getSource('contour-source-lake')) {
     map.getSource('contour-source-lake').setTiles([newUrlLake]);
   }
@@ -6175,7 +6131,7 @@ function updateContourAutoInterval() {
 
   const z = map.getZoom();
 
-  // zoom ≤ 7 では等高線を非表示（Q地図 + シームレス両方）
+  // zoom ≤ 7 では等高線を非表示
   if (z <= 7) {
     // 既に非表示済みなら setLayoutProperty の重複呼び出しを省略
     if (!contourHiddenByLowZoom) {
