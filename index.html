@@ -1936,6 +1936,138 @@ label.setting-label {
 
   /* PCシムボタンはスマホでも表示する */
 }
+
+/* ===================================================================
+   地図画像 位置合わせモーダル（#import-overlay）
+   =================================================================== */
+
+/* 右側領域を覆うオーバーレイ（#ui-panel の右端以降のみ） */
+#import-overlay {
+  display: none;
+  position: fixed;
+  top: 0;
+  left: 280px; /* #ui-panel (max-width:270px + margin:10px) の右端を避ける */
+  right: 0;
+  bottom: 0;
+  background: rgba(0, 0, 0, 0.75);
+  z-index: 50;
+  flex-direction: column;
+}
+#import-overlay.visible { display: flex; }
+
+/* ヘッダー */
+#import-overlay-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 8px 14px;
+  background: rgba(0, 0, 0, 0.7);
+  color: #fff;
+  font-size: 13px;
+  font-weight: bold;
+  flex-shrink: 0;
+  border-bottom: 1px solid rgba(255,255,255,0.1);
+}
+#import-overlay-close-btn {
+  background: none;
+  border: none;
+  color: #ccc;
+  font-size: 20px;
+  line-height: 1;
+  cursor: pointer;
+  padding: 0 2px;
+}
+#import-overlay-close-btn:hover { color: #fff; }
+
+/* ボディ：プレビューマップ + コントロールパネル */
+#import-overlay-body {
+  flex: 1;
+  display: flex;
+  overflow: hidden;
+}
+
+/* プレビュー用 MapLibre コンテナ */
+#import-preview-map {
+  flex: 1;
+  min-width: 0;
+}
+
+/* 右側コントロールパネル */
+#import-controls {
+  width: 220px;
+  flex-shrink: 0;
+  background: rgba(18, 18, 18, 0.93);
+  color: #ddd;
+  padding: 14px 12px;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  font-size: 12px;
+  border-left: 1px solid rgba(255,255,255,0.08);
+}
+.import-ctrl-group { display: flex; flex-direction: column; gap: 4px; }
+.import-ctrl-label {
+  font-size: 11px;
+  color: #aaa;
+  font-weight: bold;
+  letter-spacing: 0.03em;
+}
+.import-ctrl-select, .import-ctrl-input {
+  width: 100%;
+  background: #2a2a2a;
+  color: #eee;
+  border: 1px solid #444;
+  border-radius: 3px;
+  padding: 5px 7px;
+  font-size: 12px;
+  font-family: inherit;
+  outline: none;
+}
+.import-ctrl-select:focus, .import-ctrl-input:focus {
+  border-color: #4a7c59;
+}
+.import-ctrl-hint {
+  font-size: 11px;
+  color: #777;
+  line-height: 1.5;
+  border-top: 1px solid #333;
+  padding-top: 10px;
+}
+
+/* フッター：決定・キャンセル */
+#import-overlay-footer {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+  padding: 10px 14px;
+  background: rgba(0, 0, 0, 0.7);
+  flex-shrink: 0;
+  border-top: 1px solid rgba(255,255,255,0.1);
+}
+#import-decide-btn {
+  background: #4a7c59;
+  color: #fff;
+  border: none;
+  border-radius: 4px;
+  padding: 8px 22px;
+  font-size: 13px;
+  font-weight: bold;
+  font-family: inherit;
+  cursor: pointer;
+}
+#import-decide-btn:hover { background: #3a6449; }
+#import-cancel-btn {
+  background: #444;
+  color: #ddd;
+  border: none;
+  border-radius: 4px;
+  padding: 8px 16px;
+  font-size: 13px;
+  font-family: inherit;
+  cursor: pointer;
+}
+#import-cancel-btn:hover { background: #555; }
 </style>
 </head>
 
@@ -2224,6 +2356,8 @@ label.setting-label {
     <input type="file" id="kmz-file-input" accept=".kmz" multiple style="display:none" />
     <button id="kmz-upload-btn">＋ KMZ を追加</button>
     <button id="imgw-modal-open-btn">＋ 画像＋JGW を追加</button>
+    <input type="file" id="img-import-input" accept=".jpg,.jpeg,.png" style="display:none" />
+    <button id="img-import-btn">＋ 画像を追加（位置合わせ）</button>
   </details>
 
   <!-- ===== GPX 軌跡（デフォルト open） ===== -->
@@ -2263,6 +2397,59 @@ label.setting-label {
 <input type="file" id="frame-img-input" accept=".jpg,.jpeg,.png" multiple style="display:none" />
 
 <div id="drop-overlay">KMZ・画像+JGW・GPX をドロップ</div>
+
+<!-- ===== 地図画像 位置合わせモーダル（基本モード） ===== -->
+<div id="import-overlay" role="dialog" aria-modal="true" aria-label="地図画像の位置合わせ">
+  <div id="import-overlay-header">
+    <span>地図画像の位置合わせ</span>
+    <button id="import-overlay-close-btn" title="閉じる">✕</button>
+  </div>
+  <div id="import-overlay-body">
+    <!-- プレビューマップ（MapLibre が描画） -->
+    <div id="import-preview-map"></div>
+    <!-- コントロールパネル -->
+    <div id="import-controls">
+      <div class="import-ctrl-group">
+        <div class="import-ctrl-label">用紙サイズ</div>
+        <select id="import-paper-size" class="import-ctrl-select">
+          <option value="A4">A4（210×297 mm）</option>
+          <option value="A3">A3（297×420 mm）</option>
+          <option value="B4">B4-JIS（257×364 mm）</option>
+          <option value="B3">B3-JIS（364×515 mm）</option>
+        </select>
+      </div>
+      <div class="import-ctrl-group">
+        <div class="import-ctrl-label">向き</div>
+        <select id="import-orientation" class="import-ctrl-select">
+          <option value="portrait">縦（Portrait）</option>
+          <option value="landscape">横（Landscape）</option>
+        </select>
+      </div>
+      <div class="import-ctrl-group">
+        <div class="import-ctrl-label">縮尺</div>
+        <select id="import-scale" class="import-ctrl-select">
+          <option value="3000">1:3,000</option>
+          <option value="4000">1:4,000</option>
+          <option value="5000" selected>1:5,000</option>
+          <option value="7500">1:7,500</option>
+          <option value="10000">1:10,000</option>
+          <option value="15000">1:15,000</option>
+          <option value="custom">手入力...</option>
+        </select>
+        <input type="number" id="import-scale-custom" class="import-ctrl-input"
+          placeholder="例: 10000" min="500" max="200000" style="display:none;margin-top:4px;" />
+      </div>
+      <div class="import-ctrl-hint">
+        磁北補正は自動で適用されます。<br><br>
+        赤いマーカーをドラッグして地図の中心位置を合わせてください。
+      </div>
+    </div>
+  </div>
+  <div id="import-overlay-footer">
+    <button id="import-cancel-btn">キャンセル</button>
+    <button id="import-decide-btn">この位置で決定</button>
+  </div>
+</div>
 
 <!-- ===== 画像+JGW 追加モーダル ===== -->
 <div id="imgw-modal" class="imgw-modal-overlay" style="display:none" role="dialog" aria-modal="true" aria-label="マップを追加（画像＋JGW）">
@@ -7360,6 +7547,196 @@ document.getElementById('sel-readmap-bg').addEventListener('change', () => {
 });
 
 // シミュレーターボタンは CSS で display:block 設定済み。JSによる上書き不要。
+
+
+/* =======================================================================
+   地図画像 位置合わせモーダル（基本モード）
+   ======================================================================= */
+
+// 用紙サイズ定数（mm）: [幅, 高さ] 縦置き基準
+const PAPER_SIZES_MM = { A4: [210, 297], A3: [297, 420], B4: [257, 364], B3: [364, 515] };
+
+let _previewMap      = null;  // プレビュー用 MapLibre インスタンス
+let _importImgFile   = null;  // インポート中の画像 File
+let _importImgUrl    = null;  // 対応する ObjectURL
+let _importMoveMarker = null; // 中心移動マーカー（赤ドット）
+let _importCoords    = null;  // 現在の4隅座標 [[lng,lat]*4] TL→TR→BR→BL
+
+// ---- 用紙サイズ＋縮尺 → 実世界サイズ（メートル）を計算 ----
+function _importCalcSizeM() {
+  const paperKey   = document.getElementById('import-paper-size').value;
+  const orientation = document.getElementById('import-orientation').value;
+  const scaleEl    = document.getElementById('import-scale');
+  const scale      = scaleEl.value === 'custom'
+    ? (parseFloat(document.getElementById('import-scale-custom').value) || 10000)
+    : parseInt(scaleEl.value, 10);
+
+  let [wMm, hMm] = PAPER_SIZES_MM[paperKey] || [210, 297];
+  if (orientation === 'landscape') [wMm, hMm] = [hMm, wMm];
+  // mm × 縮尺 ÷ 1000 = 実世界メートル
+  return [wMm / 1000 * scale, hMm / 1000 * scale];
+}
+
+// ---- 中心座標＋サイズ(m)＋磁北補正角(deg) → 4隅 [TL,TR,BR,BL] ----
+// オリエンテーリング地図は磁北が真上のため、declination 分だけ回転させる
+function _importCalcCorners(lng, lat, widthM, heightM, decl) {
+  const center = [lng, lat];
+  const hw = widthM  / 2 / 1000; // km
+  const hh = heightM / 2 / 1000; // km
+  // Turf.destination: bearing は真北(0)から時計回り
+  const up   = decl;       // 地図の「上」= 磁北方向
+  const down = decl + 180;
+  const L    = decl - 90;  // 左
+  const R    = decl + 90;  // 右
+  const dest = (pt, dist, bear) =>
+    turf.getCoord(turf.destination(pt, dist, bear, { units: 'kilometers' }));
+
+  const top    = dest(center, hh, up);
+  const bottom = dest(center, hh, down);
+  return [
+    dest(top,    hw, L),  // TL
+    dest(top,    hw, R),  // TR
+    dest(bottom, hw, R),  // BR
+    dest(bottom, hw, L),  // BL
+  ];
+}
+
+// ---- プレビューマップ上のソース/マーカーを最新設定に更新 ----
+function _updateImportPreview() {
+  if (!_previewMap || !_importImgUrl) return;
+  const c = _previewMap.getCenter();
+
+  const [wM, hM] = _importCalcSizeM();
+
+  // 磁気偏角を取得（geomag.field が使えない場合は 0 で代替）
+  let decl = 0;
+  try { decl = geomag.field(c.lat, c.lng).declination ?? 0; } catch (e) {}
+
+  _importCoords = _importCalcCorners(c.lng, c.lat, wM, hM, decl);
+
+  const src = _previewMap.getSource('_import-img');
+  if (src) {
+    // ソース更新
+    src.updateImage({ coordinates: _importCoords });
+  } else {
+    // 初回：ソース＋レイヤー追加
+    _previewMap.addSource('_import-img', {
+      type: 'image',
+      url:  _importImgUrl,
+      coordinates: _importCoords,
+    });
+    _previewMap.addLayer({
+      id: '_import-layer',
+      type: 'raster',
+      source: '_import-img',
+      paint: { 'raster-opacity': 0.85 },
+    });
+
+    // 中心移動マーカー（赤ドット）
+    const el = document.createElement('div');
+    el.style.cssText =
+      'width:16px;height:16px;background:#e02020;border:3px solid #fff;' +
+      'border-radius:50%;cursor:move;box-shadow:0 1px 5px rgba(0,0,0,0.55);';
+    _importMoveMarker = new maplibregl.Marker({ element: el, draggable: true })
+      .setLngLat([c.lng, c.lat])
+      .addTo(_previewMap);
+
+    // ドラッグ中に座標をリアルタイム更新
+    _importMoveMarker.on('drag', () => {
+      const pos = _importMoveMarker.getLngLat();
+      const [wMd, hMd] = _importCalcSizeM();
+      let d = 0;
+      try { d = geomag.field(pos.lat, pos.lng).declination ?? 0; } catch (e) {}
+      _importCoords = _importCalcCorners(pos.lng, pos.lat, wMd, hMd, d);
+      _previewMap.getSource('_import-img').updateImage({ coordinates: _importCoords });
+    });
+  }
+}
+
+// ---- モーダルを開く ----
+function openImportModal(imageFile) {
+  _importImgFile = imageFile;
+  _importImgUrl  = URL.createObjectURL(imageFile);
+  document.getElementById('import-overlay').classList.add('visible');
+
+  // プレビューマップを生成（OSMベースで軽量）
+  if (_previewMap) { _previewMap.remove(); _previewMap = null; }
+  _importMoveMarker = null;
+  _importCoords     = null;
+
+  _previewMap = new maplibregl.Map({
+    container: 'import-preview-map',
+    style: {
+      version: 8,
+      sources: {
+        osm: {
+          type: 'raster',
+          tiles: ['https://tile.openstreetmap.org/{z}/{x}/{y}.png'],
+          tileSize: 256,
+          attribution: '© OpenStreetMap contributors',
+        },
+      },
+      layers: [{ id: 'osm-bg', type: 'raster', source: 'osm' }],
+    },
+    center: map.getCenter(),
+    zoom: Math.max(map.getZoom(), 12), // 位置合わせしやすいズームレベル
+    pitch: 0,
+    bearing: 0,
+    attributionControl: false,
+  });
+  _previewMap.on('load', _updateImportPreview);
+}
+
+// ---- モーダルを閉じる（cancelOnly=false のとき URL を revoke しない） ----
+function closeImportModal(revokeUrl = true) {
+  document.getElementById('import-overlay').classList.remove('visible');
+  if (_importMoveMarker) { _importMoveMarker.remove(); _importMoveMarker = null; }
+  if (_previewMap)       { _previewMap.remove(); _previewMap = null; }
+  if (revokeUrl && _importImgUrl) { URL.revokeObjectURL(_importImgUrl); }
+  _importImgUrl  = null;
+  _importImgFile = null;
+  _importCoords  = null;
+}
+
+// ---- イベントリスナー ----
+
+// 開くボタン・input
+document.getElementById('img-import-btn').addEventListener('click', () => {
+  document.getElementById('img-import-input').click();
+});
+document.getElementById('img-import-input').addEventListener('change', (e) => {
+  const file = e.target.files[0];
+  if (file) openImportModal(file);
+  e.target.value = '';
+});
+
+// 閉じる・キャンセル
+document.getElementById('import-overlay-close-btn').addEventListener('click', () => closeImportModal());
+document.getElementById('import-cancel-btn').addEventListener('click', () => closeImportModal());
+
+// 縮尺「手入力」切り替え
+document.getElementById('import-scale').addEventListener('change', (e) => {
+  document.getElementById('import-scale-custom').style.display =
+    e.target.value === 'custom' ? 'block' : 'none';
+  _updateImportPreview();
+});
+
+// 設定変更 → プレビュー再計算
+['import-paper-size', 'import-orientation'].forEach(id => {
+  document.getElementById(id).addEventListener('change', _updateImportPreview);
+});
+document.getElementById('import-scale-custom').addEventListener('input', _updateImportPreview);
+
+// 決定ボタン → メインマップにレイヤーを追加してモーダルを閉じる
+document.getElementById('import-decide-btn').addEventListener('click', () => {
+  if (!_importCoords || !_importImgUrl) return;
+  const uid     = `img-import-${Date.now()}`;
+  const keepUrl = _importImgUrl;
+  _importImgUrl = null; // closeImportModal での revoke を防ぐ
+  addImageLayerToMap(uid + '-src', uid + '-layer', keepUrl, _importCoords, 1.0);
+  closeImportModal(false);
+});
+
 
 </script>
 </body>
