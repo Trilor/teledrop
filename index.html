@@ -1916,65 +1916,108 @@ label.setting-label {
 }
 
 /* ===================================================================
-   地図画像 位置合わせモーダル（#import-overlay）
+   地図画像 位置合わせモーダル（読図モードポップアップと同デザイン）
    =================================================================== */
 
-/* 右側領域を覆うオーバーレイ（#ui-panel の右端以降のみ） */
+/* 全画面暗転オーバーレイ */
 #import-overlay {
   display: none;
   position: fixed;
-  top: 0;
-  left: 280px; /* #ui-panel (max-width:270px + margin:10px) の右端を避ける */
-  right: 0;
-  bottom: 0;
-  background: rgba(0, 0, 0, 0.75);
+  inset: 0;
   z-index: 50;
-  flex-direction: column;
+  background: rgba(0, 0, 0, 0.55);
+  align-items: center;
+  justify-content: center;
 }
 #import-overlay.visible { display: flex; }
 
+/* モーダル本体（読図ポップアップに合わせた角丸・影・枠） */
+#import-modal-wrapper {
+  position: relative;
+  width: min(92vw, 1040px);
+  height: min(88vh, 720px);
+  border-radius: 12px;
+  overflow: hidden;
+  box-shadow: 0 6px 24px rgba(0, 0, 0, 0.65);
+  border: 2px solid rgba(255, 255, 255, 0.25);
+  background: #1c1c1c;
+  display: flex;
+  flex-direction: column;
+}
+
 /* ヘッダー */
-#import-overlay-header {
+#import-modal-header {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: 8px 14px;
-  background: rgba(0, 0, 0, 0.7);
-  color: #fff;
+  padding: 10px 16px 0;
+  flex-shrink: 0;
+  color: rgba(255,255,255,0.9);
   font-size: 13px;
   font-weight: bold;
-  flex-shrink: 0;
-  border-bottom: 1px solid rgba(255,255,255,0.1);
 }
 #import-overlay-close-btn {
-  background: none;
+  background: rgba(255,255,255,0.1);
   border: none;
-  color: #ccc;
-  font-size: 20px;
-  line-height: 1;
+  color: rgba(255,255,255,0.7);
+  font-size: 15px;
+  width: 28px;
+  height: 28px;
+  border-radius: 50%;
   cursor: pointer;
-  padding: 0 2px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  line-height: 1;
+  transition: background 0.15s;
 }
-#import-overlay-close-btn:hover { color: #fff; }
+#import-overlay-close-btn:hover { background: rgba(255,255,255,0.22); color: #fff; }
 
-/* ボディ：プレビューマップ + コントロールパネル */
-#import-overlay-body {
+/* モードタブ（ピルデザイン） */
+#import-mode-tabs {
+  display: flex;
+  gap: 6px;
+  padding: 8px 16px 6px;
+  flex-shrink: 0;
+}
+.import-tab {
+  padding: 5px 16px;
+  font-size: 12px;
+  font-weight: 600;
+  font-family: inherit;
+  border: 1px solid rgba(255,255,255,0.2);
+  border-radius: 16px;
+  background: rgba(255,255,255,0.07);
+  color: rgba(255,255,255,0.5);
+  cursor: pointer;
+  transition: background 0.15s, color 0.15s, border-color 0.15s;
+}
+.import-tab:hover { background: rgba(255,255,255,0.14); color: rgba(255,255,255,0.85); }
+.import-tab.active {
+  background: rgba(255,255,255,0.18);
+  color: #fff;
+  border-color: rgba(255,255,255,0.45);
+}
+
+/* ボディ：プレビューマップ + コントロール */
+#import-modal-body {
   flex: 1;
   display: flex;
   overflow: hidden;
+  min-height: 0;
 }
 
-/* プレビュー用 MapLibre コンテナ */
+/* プレビュー用 MapLibre */
 #import-preview-map {
   flex: 1;
   min-width: 0;
 }
 
-/* 右側コントロールパネル */
+/* 右側コントロールパネル（画像単体モードのみ表示） */
 #import-controls {
-  width: 220px;
+  width: 200px;
   flex-shrink: 0;
-  background: rgba(18, 18, 18, 0.93);
+  background: rgba(0, 0, 0, 0.45);
   color: #ddd;
   padding: 14px 12px;
   overflow-y: auto;
@@ -1982,83 +2025,73 @@ label.setting-label {
   flex-direction: column;
   gap: 12px;
   font-size: 12px;
-  border-left: 1px solid rgba(255,255,255,0.08);
+  border-left: 1px solid rgba(255,255,255,0.1);
 }
 .import-ctrl-group { display: flex; flex-direction: column; gap: 4px; }
 .import-ctrl-label {
   font-size: 11px;
-  color: #aaa;
+  color: rgba(255,255,255,0.55);
   font-weight: bold;
   letter-spacing: 0.03em;
 }
 .import-ctrl-select, .import-ctrl-input {
   width: 100%;
-  background: #2a2a2a;
+  background: rgba(255,255,255,0.08);
   color: #eee;
-  border: 1px solid #444;
-  border-radius: 3px;
+  border: 1px solid rgba(255,255,255,0.18);
+  border-radius: 6px;
   padding: 5px 7px;
   font-size: 12px;
   font-family: inherit;
   outline: none;
 }
 .import-ctrl-select:focus, .import-ctrl-input:focus {
-  border-color: #4a7c59;
+  border-color: rgba(74,124,89,0.8);
 }
 .import-ctrl-hint {
   font-size: 11px;
-  color: #777;
-  line-height: 1.5;
-  border-top: 1px solid #333;
+  color: rgba(255,255,255,0.35);
+  line-height: 1.6;
+  border-top: 1px solid rgba(255,255,255,0.1);
   padding-top: 10px;
 }
 
-/* フッター：決定・キャンセル */
-#import-overlay-footer {
+/* フッター */
+#import-modal-footer {
   display: flex;
   justify-content: flex-end;
+  align-items: center;
   gap: 8px;
-  padding: 10px 14px;
-  background: rgba(0, 0, 0, 0.7);
+  padding: 10px 16px;
+  background: rgba(0, 0, 0, 0.35);
   flex-shrink: 0;
   border-top: 1px solid rgba(255,255,255,0.1);
 }
-#import-finetune-btn {
-  background: #555;
-  color: #ddd;
-  border: none;
-  border-radius: 4px;
-  padding: 8px 14px;
-  font-size: 13px;
-  font-family: inherit;
-  cursor: pointer;
-}
-#import-finetune-btn:hover { background: #666; }
-#import-finetune-btn.active { background: #8a5a00; color: #fff; }
-
 #import-decide-btn {
   background: #4a7c59;
   color: #fff;
   border: none;
-  border-radius: 4px;
+  border-radius: 8px;
   padding: 8px 22px;
   font-size: 13px;
   font-weight: bold;
   font-family: inherit;
   cursor: pointer;
+  transition: background 0.15s;
 }
 #import-decide-btn:hover { background: #3a6449; }
 #import-cancel-btn {
-  background: #444;
-  color: #ddd;
-  border: none;
-  border-radius: 4px;
+  background: rgba(255,255,255,0.1);
+  color: rgba(255,255,255,0.7);
+  border: 1px solid rgba(255,255,255,0.2);
+  border-radius: 8px;
   padding: 8px 16px;
   font-size: 13px;
   font-family: inherit;
   cursor: pointer;
+  transition: background 0.15s;
 }
-#import-cancel-btn:hover { background: #555; }
+#import-cancel-btn:hover { background: rgba(255,255,255,0.18); color: #fff; }
 </style>
 </head>
 
@@ -2390,57 +2423,70 @@ label.setting-label {
 
 <div id="drop-overlay">KMZ・画像+JGW・GPX をドロップ</div>
 
-<!-- ===== 地図画像 位置合わせモーダル（基本モード） ===== -->
+<!-- ===== 地図画像 位置合わせモーダル ===== -->
 <div id="import-overlay" role="dialog" aria-modal="true" aria-label="地図画像の位置合わせ">
-  <div id="import-overlay-header">
-    <span>地図画像の位置合わせ</span>
-    <button id="import-overlay-close-btn" title="閉じる">✕</button>
-  </div>
-  <div id="import-overlay-body">
-    <!-- プレビューマップ（MapLibre が描画） -->
-    <div id="import-preview-map"></div>
-    <!-- コントロールパネル -->
-    <div id="import-controls">
-      <div class="import-ctrl-group">
-        <div class="import-ctrl-label">用紙サイズ</div>
-        <select id="import-paper-size" class="import-ctrl-select">
-          <option value="A4">A4（210×297 mm）</option>
-          <option value="A3">A3（297×420 mm）</option>
-          <option value="B4">B4-JIS（257×364 mm）</option>
-          <option value="B3">B3-JIS（364×515 mm）</option>
-        </select>
-      </div>
-      <div class="import-ctrl-group">
-        <div class="import-ctrl-label">向き</div>
-        <select id="import-orientation" class="import-ctrl-select">
-          <option value="portrait">縦（Portrait）</option>
-          <option value="landscape">横（Landscape）</option>
-        </select>
-      </div>
-      <div class="import-ctrl-group">
-        <div class="import-ctrl-label">縮尺</div>
-        <select id="import-scale" class="import-ctrl-select">
-          <option value="3000">1:3,000</option>
-          <option value="4000">1:4,000</option>
-          <option value="5000" selected>1:5,000</option>
-          <option value="7500">1:7,500</option>
-          <option value="10000">1:10,000</option>
-          <option value="15000">1:15,000</option>
-          <option value="custom">手入力...</option>
-        </select>
-        <input type="number" id="import-scale-custom" class="import-ctrl-input"
-          placeholder="例: 10000" min="500" max="200000" style="display:none;margin-top:4px;" />
-      </div>
-      <div class="import-ctrl-hint">
-        磁北補正は自動で適用されます。<br><br>
-        赤いマーカーをドラッグして地図の中心位置を合わせてください。
+  <div id="import-modal-wrapper">
+
+    <!-- ヘッダー -->
+    <div id="import-modal-header">
+      <span>地図画像の位置合わせ</span>
+      <button id="import-overlay-close-btn" title="閉じる">✕</button>
+    </div>
+
+    <!-- モードタブ -->
+    <div id="import-mode-tabs">
+      <button class="import-tab active" data-mode="move">平行移動</button>
+      <button class="import-tab" data-mode="finetune">微調整（4隅）</button>
+    </div>
+
+    <!-- ボディ：プレビューマップ + コントロール -->
+    <div id="import-modal-body">
+      <div id="import-preview-map"></div>
+      <!-- コントロールパネル（画像単体のみ表示） -->
+      <div id="import-controls">
+        <div class="import-ctrl-group">
+          <div class="import-ctrl-label">用紙サイズ</div>
+          <select id="import-paper-size" class="import-ctrl-select">
+            <option value="A4">A4（210×297 mm）</option>
+            <option value="A3">A3（297×420 mm）</option>
+            <option value="B4">B4-JIS（257×364 mm）</option>
+            <option value="B3">B3-JIS（364×515 mm）</option>
+          </select>
+        </div>
+        <div class="import-ctrl-group">
+          <div class="import-ctrl-label">向き</div>
+          <select id="import-orientation" class="import-ctrl-select">
+            <option value="portrait">縦（Portrait）</option>
+            <option value="landscape">横（Landscape）</option>
+          </select>
+        </div>
+        <div class="import-ctrl-group">
+          <div class="import-ctrl-label">縮尺</div>
+          <select id="import-scale" class="import-ctrl-select">
+            <option value="3000">1:3,000</option>
+            <option value="4000">1:4,000</option>
+            <option value="5000" selected>1:5,000</option>
+            <option value="7500">1:7,500</option>
+            <option value="10000">1:10,000</option>
+            <option value="15000">1:15,000</option>
+            <option value="custom">手入力...</option>
+          </select>
+          <input type="number" id="import-scale-custom" class="import-ctrl-input"
+            placeholder="例: 10000" min="500" max="200000" style="display:none;margin-top:4px;" />
+        </div>
+        <div class="import-ctrl-hint">
+          磁北補正は自動で適用されます。<br><br>
+          赤いマーカーをドラッグして地図の中心位置を合わせてください。
+        </div>
       </div>
     </div>
-  </div>
-  <div id="import-overlay-footer">
-    <button id="import-cancel-btn">キャンセル</button>
-    <button id="import-finetune-btn">微調整モード</button>
-    <button id="import-decide-btn">この位置で決定</button>
+
+    <!-- フッター -->
+    <div id="import-modal-footer">
+      <button id="import-cancel-btn">キャンセル</button>
+      <button id="import-decide-btn">この位置で決定</button>
+    </div>
+
   </div>
 </div>
 
@@ -7709,6 +7755,9 @@ function _openImportOverlay(imgUrl, onLoad) {
   _importImgUrl = imgUrl;
   _importMoveMarker = null;
   _importCoords     = null;
+  _fineTuneActive   = false;
+  // タブを「平行移動」にリセット
+  document.querySelectorAll('.import-tab').forEach(t => t.classList.toggle('active', t.dataset.mode === 'move'));
   document.getElementById('import-overlay').classList.add('visible');
 
   if (_previewMap) { _previewMap.remove(); _previewMap = null; }
@@ -7837,9 +7886,13 @@ function closeImportModal(revokeUrl = true) {
 document.getElementById('import-overlay-close-btn').addEventListener('click', () => closeImportModal());
 document.getElementById('import-cancel-btn').addEventListener('click', () => closeImportModal());
 
-// 微調整モード切り替え
-document.getElementById('import-finetune-btn').addEventListener('click', () => {
-  _fineTuneActive ? exitFineTuneMode() : enterFineTuneMode();
+// モードタブ切り替え（平行移動 ↔ 微調整）
+document.querySelectorAll('.import-tab').forEach(tab => {
+  tab.addEventListener('click', () => {
+    document.querySelectorAll('.import-tab').forEach(t => t.classList.remove('active'));
+    tab.classList.add('active');
+    tab.dataset.mode === 'finetune' ? enterFineTuneMode() : exitFineTuneMode();
+  });
 });
 
 // 縮尺「手入力」切り替え
