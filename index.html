@@ -2023,6 +2023,19 @@ label.setting-label {
   flex-shrink: 0;
   border-top: 1px solid rgba(255,255,255,0.1);
 }
+#import-finetune-btn {
+  background: #555;
+  color: #ddd;
+  border: none;
+  border-radius: 4px;
+  padding: 8px 14px;
+  font-size: 13px;
+  font-family: inherit;
+  cursor: pointer;
+}
+#import-finetune-btn:hover { background: #666; }
+#import-finetune-btn.active { background: #8a5a00; color: #fff; }
+
 #import-decide-btn {
   background: #4a7c59;
   color: #fff;
@@ -2426,6 +2439,7 @@ label.setting-label {
   </div>
   <div id="import-overlay-footer">
     <button id="import-cancel-btn">キャンセル</button>
+    <button id="import-finetune-btn">微調整モード</button>
     <button id="import-decide-btn">この位置で決定</button>
   </div>
 </div>
@@ -7595,6 +7609,8 @@ let _importImgFile   = null;  // インポート中の画像 File
 let _importImgUrl    = null;  // 対応する ObjectURL
 let _importMoveMarker = null; // 中心移動マーカー（赤ドット）
 let _importCoords    = null;  // 現在の4隅座標 [[lng,lat]*4] TL→TR→BR→BL
+let _importCornerMarkers = []; // 微調整モードの4隅マーカー
+let _fineTuneActive  = false; // 微調整モード中か
 
 // ---- 用紙サイズ＋縮尺 → 実世界サイズ（メートル）を計算 ----
 function _importCalcSizeM() {
@@ -7729,28 +7745,30 @@ function openImportModal(imageFile) {
 function openImportModalWithCoords(imgUrl, coords, label) {
   _importImgFile = null;
   document.getElementById('import-controls').style.display = 'none';
-  _importCoords = coords;
-  // 画像の中心座標にプレビューマップを合わせる
+  _importCoords = [...coords]; // コピーして保持
+
   const lats = coords.map(c => c[1]), lngs = coords.map(c => c[0]);
   const centerLat = (Math.min(...lats) + Math.max(...lats)) / 2;
   const centerLng = (Math.min(...lngs) + Math.max(...lngs)) / 2;
 
   _openImportOverlay(imgUrl, () => {
-    // 既存座標で画像をそのまま配置、移動マーカーも表示
-    _previewMap.addSource('_import-img', { type: 'image', url: imgUrl, coordinates: coords });
+    // KMZ画像全体が収まるようfitBounds（即時・アニメーションなし）
+    _previewMap.fitBounds(
+      [[Math.min(...lngs), Math.min(...lats)], [Math.max(...lngs), Math.max(...lats)]],
+      { padding: 60, duration: 0 }
+    );
+
+    _previewMap.addSource('_import-img', { type: 'image', url: imgUrl, coordinates: _importCoords });
     _previewMap.addLayer({ id: '_import-layer', type: 'raster', source: '_import-img',
       paint: { 'raster-opacity': 0.85 } });
 
+    // 中心マーカーで平行移動
     const el = document.createElement('div');
     el.style.cssText = 'width:16px;height:16px;background:#e02020;border:3px solid #fff;' +
       'border-radius:50%;cursor:move;box-shadow:0 1px 5px rgba(0,0,0,0.55);';
     _importMoveMarker = new maplibregl.Marker({ element: el, draggable: true })
       .setLngLat([centerLng, centerLat]).addTo(_previewMap);
 
-    _previewMap.flyTo({ center: [centerLng, centerLat],
-      zoom: Math.max(_previewMap.getZoom(), 12), duration: 600 });
-
-    // ドラッグ：KMZ座標形状を維持しつつ平行移動
     _importMoveMarker.on('drag', () => {
       const pos = _importMoveMarker.getLngLat();
       const dLng = pos.lng - centerLng, dLat = pos.lat - centerLat;
@@ -7760,8 +7778,49 @@ function openImportModalWithCoords(imgUrl, coords, label) {
   });
 }
 
-// ---- モーダルを閉じる（cancelOnly=false のとき URL を revoke しない） ----
+// ---- 微調整モード：4隅マーカーを表示 ----
+function enterFineTuneMode() {
+  if (!_previewMap || !_importCoords) return;
+  _fineTuneActive = true;
+  document.getElementById('import-finetune-btn').classList.add('active');
+  document.getElementById('import-finetune-btn').textContent = '通常モードに戻す';
+
+  // 中心マーカーを非表示
+  if (_importMoveMarker) _importMoveMarker.getElement().style.display = 'none';
+
+  // 4隅にドラッグ可能なマーカーを配置
+  _importCornerMarkers = _importCoords.map((coord, i) => {
+    const el = document.createElement('div');
+    el.style.cssText =
+      'width:14px;height:14px;background:#ff9900;border:2px solid #fff;' +
+      'border-radius:50%;cursor:grab;box-shadow:0 1px 4px rgba(0,0,0,0.6);';
+    el.title = ['左上', '右上', '右下', '左下'][i];
+    const marker = new maplibregl.Marker({ element: el, draggable: true })
+      .setLngLat(coord)
+      .addTo(_previewMap);
+    marker.on('drag', () => {
+      _importCoords[i] = Object.values(marker.getLngLat()); // [lng, lat]
+      _previewMap.getSource('_import-img').updateImage({ coordinates: _importCoords });
+    });
+    return marker;
+  });
+}
+
+// ---- 微調整モード解除 ----
+function exitFineTuneMode() {
+  _fineTuneActive = false;
+  document.getElementById('import-finetune-btn').classList.remove('active');
+  document.getElementById('import-finetune-btn').textContent = '微調整モード';
+  _importCornerMarkers.forEach(m => m.remove());
+  _importCornerMarkers = [];
+  if (_importMoveMarker) _importMoveMarker.getElement().style.display = '';
+}
+
+// ---- モーダルを閉じる（revokeUrl=false のとき ObjectURL を解放しない） ----
 function closeImportModal(revokeUrl = true) {
+  _importCornerMarkers.forEach(m => m.remove());
+  _importCornerMarkers = [];
+  _fineTuneActive = false;
   document.getElementById('import-overlay').classList.remove('visible');
   if (_importMoveMarker) { _importMoveMarker.remove(); _importMoveMarker = null; }
   if (_previewMap)       { _previewMap.remove(); _previewMap = null; }
@@ -7777,6 +7836,11 @@ function closeImportModal(revokeUrl = true) {
 // 閉じる・キャンセル
 document.getElementById('import-overlay-close-btn').addEventListener('click', () => closeImportModal());
 document.getElementById('import-cancel-btn').addEventListener('click', () => closeImportModal());
+
+// 微調整モード切り替え
+document.getElementById('import-finetune-btn').addEventListener('click', () => {
+  _fineTuneActive ? exitFineTuneMode() : enterFineTuneMode();
+});
 
 // 縮尺「手入力」切り替え
 document.getElementById('import-scale').addEventListener('change', (e) => {
