@@ -2299,6 +2299,17 @@ label.setting-label {
         </select>
       </div>
     </div>
+    <div class="setting-row" id="row-contour-dem">
+      <div class="setting-left">
+        <label class="setting-label">DEMソース</label>
+      </div>
+      <div class="setting-right">
+        <select id="sel-contour-dem" class="setting-select">
+          <option value="q1m">Q地図 1m</option>
+          <option value="dem5a">DEM5A 5m</option>
+        </select>
+      </div>
+    </div>
 
     <!-- 磁北線 -->
     <div class="setting-row toggle-left">
@@ -3360,13 +3371,24 @@ map.addControl(new maplibregl.GeolocateControl({
 */
 // 等高線レイヤーIDリスト（isomizer完了後に収集）
 let contourLayerIds = [];
-// シームレス標高タイル等高線レイヤーIDリスト（フォールバック用）
+// 湖水深等高線レイヤーIDリスト（等高線トグルに連動）
 let seamlessContourLayerIds = [];
+// DEMソースモード: 'q1m'（Q地図1m）または 'dem5a'（DEM5A 5m）
+let contourDemMode = 'q1m';
+// DEM5A専用レイヤーID
+const DEM5A_CONTOUR_LAYER_IDS = ['contour-regular-dem5a', 'contour-index-dem5a'];
 
 // 全等高線レイヤーに visibility を一括設定するヘルパー。
-// [...contourLayerIds, ...seamlessContourLayerIds] の都度スプレッド配列生成を避ける。
+// contourDemMode に従い Q地図 / DEM5A を排他表示する。
+// vis='none' のときは全レイヤー非表示（interval 切り替え時の一時的なフラッシュに使用）。
 function setAllContourVisibility(vis) {
-  for (const id of contourLayerIds)         if (map.getLayer(id)) map.setLayoutProperty(id, 'visibility', vis);
+  // Q地図レイヤー: 'q1m'モードかつ vis='visible' のときのみ表示
+  const qVis    = (vis === 'visible' && contourDemMode === 'q1m')   ? 'visible' : 'none';
+  // DEM5Aレイヤー: 'dem5a'モードかつ vis='visible' のときのみ表示
+  const dem5aVis = (vis === 'visible' && contourDemMode === 'dem5a') ? 'visible' : 'none';
+  for (const id of contourLayerIds)         if (map.getLayer(id)) map.setLayoutProperty(id, 'visibility', qVis);
+  for (const id of DEM5A_CONTOUR_LAYER_IDS) if (map.getLayer(id)) map.setLayoutProperty(id, 'visibility', dem5aVis);
+  // 湖水深は DEM モードに関わらず等高線トグルに従う
   for (const id of seamlessContourLayerIds) if (map.getLayer(id)) map.setLayoutProperty(id, 'visibility', vis);
 }
 
@@ -3779,14 +3801,13 @@ map.on('load', async () => {
     console.log('等高線レイヤー（フォールバック生成）:', contourLayerIds);
   }
 
-  // 湖水深等高線レイヤー + DEM5Aフォールバック等高線レイヤー（Q地図等高線の下に挿入）
-  // レイヤー描画順（上から）: Q地図 > マスク > 湖水深 > DEM5A
-  //   マスクレイヤー: Q地図ソースの等高線位置に地図背景色のワイドラインを描き、
-  //   下のDEM5Aラインを視覚的に隠す（Q地図カバーエリアで二重線を防ぐ）。
+  // 等高線レイヤーを追加（湖水深 + DEM5A）。Q地図レイヤーはiisomizerが生成済み。
+  // DEMソースはユーザーが「Q地図1m」/「DEM5A 5m」を排他切り替えする（setContourDemMode参照）。
+  // 描画順（上から）: Q地図 > DEM5A（常に両方addするが visibility で排他切り替え）> 湖水深
   if (contourLayerIds.length > 0) {
     const firstQchizuId = contourLayerIds[0];
 
-    // ① DEM5A等高線（最下段 → Q地図・マスク・湖水深の下）
+    // ① DEM5A等高線（Q地図の下）
     if (map.getSource('contour-source-dem5a')) {
       map.addLayer({
         id: 'contour-regular-dem5a',
@@ -3794,7 +3815,7 @@ map.on('load', async () => {
         source: 'contour-source-dem5a',
         'source-layer': 'contours',
         filter: ['!=', ['get', 'level'], 1],
-        layout: { 'line-join': 'round', 'line-cap': 'round' },
+        layout: { 'visibility': 'none', 'line-join': 'round', 'line-cap': 'round' },
         paint: { 'line-color': '#c86400', 'line-width': 1.0, 'line-opacity': 0.85 },
       }, firstQchizuId);
       map.addLayer({
@@ -3803,12 +3824,12 @@ map.on('load', async () => {
         source: 'contour-source-dem5a',
         'source-layer': 'contours',
         filter: ['==', ['get', 'level'], 1],
-        layout: { 'line-join': 'round', 'line-cap': 'round' },
+        layout: { 'visibility': 'none', 'line-join': 'round', 'line-cap': 'round' },
         paint: { 'line-color': '#c86400', 'line-width': 1.79, 'line-opacity': 1.0 },
       }, firstQchizuId);
     }
 
-    // ② 湖水深等高線（DEM5Aの上、マスクの下）
+    // ② 湖水深等高線（Q地図・DEM5Aの下）
     if (map.getSource('contour-source-lake')) {
       map.addLayer({
         id: 'contour-regular-lake',
@@ -3830,46 +3851,17 @@ map.on('load', async () => {
       }, firstQchizuId);
     }
 
-    // ③ マスクレイヤー（Q地図ソース使用）: Q地図カバーエリアの DEM5A ラインを隠す
-    // Q地図等高線と同じパスに地図背景色ワイドラインを描くことで下の DEM5A を覆う。
-    if (map.getSource('contour-source')) {
-      map.addLayer({
-        id: 'contour-mask-regular',
-        type: 'line',
-        source: 'contour-source',
-        'source-layer': 'contours',
-        filter: ['!=', ['get', 'level'], 1],
-        layout: { 'line-join': 'round', 'line-cap': 'round' },
-        paint: { 'line-color': '#f5f3ee', 'line-width': 5, 'line-opacity': 1.0 },
-      }, firstQchizuId);
-      map.addLayer({
-        id: 'contour-mask-index',
-        type: 'line',
-        source: 'contour-source',
-        'source-layer': 'contours',
-        filter: ['==', ['get', 'level'], 1],
-        layout: { 'line-join': 'round', 'line-cap': 'round' },
-        paint: { 'line-color': '#f5f3ee', 'line-width': 7, 'line-opacity': 1.0 },
-      }, firstQchizuId);
-    }
+    // seamlessContourLayerIds: 湖水深レイヤー（等高線トグルに連動して一括制御）
+    seamlessContourLayerIds = ['contour-regular-lake', 'contour-index-lake']
+      .filter(id => map.getLayer(id));
 
-    // seamlessContourLayerIds: 可視性一括制御対象（DEM5A + 湖水深 + マスク）
-    seamlessContourLayerIds = [
-      'contour-regular-dem5a', 'contour-index-dem5a',
-      'contour-regular-lake',  'contour-index-lake',
-      'contour-mask-regular',  'contour-mask-index',
-    ].filter(id => map.getLayer(id));
-
-    // OriLibre の水域フィルレイヤーが等高線の上に配置されるため、
-    // 全等高線レイヤーをスタック最上位へ移動する。
-    // DEM5A は moveLayer に含めず下段に固定。
-    // 移動順: DEM5A < 湖水深 < マスク < Q地図 の順で積み上がる。
+    // OriLibre の水域フィルレイヤーが等高線の上に配置されるため最上位へ移動。
+    // 移動順: DEM5A < 湖水深 < Q地図 の順（Q地図が最終的に一番上）。
     ['contour-regular-dem5a', 'contour-index-dem5a',
      'contour-regular-lake',  'contour-index-lake',
-     'contour-mask-regular',  'contour-mask-index',
      ...contourLayerIds,
     ].forEach(id => { if (map.getLayer(id)) map.moveLayer(id); });
-    console.log('等高線レイヤー追加完了（Q地図 + マスク + 湖水深 + DEM5A）');
+    console.log('等高線レイヤー追加完了（Q地図 + DEM5A + 湖水深）');
   }
 
   /*
@@ -6520,6 +6512,16 @@ selContour.addEventListener('change', () => {
       optContourCurrent.textContent = val + ' m';
       selContour.selectedIndex = 0;
     }
+  }
+});
+
+// ---- 等高線 DEMソース切り替え ----
+const selContourDem = document.getElementById('sel-contour-dem');
+selContourDem.addEventListener('change', () => {
+  contourDemMode = selContourDem.value; // 'q1m' または 'dem5a'
+  if (chkContour.checked) {
+    // 表示中のレイヤーを現在のモードに合わせて切り替え
+    setAllContourVisibility('visible');
   }
 });
 
