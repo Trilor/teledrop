@@ -8017,8 +8017,14 @@ function _replaceImageSource() {
   if (!_previewMap || !_importImgUrl || !_importCoords) return;
   const src = _previewMap.getSource('_import-img');
   if (src) {
-    // ドラッグ中の高速パス: 座標を更新して即時再描画
-    src.updateImage({ url: _importImgUrl, coordinates: _importCoords });
+    // ドラッグ中の高速パス:
+    // 画像URL再設定を伴う updateImage は高コストになりやすいため、
+    // 利用可能なら setCoordinates で座標のみ更新する。
+    if (typeof src.setCoordinates === 'function') {
+      src.setCoordinates(_importCoords);
+    } else {
+      src.updateImage({ url: _importImgUrl, coordinates: _importCoords });
+    }
     _previewMap.triggerRepaint();
   } else {
     // 初回: ソース・レイヤーを追加（透明度スライダーの現在値を反映）
@@ -8028,12 +8034,14 @@ function _replaceImageSource() {
   }
   // ヒットボックスの初期化 & 更新（ドラッグ中はスキップして軽量化）
   _initImgInteraction();
-  if (!_isDraggingImage) _updateHitbox();
+  if (!_isDraggingImage) {
+    _updateHitbox();
+    enterScaleMode();
+  }
   // 常時有効の4隅マーカーを同期
   if (_scaleCornerMarkers.length === 4) {
     _scaleCornerMarkers.forEach((m, i) => m.setLngLat(_importCoords[i]));
   }
-  enterScaleMode();
 }
 
 // ---- RAFスロットル付き _replaceImageSource（ドラッグ中の高速リアルタイム更新） ----
