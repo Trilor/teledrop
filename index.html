@@ -2028,11 +2028,11 @@ label.setting-label {
   flex-shrink: 0;
   background: #fafafa;
   color: #333;
-  padding: 12px 10px;
+  padding: 14px 12px;
   overflow-y: auto;
   display: flex;
   flex-direction: column;
-  gap: 12px;
+  gap: 16px;
   font-size: 12px;
   border-left: 1px solid #d8d8d8;
 }
@@ -2133,8 +2133,8 @@ label.setting-label {
 .import-ctrl-section {
   display: flex;
   flex-direction: column;
-  gap: 8px;
-  padding-top: 10px;
+  gap: 10px;
+  padding-top: 14px;
   border-top: 1px solid #e8e8e8;
 }
 .import-ctrl-section:first-child {
@@ -2605,7 +2605,7 @@ label.setting-label {
         <div class="import-ctrl-section">
           <div class="import-ctrl-section-title">Step 2 ― 位置と角度を合わせる</div>
           <div class="import-ctrl-hint">
-            ※地図上の赤マーカーをドラッグして中心を合わせます。（磁北は自動補正済み）
+            ※画像を直接ドラッグして移動、上部のハンドルで回転できます。（磁北は補正済み）
           </div>
           <div class="import-ctrl-group">
             <div class="import-ctrl-label">回転補正&emsp;<span id="import-rotation-val">0.0</span>°</div>
@@ -7967,10 +7967,13 @@ function _replaceImageSource() {
     _previewMap.addLayer({ id: '_import-layer', type: 'raster', source: '_import-img', paint: { 'raster-opacity': initOpacity } });
   }
   // ヒットボックス・回転ハンドルの初期化 & 更新（冪等）
+  // ドラッグ中は _updateHitbox / _updateRotateHandle をスキップして軽量化
   _initImgInteraction();
-  _updateHitbox();
-  if (_isRotatingHandle) _updateRotateLine();
-  else                   _updateRotateHandle();
+  if (!_isDraggingImage) {
+    _updateHitbox();
+    if (_isRotatingHandle) _updateRotateLine();
+    else                   _updateRotateHandle();
+  }
 }
 
 // ---- RAFスロットル付き _replaceImageSource（ドラッグ中の高速リアルタイム更新） ----
@@ -8069,19 +8072,29 @@ function _initRotateHandle() {
         geometry: { type: 'LineString', coordinates: [[pos.topMidLng, pos.topMidLat], [pos.handleLng, pos.handleLat]] }
       }
     });
+    // カーシング（縁取り）: 先に描画（下のレイヤー）
+    _previewMap.addLayer({
+      id: '_import-rotate-line-casing', type: 'line', source: '_import-rotate-line',
+      paint: { 'line-color': 'rgba(0,0,0,0.55)', 'line-width': 4 }
+    });
+    // 本線（白点線）: カーシングの上に描画
     _previewMap.addLayer({
       id: '_import-rotate-line-layer', type: 'line', source: '_import-rotate-line',
-      paint: { 'line-color': '#4a7c59', 'line-width': 1.5, 'line-dasharray': [4, 3] }
+      paint: { 'line-color': '#ffffff', 'line-width': 2, 'line-dasharray': [4, 3] }
     });
   }
 
-  // ハンドルマーカー（緑丸）
+  // ハンドルマーカー（白丸・グレー枠・SVG回転アイコン）
   const el = document.createElement('div');
   el.style.cssText =
-    'width:16px;height:16px;background:#4a7c59;border:2px solid #fff;' +
-    'border-radius:50%;cursor:grab;box-shadow:0 1px 5px rgba(0,0,0,0.5);' +
-    'display:flex;align-items:center;justify-content:center;font-size:10px;color:#fff;';
-  el.textContent = '↻';
+    'width:22px;height:22px;background:#ffffff;border:2px solid #888;' +
+    'border-radius:50%;cursor:grab;box-shadow:0 2px 6px rgba(0,0,0,0.3);' +
+    'display:flex;align-items:center;justify-content:center;';
+  el.innerHTML =
+    '<svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#666" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">' +
+    '<path d="M23 4v6h-6"/>' +
+    '<path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"/>' +
+    '</svg>';
   el.title = 'ドラッグして回転';
   _importRotateMarker = new maplibregl.Marker({ element: el, draggable: true, anchor: 'center' })
     .setLngLat([pos.handleLng, pos.handleLat])
@@ -8198,6 +8211,9 @@ function _initImgInteraction() {
       _isDraggingImage = false;
       _previewMap.dragPan.enable();
       _previewMap.getCanvas().style.cursor = '';
+      // ドラッグ終了後: ヒットボックス・ハンドル位置を正確に更新
+      _updateHitbox();
+      _updateRotateHandle();
       // ドラッグ終了後に磁気偏角キャッシュを更新
       if (_importCenter) {
         try { _cachedImportDecl = geomag.field(_importCenter.lat, _importCenter.lng).declination ?? 0; } catch (e) {}
@@ -8496,6 +8512,8 @@ function enterFineTuneMode() {
 
   // 回転ハンドル・アンテナ線を非表示
   if (_importRotateMarker) _importRotateMarker.getElement().style.display = 'none';
+  if (_previewMap.getLayer('_import-rotate-line-casing'))
+    _previewMap.setLayoutProperty('_import-rotate-line-casing', 'visibility', 'none');
   if (_previewMap.getLayer('_import-rotate-line-layer'))
     _previewMap.setLayoutProperty('_import-rotate-line-layer', 'visibility', 'none');
 
@@ -8531,6 +8549,8 @@ function exitFineTuneMode() {
 
   // 回転ハンドル・アンテナ線を再表示
   if (_importRotateMarker) _importRotateMarker.getElement().style.display = '';
+  if (_previewMap && _previewMap.getLayer('_import-rotate-line-casing'))
+    _previewMap.setLayoutProperty('_import-rotate-line-casing', 'visibility', 'visible');
   if (_previewMap && _previewMap.getLayer('_import-rotate-line-layer'))
     _previewMap.setLayoutProperty('_import-rotate-line-layer', 'visibility', 'visible');
 }
@@ -8614,6 +8634,16 @@ document.getElementById('import-bg-select').addEventListener('change', (e) => {
     });
     if (_previewMap.getLayer(rasterLayerMap[val])) {
       _previewMap.setLayoutProperty(rasterLayerMap[val], 'visibility', 'visible');
+    }
+    // 画像ソースが消えていた場合に備えて再描画を保証
+    if (_importImgUrl && _importCoords) {
+      const imgSrc = _previewMap.getSource('_import-img');
+      if (imgSrc) {
+        imgSrc.updateImage({ url: _importImgUrl, coordinates: _importCoords });
+        _previewMap.triggerRepaint();
+      } else {
+        _replaceImageSource();
+      }
     }
     return;
   }
