@@ -8376,7 +8376,7 @@ function _initImgInteraction() {
     // カーソル制御
     _previewMap.on('mouseenter', '_import-hitbox-layer', () => {
       if (!_isDraggingImage) {
-        _previewMap.getCanvas().style.cursor = _isSettingFixedPoint ? 'crosshair' : ((_importFixedPoints.length > 0 && !_isPlacingFixedPoint) ? 'not-allowed' : 'move');
+        _previewMap.getCanvas().style.cursor = _isSettingFixedPoint ? 'crosshair' : 'move';
       }
     });
     _previewMap.on('mouseleave', '_import-hitbox-layer', () => {
