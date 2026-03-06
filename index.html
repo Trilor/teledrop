@@ -2613,6 +2613,15 @@ label.setting-label {
               <button class="import-rotation-adj-btn" id="import-rotation-plus">+0.1°</button>
             </div>
           </div>
+          <div class="import-ctrl-group">
+            <div class="import-ctrl-label">スケール補正&emsp;<span id="import-scale-adj-val">100.0%</span></div>
+            <input type="range" id="import-scale-adj" class="import-ctrl-slider"
+              min="50" max="200" value="100" step="0.1" />
+            <div class="import-rotation-adj-row">
+              <button class="import-rotation-adj-btn" id="import-scale-adj-minus">−0.5%</button>
+              <button class="import-rotation-adj-btn" id="import-scale-adj-plus">+0.5%</button>
+            </div>
+          </div>
         </div>
 
         <!-- 表示設定（プレビュー用） -->
@@ -7892,11 +7901,16 @@ let _importDragRafId = null;
 // 磁気偏角キャッシュ（ドラッグ中に毎回計算しないよう dragend で更新）
 let _cachedImportDecl = 0;
 
+// スケール補正
+let _importScaleVal        = 100;  // 現在のスケール倍率（パーセント）
+let _importBaseScaleCoords = null; // スケール100%時の4隅座標（平行移動・回転と連動して更新）
+
 // Hitboxドラッグ（平行移動）用
-let _isDraggingImage   = false;
-let _dragStartLngLat   = null;
-let _dragStartCoords   = null;
-let _dragStartCenter   = null;
+let _isDraggingImage          = false;
+let _dragStartLngLat          = null;
+let _dragStartCoords          = null;
+let _dragStartCenter          = null;
+let _dragStartBaseScaleCoords = null; // 平行移動開始時の _importBaseScaleCoords
 
 // ヒットボックス + 回転ハンドル初期化フラグ
 let _imgInteractionInited = false;
@@ -7965,6 +7979,10 @@ function _replaceImageSource() {
   // ヒットボックスの初期化 & 更新（ドラッグ中はスキップして軽量化）
   _initImgInteraction();
   if (!_isDraggingImage) _updateHitbox();
+  // 拡大縮小モード中はコーナーマーカー位置も同期
+  if (_scaleModeActive && _scaleCornerMarkers.length === 4) {
+    _scaleCornerMarkers.forEach((m, i) => m.setLngLat(_importCoords[i]));
+  }
 }
 
 // ---- RAFスロットル付き _replaceImageSource（ドラッグ中の高速リアルタイム更新） ----
@@ -7991,6 +8009,43 @@ function _importCoordsToPolygon() {
   };
 }
 
+// ---- スケール UI を現在の _importScaleVal に同期 ----
+function _syncScaleUI() {
+  const el    = document.getElementById('import-scale-adj');
+  const valEl = document.getElementById('import-scale-adj-val');
+  if (el)    el.value = Math.min(200, Math.max(50, _importScaleVal));
+  if (valEl) valEl.textContent = _importScaleVal.toFixed(1) + '%';
+}
+
+// ---- _importBaseScaleCoords × _importScaleVal → _importCoords を再計算（Turf.js） ----
+function _applyImportScale() {
+  if (!_importBaseScaleCoords || !_importCenter) return;
+  const poly   = turf.polygon([[..._importBaseScaleCoords, _importBaseScaleCoords[0]]]);
+  const origin = [_importCenter.lng, _importCenter.lat];
+  const scaled = turf.transformScale(poly, _importScaleVal / 100, { origin });
+  _importCoords = scaled.geometry.coordinates[0].slice(0, 4);
+}
+
+// ---- _importCoords の逆スケールで _importBaseScaleCoords を再構築 ----
+// （4隅ドラッグ後など、coords 側が先に確定したときに呼ぶ）
+function _updateBaseScaleCoords() {
+  if (!_importCoords || !_importCenter || _importScaleVal <= 0) return;
+  const poly   = turf.polygon([[..._importCoords, _importCoords[0]]]);
+  const origin = [_importCenter.lng, _importCenter.lat];
+  const base   = turf.transformScale(poly, 100 / _importScaleVal, { origin });
+  _importBaseScaleCoords = base.geometry.coordinates[0].slice(0, 4);
+}
+
+// ---- 現在の _importScaleVal を座標へ反映（画像/KMZ 両モード） ----
+function _updateImportScale() {
+  if (_importBaseCoords) {
+    _applyKmzTransform();
+  } else {
+    _applyImportScale();
+    _replaceImageSource();
+  }
+}
+
 // ---- ヒットボックスポリゴンソースを最新座標で更新 ----
 function _updateHitbox() {
   if (!_previewMap || !_importCoords) return;
@@ -7999,12 +8054,15 @@ function _updateHitbox() {
 }
 
 
-// ---- 画像モード専用：キャッシュした偏角で回転のみ再計算（重い geomag 計算をスキップ） ----
+// ---- 画像モード専用：キャッシュした偏角で回転のみ再計算し現在スケールを適用 ----
 function _updateImportRotation() {
   if (!_importCenter || !_importImgUrl || !_previewMap) return;
   const [wM, hM] = _importCalcSizeM();
   const rotOffset = parseFloat(document.getElementById('import-rotation')?.value ?? '0');
-  _importCoords = _importCalcCorners(_importCenter.lng, _importCenter.lat, wM, hM, _cachedImportDecl + rotOffset);
+  // 回転100%時のベース座標を更新
+  _importBaseScaleCoords = _importCalcCorners(_importCenter.lng, _importCenter.lat, wM, hM, _cachedImportDecl + rotOffset);
+  // 現在のスケール倍率を適用して _importCoords を確定
+  _applyImportScale();
   _replaceImageSource();
 }
 
@@ -8043,9 +8101,10 @@ function _initImgInteraction() {
       e.preventDefault();
       _importSaveState();
       _isDraggingImage = true;
-      _dragStartLngLat = { lng: e.lngLat.lng, lat: e.lngLat.lat };
-      _dragStartCoords = _importCoords.map(c => [...c]);
-      _dragStartCenter = _importCenter ? { ..._importCenter } : null;
+      _dragStartLngLat          = { lng: e.lngLat.lng, lat: e.lngLat.lat };
+      _dragStartCoords          = _importCoords.map(c => [...c]);
+      _dragStartCenter          = _importCenter          ? { ..._importCenter }          : null;
+      _dragStartBaseScaleCoords = _importBaseScaleCoords ? _importBaseScaleCoords.map(c => [...c]) : null;
       _previewMap.dragPan.disable();
       _previewMap.getCanvas().style.cursor = 'grabbing';
     });
@@ -8066,8 +8125,10 @@ function _initImgInteraction() {
           _applyKmzTransform();
         });
       } else {
-        // 画像モード: 全隅を直接平行移動 → RAFで再描画
+        // 画像モード: 全隅・ベース座標を直接平行移動 → RAFで再描画
         _importCoords = _dragStartCoords.map(c => [c[0] + dx, c[1] + dy]);
+        if (_dragStartBaseScaleCoords)
+          _importBaseScaleCoords = _dragStartBaseScaleCoords.map(c => [c[0] + dx, c[1] + dy]);
         _replaceImageSourceRaf();
       }
     });
@@ -8096,6 +8157,8 @@ function _importSaveState() {
     coords : _importCoords.map(c => [...c]),
     center : _importCenter ? { ..._importCenter } : null,
     rotation: document.getElementById('import-rotation')?.value ?? '0',
+    scaleVal: _importScaleVal,
+    baseScaleCoords: _importBaseScaleCoords ? _importBaseScaleCoords.map(c => [...c]) : null,
   });
   _importFuture = []; // 新操作でredo履歴をクリア
 }
@@ -8109,6 +8172,8 @@ function _importUndo() {
       coords : _importCoords.map(c => [...c]),
       center : _importCenter ? { ..._importCenter } : null,
       rotation: document.getElementById('import-rotation')?.value ?? '0',
+      scaleVal: _importScaleVal,
+      baseScaleCoords: _importBaseScaleCoords ? _importBaseScaleCoords.map(c => [...c]) : null,
     });
   }
   const state = _importHistory.pop();
@@ -8123,6 +8188,8 @@ function _importRedo() {
       coords : _importCoords.map(c => [...c]),
       center : _importCenter ? { ..._importCenter } : null,
       rotation: document.getElementById('import-rotation')?.value ?? '0',
+      scaleVal: _importScaleVal,
+      baseScaleCoords: _importBaseScaleCoords ? _importBaseScaleCoords.map(c => [...c]) : null,
     });
   }
   const state = _importFuture.pop();
@@ -8133,6 +8200,12 @@ function _importRedo() {
 function _importRestoreState(state) {
   _importCoords = state.coords.map(c => [...c]);
   _importCenter = state.center ? { ...state.center } : null;
+  _importScaleVal = Number.isFinite(state.scaleVal) ? state.scaleVal : 100;
+  _importBaseScaleCoords = state.baseScaleCoords
+    ? state.baseScaleCoords.map(c => [...c])
+    : null;
+  if (!_importBaseScaleCoords) _updateBaseScaleCoords();
+  _syncScaleUI();
   const rotEl = document.getElementById('import-rotation');
   if (rotEl) {
     rotEl.value = state.rotation;
@@ -8163,7 +8236,11 @@ function _updateImportPreview() {
   let decl = 0;
   try { decl = geomag.field(c.lat, c.lng).declination ?? 0; } catch (e) {}
   _cachedImportDecl = decl; // ドラッグ用キャッシュを更新
-  _importCoords = _importCalcCorners(c.lng, c.lat, wM, hM, decl + rotOffset);
+  // 用紙サイズ・縮尺変更時はスケールをリセットしてベース座標を再構築
+  _importScaleVal        = 100;
+  _importBaseScaleCoords = _importCalcCorners(c.lng, c.lat, wM, hM, decl + rotOffset);
+  _importCoords          = _importBaseScaleCoords.map(p => [...p]);
+  _syncScaleUI();
 
   // 初回のみ: 画像全体にフィット
   if (!_previewMap.getSource('_import-img')) {
@@ -8241,6 +8318,8 @@ function _openImportOverlay(imgUrl, onLoad) {
   _importHistory        = [];
   _importFuture         = [];
   _cachedImportDecl     = 0;
+  _importScaleVal       = 100;
+  _importBaseScaleCoords = null;
   _isDraggingImage      = false;
   _imgInteractionInited = false;
   _imgEventsAdded       = false;
@@ -8254,6 +8333,7 @@ function _openImportOverlay(imgUrl, onLoad) {
   if (opEl) { opEl.value = '85'; document.getElementById('import-opacity-val').textContent = '85'; }
   const rotEl = document.getElementById('import-rotation');
   if (rotEl) { rotEl.value = '0'; document.getElementById('import-rotation-val').textContent = '0.0'; }
+  _syncScaleUI();
   document.getElementById('import-overlay').classList.add('visible');
 
   if (_previewMap) { _previewMap.remove(); _previewMap = null; }
@@ -8340,12 +8420,16 @@ function _applyKmzTransform() {
   const newCtr   = turf.point([cLng, cLat]);
 
   // 各隅を基準中心からの距離・方位で算出し、回転+平行移動して新中心に配置
-  _importCoords = _importBaseCoords.map(([lng, lat]) => {
+  const rawCoords = _importBaseCoords.map(([lng, lat]) => {
     const pt   = turf.point([lng, lat]);
     const dist = turf.distance(baseCtr, pt, { units: 'kilometers' });
     const bear = turf.bearing(baseCtr, pt) + rotDeg;
     return turf.getCoord(turf.destination(newCtr, dist, bear, { units: 'kilometers' }));
   });
+  // KMZ変換後のコードをスケール100%ベースとして保存し、現在スケールを適用
+  _importBaseScaleCoords = rawCoords;
+  _applyImportScale();
+  _syncScaleUI();
   _replaceImageSource();
 }
 
@@ -8366,6 +8450,9 @@ function openImportModalWithCoords(imgUrl, coords, label) {
     // ここで初期化（_openImportOverlay によるリセット後に設定）
     _importBaseCoords = coords.map(c => [...c]); // 回転前の基準座標
     _importCoords     = coords.map(c => [...c]);
+    _importScaleVal   = 100;
+    _importBaseScaleCoords = coords.map(c => [...c]);
+    _syncScaleUI();
     _importCenter     = { lng: centerLng, lat: centerLat };
 
     // KMZ画像全体が収まるようfitBounds（即時・アニメーションなし）
@@ -8429,15 +8516,17 @@ function enterScaleMode() {
       .addTo(_previewMap);
 
     // dragstart/drag 用クロージャ変数
-    let fixedCoord  = null; // 固定する対角コーナー座標
-    let startCoords = null; // ドラッグ開始時の全隅座標
-    let startDist   = 0;    // ドラッグ開始時のドラッグ隅→固定隅の距離
+    let fixedCoord    = null; // 固定する対角コーナー座標
+    let startCoords   = null; // ドラッグ開始時の全隅座標
+    let startDist     = 0;    // ドラッグ開始時のドラッグ隅→固定隅の距離
+    let savedScaleVal = 100;  // ドラッグ開始時のスケール倍率
 
     marker.on('dragstart', () => {
       _importSaveState();
       const oppIdx   = (i + 2) % 4;               // 対角コーナーのインデックス
       fixedCoord     = [..._importCoords[oppIdx]]; // 固定点（対角）
       startCoords    = _importCoords.map(c => [...c]);
+      savedScaleVal  = _importScaleVal;
       const cosLat   = Math.cos(fixedCoord[1] * Math.PI / 180);
       const dx0      = (startCoords[i][0] - fixedCoord[0]) * cosLat;
       const dy0      =  startCoords[i][1] - fixedCoord[1];
@@ -8462,6 +8551,10 @@ function enterScaleMode() {
         lng: _importCoords.reduce((s, c) => s + c[0], 0) / 4,
         lat: _importCoords.reduce((s, c) => s + c[1], 0) / 4,
       };
+      // スケール倍率を更新しUIと逆変換ベース座標を同期
+      _importScaleVal = savedScaleVal * scale;
+      _syncScaleUI();
+      _updateBaseScaleCoords();
       // 全マーカーを最新座標に移動
       _scaleCornerMarkers.forEach((m, j) => m.setLngLat(_importCoords[j]));
       _replaceImageSourceRaf();
@@ -8574,11 +8667,28 @@ document.getElementById('import-rotation').addEventListener('input', (e) => {
   if (_importBaseCoords) {
     _applyKmzTransform();
   } else {
-    _updateImportPreview();
+    _updateImportRotation();
   }
 });
-// 回転スライダーの確定時（mouseup/touchend）に状態保存
-document.getElementById('import-rotation').addEventListener('change', () => { _importSaveState(); });
+
+// range操作の開始時に一度だけ状態保存（Undoを1ステップに保つ）
+function _bindRangePreSave(id) {
+  const el = document.getElementById(id);
+  if (!el) return;
+  let armed = false;
+  const arm = () => {
+    if (armed) return;
+    _importSaveState();
+    armed = true;
+  };
+  el.addEventListener('pointerdown', arm);
+  el.addEventListener('keydown', (e) => {
+    if (e.key.startsWith('Arrow') || e.key === 'PageUp' || e.key === 'PageDown' || e.key === 'Home' || e.key === 'End') {
+      arm();
+    }
+  });
+  el.addEventListener('change', () => { armed = false; });
+}
 
 // ±0.5° 微調整ボタン
 function _applyRotationAdj(delta) {
@@ -8588,10 +8698,32 @@ function _applyRotationAdj(delta) {
   const newVal = Math.min(2, Math.max(-2, parseFloat(rotEl.value) + delta));
   rotEl.value = newVal;
   document.getElementById('import-rotation-val').textContent = newVal.toFixed(1);
-  if (_importBaseCoords) { _applyKmzTransform(); } else { _updateImportPreview(); }
+  if (_importBaseCoords) { _applyKmzTransform(); } else { _updateImportRotation(); }
 }
 document.getElementById('import-rotation-minus').addEventListener('click', () => _applyRotationAdj(-0.1));
 document.getElementById('import-rotation-plus') .addEventListener('click', () => _applyRotationAdj( 0.1));
+
+// スケール補正スライダー/微調整ボタン
+document.getElementById('import-scale-adj').addEventListener('input', (e) => {
+  _importScaleVal = parseFloat(e.target.value);
+  _syncScaleUI();
+  _updateImportScale();
+});
+function _applyScaleAdj(delta) {
+  const scaleEl = document.getElementById('import-scale-adj');
+  if (!scaleEl) return;
+  _importSaveState(); // 変更前にundo用保存
+  const cur = parseFloat(scaleEl.value);
+  const newVal = Math.min(200, Math.max(50, cur + delta));
+  _importScaleVal = newVal;
+  _syncScaleUI();
+  _updateImportScale();
+}
+document.getElementById('import-scale-adj-minus').addEventListener('click', () => _applyScaleAdj(-0.5));
+document.getElementById('import-scale-adj-plus') .addEventListener('click', () => _applyScaleAdj( 0.5));
+_bindRangePreSave('import-rotation');
+_bindRangePreSave('import-scale-adj');
+
 document.getElementById('import-undo-btn').addEventListener('click', _importUndo);
 document.getElementById('import-redo-btn').addEventListener('click', _importRedo);
 
