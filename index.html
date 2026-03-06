@@ -7877,7 +7877,6 @@ async function openImportModalFromKmz(file) {
 let _previewMap      = null;  // プレビュー用 MapLibre インスタンス
 let _importImgFile   = null;  // インポート中の画像 File
 let _importImgUrl    = null;  // 対応する ObjectURL
-let _importMoveMarker = null; // 中心移動マーカー（赤ドット）
 let _importCoords    = null;  // 現在の4隅座標 [[lng,lat]*4] TL→TR→BR→BL
 let _importCornerMarkers = []; // 微調整モードの4隅マーカー
 let _fineTuneActive  = false; // 微調整モード中か
@@ -7910,6 +7909,10 @@ let _isRotatingHandle    = false;
 let _rotateStartAngle    = 0;
 let _rotateStartSlider   = 0;
 let _rotateCenterCoord   = null;
+
+// 背景切替: setStyle を使わず visibility 操作のみで行うため
+// OriLibre 初期化時のレイヤー一覧を保存（{id, vis} 形式）
+let _previewOriLibreLayers = [];
 
 // ---- 用紙サイズ＋縮尺 → 実世界サイズ（メートル）を計算 ----
 function _importCalcSizeM() {
@@ -7977,8 +7980,10 @@ function _replaceImageSource() {
 }
 
 // ---- RAFスロットル付き _replaceImageSource（ドラッグ中の高速リアルタイム更新） ----
+// leading-edge: 既に RAF がキューに入っていれば追加しない。
+// これにより「マウス移動の最初のイベントで即時更新」が保証され、trailing-edge より遅延が少ない。
 function _replaceImageSourceRaf() {
-  if (_importDragRafId) cancelAnimationFrame(_importDragRafId);
+  if (_importDragRafId) return; // 既にキュー済み
   _importDragRafId = requestAnimationFrame(() => {
     _importDragRafId = null;
     _replaceImageSource();
@@ -8371,9 +8376,9 @@ function _addPreviewContourAndNorth(m) {
 // ---- モーダル共通初期化（previewMap生成） ----
 // onLoad: マップ読み込み完了後に呼ぶコールバック
 function _openImportOverlay(imgUrl, onLoad) {
-  _importImgUrl         = imgUrl;
-  _importMoveMarker     = null;
-  _importCoords         = null;
+  _importImgUrl           = imgUrl;
+  _importCoords           = null;
+  _previewOriLibreLayers  = [];
   _importCenter         = null;
   _importBaseCoords     = null;
   _fineTuneActive       = false;
@@ -8416,10 +8421,30 @@ function _openImportOverlay(imgUrl, onLoad) {
   });
 
   _previewMap.on('load', () => {
-    // 3D terrain 無効化（3Dは不使用）
     if (_previewMap.getTerrain()) _previewMap.setTerrain(null);
-    // ラスター背景の場合のみ等高線・磁北線を追加（OriLibreはキャッシュスタイルに含まれている）
-    if (initBg !== 'orilibre') _addPreviewContourAndNorth(_previewMap);
+
+    if (initBg === 'orilibre') {
+      // OriLibre 初期化時: 全レイヤーIDと初期 visibility を記録
+      _previewOriLibreLayers = _previewMap.getStyle().layers.map(l => ({
+        id: l.id,
+        vis: l.layout?.visibility ?? 'visible',
+      }));
+      // ラスター背景ソース/レイヤーを事前追加（初期非表示）
+      // これにより以降の背景切替は setStyle なし visibility 操作のみで済む
+      const rs = _PREVIEW_RASTER_STYLE;
+      Object.entries(rs.sources).forEach(([id, src]) => {
+        if (!_previewMap.getSource(id)) _previewMap.addSource(id, src);
+      });
+      rs.layers.forEach(l => {
+        if (!_previewMap.getLayer(l.id)) {
+          _previewMap.addLayer({ ...l, layout: { ...(l.layout || {}), visibility: 'none' } });
+        }
+      });
+    } else {
+      // ラスター初期化時: 等高線・磁北線を追加
+      _addPreviewContourAndNorth(_previewMap);
+    }
+
     onLoad();
   });
 }
@@ -8565,7 +8590,6 @@ function closeImportModal(revokeUrl = true) {
   _imgInteractionInited   = false;
   _imgEventsAdded         = false;
   document.getElementById('import-overlay').classList.remove('visible');
-  if (_importMoveMarker)   { _importMoveMarker.remove();  _importMoveMarker  = null; }
   if (_importRotateMarker) { _importRotateMarker.remove(); _importRotateMarker = null; }
   if (_previewMap)         { _previewMap.remove(); _previewMap = null; }
   if (revokeUrl && _importImgUrl) { URL.revokeObjectURL(_importImgUrl); }
@@ -8610,12 +8634,11 @@ document.getElementById('import-scale').addEventListener('change', (e) => {
 });
 document.getElementById('import-scale-custom').addEventListener('input', _updateImportPreview);
 
-// 背景地図切り替え（OriLibre ↔ ラスター間の setStyle にも対応）
+// 背景地図切り替え（setStyle を使わず visibility 操作のみ、画像レイヤーに触れない）
 document.getElementById('import-bg-select').addEventListener('change', (e) => {
   if (!_previewMap) return;
   const val = e.target.value;
-
-  // ラスター間切り替え（setStyle 不要）
+  const toOriLibre = (val === 'orilibre');
   const rasterLayerMap = {
     'osm':       'bg-osm-layer',
     'gsi-std':   'bg-gsi-std-layer',
@@ -8623,52 +8646,19 @@ document.getElementById('import-bg-select').addEventListener('change', (e) => {
     'gsi-photo': 'bg-gsi-photo-layer',
   };
 
-  const prevStyle = _previewMap.getStyle();
-  const wasOriLibre = prevStyle && !prevStyle.sources['bg-osm']; // OriLibreスタイルはbg-osmを持たない
-  const toOriLibre  = (val === 'orilibre');
-
-  if (!wasOriLibre && !toOriLibre) {
-    // ラスター → ラスター: レイヤー表示切り替えのみ
-    Object.values(rasterLayerMap).forEach(id => {
-      if (_previewMap.getLayer(id)) _previewMap.setLayoutProperty(id, 'visibility', 'none');
-    });
-    if (_previewMap.getLayer(rasterLayerMap[val])) {
-      _previewMap.setLayoutProperty(rasterLayerMap[val], 'visibility', 'visible');
-    }
-    // 画像ソースが消えていた場合に備えて再描画を保証
-    if (_importImgUrl && _importCoords) {
-      const imgSrc = _previewMap.getSource('_import-img');
-      if (imgSrc) {
-        imgSrc.updateImage({ url: _importImgUrl, coordinates: _importCoords });
-        _previewMap.triggerRepaint();
-      } else {
-        _replaceImageSource();
-      }
-    }
-    return;
-  }
-
-  // OriLibre ↔ ラスター: スタイル全体を差し替え
-  const newStyle = toOriLibre ? oriLibreCachedStyle : (() => {
-    // ラスタースタイルで選択背景のみ表示
-    const s = JSON.parse(JSON.stringify(_PREVIEW_RASTER_STYLE));
-    s.layers.forEach(l => { l.layout = l.layout || {}; l.layout.visibility = 'none'; });
-    const target = s.layers.find(l => l.id === rasterLayerMap[val]);
-    if (target) target.layout.visibility = 'visible';
-    return s;
-  })();
-
-  if (!newStyle) return;
-
-  _previewMap.setStyle(newStyle);
-  _previewMap.once('style.load', () => {
-    if (_previewMap.getTerrain()) _previewMap.setTerrain(null);
-    if (!toOriLibre) _addPreviewContourAndNorth(_previewMap);
-    // setStyle でソース/レイヤーが全て消えるため再初期化（イベントは保持）
-    _imgInteractionInited = false;
-    if (_importRotateMarker) { _importRotateMarker.remove(); _importRotateMarker = null; }
-    _replaceImageSource();
+  // OriLibreレイヤー: 初期化時に記録した ID リストで表示/非表示を一括切り替え
+  _previewOriLibreLayers.forEach(({ id, vis }) => {
+    if (_previewMap.getLayer(id))
+      _previewMap.setLayoutProperty(id, 'visibility', toOriLibre ? vis : 'none');
   });
+
+  // ラスターレイヤー: 選択したものだけ表示
+  Object.entries(rasterLayerMap).forEach(([key, layerId]) => {
+    if (_previewMap.getLayer(layerId))
+      _previewMap.setLayoutProperty(layerId, 'visibility', !toOriLibre && key === val ? 'visible' : 'none');
+  });
+
+  // 画像ソース/レイヤーには一切触れないので、読み込んだ地図画像はそのまま表示され続ける
 });
 
 // 回転スライダー → プレビュー再計算
