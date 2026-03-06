@@ -8149,16 +8149,39 @@ function _recalcImportCenterFromCoords() {
 }
 
 function _transformCoordsByPivotMove(startCoords, pivot, startMovePoint, currentMovePoint) {
-  const startDist = turf.distance(turf.point(pivot), turf.point(startMovePoint), { units: 'kilometers' });
-  const curDist   = turf.distance(turf.point(pivot), turf.point(currentMovePoint), { units: 'kilometers' });
-  const startBear = turf.bearing(turf.point(pivot), turf.point(startMovePoint));
-  const curBear   = turf.bearing(turf.point(pivot), turf.point(currentMovePoint));
-  const angleDeg  = curBear - startBear;
-  const scale     = startDist > 1e-9 ? (curDist / startDist) : 1;
-  const poly = turf.polygon([[...startCoords, startCoords[0]]]);
-  const rotated = turf.transformRotate(poly, angleDeg, { pivot });
-  const scaled  = turf.transformScale(rotated, scale, { origin: pivot });
-  return scaled.geometry.coordinates[0].slice(0, 4);
+  // MapLibre の描画座標系（WebMercator）上で相似変換することで、
+  // 固定点と画像の見た目位置をズーム変更時も一致させる。
+  const toMc = (lngLat) => {
+    const mc = maplibregl.MercatorCoordinate.fromLngLat({ lng: lngLat[0], lat: lngLat[1] });
+    return [mc.x, mc.y];
+  };
+  const toLngLat = (xy) => {
+    const ll = new maplibregl.MercatorCoordinate(xy[0], xy[1], 0).toLngLat();
+    return [ll.lng, ll.lat];
+  };
+
+  const p  = toMc(pivot);
+  const s0 = toMc(startMovePoint);
+  const s1 = toMc(currentMovePoint);
+  const v0 = [s0[0] - p[0], s0[1] - p[1]];
+  const v1 = [s1[0] - p[0], s1[1] - p[1]];
+  const len0 = Math.hypot(v0[0], v0[1]);
+  const len1 = Math.hypot(v1[0], v1[1]);
+  const scale = len0 > 1e-12 ? (len1 / len0) : 1;
+  const a0 = Math.atan2(v0[1], v0[0]);
+  const a1 = Math.atan2(v1[1], v1[0]);
+  const da = a1 - a0;
+  const cos = Math.cos(da);
+  const sin = Math.sin(da);
+
+  return startCoords.map((c) => {
+    const q = toMc(c);
+    const vx = q[0] - p[0];
+    const vy = q[1] - p[1];
+    const rx = (vx * cos - vy * sin) * scale;
+    const ry = (vx * sin + vy * cos) * scale;
+    return toLngLat([p[0] + rx, p[1] + ry]);
+  });
 }
 
 function _applyPendingFixedPointPlacement(currentLngLat) {
