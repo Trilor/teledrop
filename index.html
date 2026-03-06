@@ -2083,22 +2083,31 @@ label.setting-label {
   opacity: 0.7;
   pointer-events: none;
 }
-.import-slider-side-values {
+.import-slider-line {
   display: grid;
-  grid-template-columns: 32px 1fr 32px;
+  grid-template-columns: 32px minmax(0, 1fr) 32px;
   align-items: center;
   gap: 6px;
+}
+.import-slider-side-values {
+  display: contents;
+}
+.import-slider-side-values .left,
+.import-slider-side-values .right {
   font-size: 10px;
   color: #777;
   line-height: 1;
-  margin-top: 1px;
-  margin-bottom: 2px;
 }
 .import-slider-side-values .left {
+  grid-column: 1;
   text-align: right;
 }
 .import-slider-side-values .right {
+  grid-column: 3;
   text-align: left;
+}
+.import-slider-line .import-slider-wrap {
+  grid-column: 2;
 }
 .import-ctrl-select, .import-ctrl-input {
   width: 100%;
@@ -2676,10 +2685,12 @@ label.setting-label {
               <span>回転補正&emsp;<span id="import-rotation-val">0.00</span>°</span>
               <button id="import-rotation-reset" class="import-reset-btn" type="button" title="回転補正を初期値に戻す">↺</button>
             </div>
-            <div class="import-slider-side-values"><span class="left">-2.0</span><div></div><span class="right">2.0</span></div>
-            <div class="import-slider-wrap" style="--init-pct:50%">
-              <input type="range" id="import-rotation" class="import-ctrl-slider"
-                min="-2" max="2" value="0" step="0.05" />
+            <div class="import-slider-line">
+              <div class="import-slider-side-values"><span class="left">-2.0</span><span class="right">2.0</span></div>
+              <div class="import-slider-wrap" style="--init-pct:50%">
+                <input type="range" id="import-rotation" class="import-ctrl-slider"
+                  min="-2" max="2" value="0" step="0.05" />
+              </div>
             </div>
             <div class="import-rotation-adj-row">
               <button class="import-rotation-adj-btn" id="import-rotation-minus">−0.05°</button>
@@ -2691,14 +2702,16 @@ label.setting-label {
               <span>スケール補正&emsp;<span id="import-scale-adj-val">100.0%</span></span>
               <button id="import-scale-adj-reset" class="import-reset-btn" type="button" title="スケール補正を初期値に戻す">↺</button>
             </div>
-            <div class="import-slider-side-values"><span class="left">80</span><div></div><span class="right">120</span></div>
-            <div class="import-slider-wrap" style="--init-pct:50%">
-              <input type="range" id="import-scale-adj" class="import-ctrl-slider"
-                min="80" max="120" value="100" step="0.5" />
+            <div class="import-slider-line">
+              <div class="import-slider-side-values"><span class="left">80</span><span class="right">120</span></div>
+              <div class="import-slider-wrap" style="--init-pct:50%">
+                <input type="range" id="import-scale-adj" class="import-ctrl-slider"
+                  min="80" max="120" value="100" step="0.1" />
+              </div>
             </div>
             <div class="import-rotation-adj-row">
-              <button class="import-rotation-adj-btn" id="import-scale-adj-minus">−0.5%</button>
-              <button class="import-rotation-adj-btn" id="import-scale-adj-plus">+0.5%</button>
+              <button class="import-rotation-adj-btn" id="import-scale-adj-minus">−0.1%</button>
+              <button class="import-rotation-adj-btn" id="import-scale-adj-plus">+0.1%</button>
             </div>
           </div>
           <div class="import-ctrl-group">
@@ -8909,8 +8922,8 @@ function _applyScaleAdj(delta) {
   _syncScaleUI();
   _updateImportScale();
 }
-document.getElementById('import-scale-adj-minus').addEventListener('click', () => _applyScaleAdj(-0.5));
-document.getElementById('import-scale-adj-plus') .addEventListener('click', () => _applyScaleAdj( 0.5));
+document.getElementById('import-scale-adj-minus').addEventListener('click', () => _applyScaleAdj(-0.1));
+document.getElementById('import-scale-adj-plus') .addEventListener('click', () => _applyScaleAdj( 0.1));
 document.getElementById('import-scale-adj-reset').addEventListener('click', () => {
   _importSaveState();
   _importScaleVal = 100;
