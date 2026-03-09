@@ -3533,7 +3533,9 @@ maplibregl.addProtocol('gsjdem', async (params, abortController) => {
   for (let i = 0; i < data.length; i += 4) {
     const r = data[i], g = data[i + 1], b = data[i + 2], a = data[i + 3];
     if ((r === 128 && g === 0 && b === 0) || a !== 255) {
-      data[i] = 128; data[i + 1] = 0; data[i + 2] = 0; data[i + 3] = 255;
+      // nodata → alpha=0（透明）で出力。MapLibreは透明ピクセルを標高データなしと判断し
+      // 隣接ピクセルで補間するため、水域が強制的に0mになって凹む問題を防ぐ。
+      data[i] = 0; data[i + 1] = 0; data[i + 2] = 0; data[i + 3] = 0;
       continue;
     }
     const bits24 = (r << 16) | (g << 8) | b;
