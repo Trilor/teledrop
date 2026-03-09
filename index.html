@@ -4307,7 +4307,7 @@ map.on('load', async () => {
       url: 'https://mapdata.qchizu.xyz/03_dem/52_gsi/all_2025/1_02/{z}/{x}/{y}.webp',
       encoding: 'numpng',
       minzoom: 0,
-      maxzoom: 14, // DEM5A と同水準(15)より1段低く設定し1mDEMノイズを平滑化
+      maxzoom: 15, // DEM5A と同水準に設定し1mDEMのオーバーズーム平滑化
       worker: true,
       cacheSize: 100,
       timeoutMs: 30_000,
