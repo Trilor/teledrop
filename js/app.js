@@ -437,7 +437,7 @@ map.on('load', async () => {
   const snapshotBeforeIsomizer = new Set(map.getStyle().layers.map(l => l.id));
 
   try {
-    const { isomizer } = await import('./js/isomizer/isomizer.js');
+    const { isomizer } = await import('./isomizer/isomizer.js');
     await isomizer(map);
     console.log('OriLibre スタイル構築完了');
 
@@ -528,9 +528,12 @@ map.on('load', async () => {
     });
   }
 
-  // isomizer完了後、contour-sourceを参照するレイヤーIDを収集（表示/非表示制御に使用）
-  contourLayerIds = map.getStyle().layers.filter(l => l.source === 'contour-source').map(l => l.id);
-  // symbol型（数値ラベル）は常に非表示にする
+  // isomizer完了後、contour-sourceを参照するlineレイヤーIDのみを収集（symbol=数値ラベルは除外）
+  // symbol型は表示/非表示制御から外すことで、等高線トグル時にラベルが表示されないようにする
+  contourLayerIds = map.getStyle().layers
+    .filter(l => l.source === 'contour-source' && l.type !== 'symbol')
+    .map(l => l.id);
+  // symbol型（数値ラベル）は常に非表示のまま維持
   map.getStyle().layers
     .filter(l => l.source === 'contour-source' && l.type === 'symbol')
     .forEach(l => map.setLayoutProperty(l.id, 'visibility', 'none'));
@@ -586,7 +589,8 @@ map.on('load', async () => {
       },
     });
 
-    contourLayerIds = ['contour-regular', 'contour-index', 'contour-label'];
+    // contour-label（symbol）は表示/非表示制御から除外（ラベルは常に非表示）
+    contourLayerIds = ['contour-regular', 'contour-index'];
     console.log('等高線レイヤー（フォールバック生成）:', contourLayerIds);
   }
 
