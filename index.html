@@ -2161,44 +2161,39 @@ label.setting-label {
 }
 
 /* セットアップ時の開始地点クロスヘア（シミュレーション未開始時に常時表示） */
-#setup-crosshair {
-  display: block;
+/* 開始位置クリックモード: 赤丸カーソル */
+#sim-start-cursor {
+  display: none;
   position: fixed;
-  top: 50%;
-  left: 50%;
-  transform: translate(-50%, -50%);
-  z-index: 25;
+  width: 14px;
+  height: 14px;
+  background: #ff3300;
+  border: 2px solid #fff;
+  border-radius: 50%;
+  box-shadow: 0 0 6px rgba(0,0,0,0.55);
   pointer-events: none;
-  width: 16px;
-  height: 16px;
+  z-index: 30;
+  transform: translate(-50%, -50%);
 }
-#setup-crosshair::before,
-#setup-crosshair::after {
-  content: '';
-  position: absolute;
-  background: rgba(74, 124, 89, 0.85);
-}
-#setup-crosshair::before { /* 横線 */
-  width: 16px; height: 2px;
-  top: 7px; left: 0;
-}
-#setup-crosshair::after { /* 縦線 */
-  width: 2px; height: 16px;
-  top: 0; left: 7px;
-}
-#setup-crosshair-label {
-  position: absolute;
-  top: 20px;
+/* クリック待ち中はネイティブカーソルを非表示 */
+#map.sim-start-picking { cursor: none; }
+/* 操作ガイド */
+#sim-start-hint-overlay {
+  display: none;
+  position: fixed;
+  bottom: 28px;
   left: 50%;
   transform: translateX(-50%);
-  font-size: 10px;
-  font-weight: 700;
-  color: rgba(74, 124, 89, 0.95);
-  background: rgba(255, 255, 255, 0.82);
-  padding: 1px 6px;
-  border-radius: 3px;
+  background: rgba(0,0,0,0.68);
+  color: #fff;
+  font-size: 12px;
+  font-weight: 500;
+  padding: 7px 18px;
+  border-radius: 6px;
+  z-index: 30;
+  pointer-events: none;
   white-space: nowrap;
-  letter-spacing: 0.04em;
+  letter-spacing: 0.03em;
 }
 
 /* 読図アクション オーバーレイ */
@@ -2775,7 +2770,7 @@ label.setting-label {
       <!-- 開始ボタン（固定下部） -->
       <div class="sim-start-block">
         <button id="pc-sim-toggle-btn">PC シミュレーター開始</button>
-        <div id="pc-sim-start-hint">地図の中心（⊕）から開始します</div>
+        <div id="pc-sim-start-hint">クリックした場所からシミュレーターを開始します</div>
       </div>
     </div>
 
@@ -3294,7 +3289,8 @@ label.setting-label {
   <span class="hint-group"><kbd>Esc</kbd><span class="hint-action">終了</span></span>
 </div>
 <div id="pc-sim-crosshair"></div>
-<div id="setup-crosshair"><span id="setup-crosshair-label">開始地点</span></div>
+<div id="sim-start-cursor"></div>
+<div id="sim-start-hint-overlay">開始位置をクリック &nbsp;|&nbsp; ESC でキャンセル</div>
 <!-- PC O-シミュレーター：読図マップオーバーレイ -->
 <div id="pc-sim-readmap-overlay">
   <div id="pc-sim-readmap-wrapper">
@@ -8150,6 +8146,9 @@ document.getElementById('chk-readmap-dot').addEventListener('change', e => {
    ================================================================ */
 
 // ---- 状態変数 ----
+let _simStartLng = null, _simStartLat = null; // クリック待ちで記録した開始座標
+let _simPickingActive = false;               // クリック待ちモード中か
+
 let pcSimActive    = false;
 let pcSimAnimFrame = null;
 let pcSimLastTime  = null;
@@ -8233,8 +8232,9 @@ function onPcSimLocked() {
   map.touchZoomRotate.disable();
   map.keyboard.disable();
 
-  // ② プレイヤー位置・カメラパラメータを現在のマップ状態から初期化
-  const c    = map.getCenter();
+  // ② プレイヤー位置・カメラパラメータを初期化（クリック位置優先、なければ地図中心）
+  const c    = (_simStartLng != null) ? { lng: _simStartLng, lat: _simStartLat } : map.getCenter();
+  _simStartLng = null; _simStartLat = null;
   pcPlayerLng = c.lng;
   pcPlayerLat = c.lat;
   pcBearing   = map.getBearing();
@@ -8258,7 +8258,6 @@ function onPcSimLocked() {
   const hintOn = document.getElementById('chk-sim-hint')?.checked ?? true;
   document.getElementById('pc-sim-hint').style.display = hintOn ? 'block' : 'none';
   document.getElementById('pc-sim-crosshair').style.display = 'block';
-  document.getElementById('setup-crosshair').style.display = 'none';
 
   addSimPosMarker(); // 3D現在位置マーカーは常時ON
   // 読図マップは初回 openPcReadMap() 時に遅延初期化（非表示コンテナでのWebGL失敗を防ぐ）
@@ -8303,7 +8302,6 @@ function stopPcSim() {
   btn.classList.remove('pc-sim-active');
   document.getElementById('pc-sim-hint').style.display = 'none';
   document.getElementById('pc-sim-crosshair').style.display = 'none';
-  document.getElementById('setup-crosshair').style.display = 'block';
 
   // 地図操作を復元
   map.dragPan.enable();
@@ -8792,8 +8790,61 @@ function closePcReadMap() {
   document.getElementById('pc-sim-readmap-overlay').classList.remove('visible');
 }
 
+// ---- 開始位置クリック待ちモード ----
+function enterSimStartPicking() {
+  if (_simPickingActive || pcSimActive) return;
+  _simPickingActive = true;
+  document.getElementById('map').classList.add('sim-start-picking');
+  document.getElementById('sim-start-cursor').style.display = 'block';
+  document.getElementById('sim-start-hint-overlay').style.display = 'block';
+  document.getElementById('sidebar').style.display = 'none';
+  document.getElementById('unified-search').style.display = 'none';
+  const btn = document.getElementById('pc-sim-toggle-btn');
+  btn.textContent = 'ESCでキャンセル';
+  document.addEventListener('mousemove', _onSimPickMouseMove);
+  document.getElementById('map').addEventListener('click', _onSimPickClick);
+  document.addEventListener('keydown', _onSimPickKeydown);
+}
+
+function exitSimStartPicking() {
+  if (!_simPickingActive) return;
+  _simPickingActive = false;
+  document.getElementById('map').classList.remove('sim-start-picking');
+  document.getElementById('sim-start-cursor').style.display = 'none';
+  document.getElementById('sim-start-hint-overlay').style.display = 'none';
+  document.getElementById('sidebar').style.display = '';
+  document.getElementById('unified-search').style.display = '';
+  const btn = document.getElementById('pc-sim-toggle-btn');
+  btn.textContent = 'PC シミュレーター開始';
+  document.removeEventListener('mousemove', _onSimPickMouseMove);
+  document.getElementById('map').removeEventListener('click', _onSimPickClick);
+  document.removeEventListener('keydown', _onSimPickKeydown);
+}
+
+function _onSimPickMouseMove(e) {
+  const cursor = document.getElementById('sim-start-cursor');
+  cursor.style.left = e.clientX + 'px';
+  cursor.style.top  = e.clientY + 'px';
+}
+
+function _onSimPickClick(e) {
+  const rect  = document.getElementById('map').getBoundingClientRect();
+  const lngLat = map.unproject([e.clientX - rect.left, e.clientY - rect.top]);
+  _simStartLng = lngLat.lng;
+  _simStartLat = lngLat.lat;
+  exitSimStartPicking();
+  startPcSim();
+}
+
+function _onSimPickKeydown(e) {
+  if (e.key === 'Escape') exitSimStartPicking();
+}
+
 // ---- PCシムボタンのイベント ----
-document.getElementById('pc-sim-toggle-btn').addEventListener('click', startPcSim);
+document.getElementById('pc-sim-toggle-btn').addEventListener('click', () => {
+  if (pcSimActive) stopPcSim();
+  else enterSimStartPicking();
+});
 
 
 // ---- 読図地図セレクト変更 ----
