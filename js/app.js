@@ -32,8 +32,7 @@ const map = new maplibregl.Map({
 
   container: 'map',
   attributionControl: false,
-  preserveDrawingBuffer: true, // サムネイル生成時の map.getCanvas() 読み取りに必要
-  preserveDrawingBuffer: true,
+  // preserveDrawingBuffer: true, // サムネイル生成時の map.getCanvas() 読み取りに必要（生成機能使用時は有効化）
   style: {
     version: 8,
     // OriLibreのisomizerがベクタースタイルを動的に注入するための基本設定
@@ -3904,6 +3903,8 @@ document.getElementById('basemap-cards').addEventListener('click', (e) => {
   switchBasemap(card.dataset.key);
 });
 
+/* ---- サムネイル生成関連（非表示中・復帰用に保存） ----
+
 // ---- OriLibre サムネイル生成（正方形） ----
 const ORILIBRE_THUMB_KEY = 'orilibre-thumb';
 const ORILIBRE_THUMB_SIZE = 256;
@@ -4032,6 +4033,8 @@ async function captureAllBasemapThumbs() {
 
 const btnOriLibreThumb = document.getElementById('btn-orilibre-thumb');
 if (btnOriLibreThumb) btnOriLibreThumb.addEventListener('click', captureAllBasemapThumbs);
+
+---- サムネイル生成関連ここまで ---- */
 
 // ---- サイドバーナビゲーション ----
 let _sidebarCurrentPanel = 'sim';
