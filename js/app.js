@@ -3362,30 +3362,37 @@ function updateMagneticNorth() {
     document.getElementById('sel-magnetic-north-interval').selectedIndex = 0;
   }
 
-  // ビューポートの縦幅（km）からステップ距離を決定
-  // 縦幅を15分割を基準に、広域は最大100km・拡大時は最小0.5km
+  // ステップ距離を動的決定：視野の対角を15分割、広域は最大100km・拡大時は最小0.5km
+  const viewWidth  = turf.distance(
+    turf.point([bounds.getWest(), center.lat]),
+    turf.point([bounds.getEast(), center.lat]),
+    { units: 'kilometers' }
+  );
   const viewHeight = turf.distance(
     turf.point([center.lng, bounds.getSouth()]),
     turf.point([center.lng, bounds.getNorth()]),
     { units: 'kilometers' }
   );
-  const stepKm = Math.min(100, Math.max(0.5, viewHeight / 15));
+  const halfExtentKm = Math.hypot(viewWidth, viewHeight) / 2 * 1.3;
+  const stepKm = Math.min(100, Math.max(0.5, halfExtentKm / 15));
 
   // フェイルセーフ：最大ステップ数（無限ループ防止）
   const MAX_STEPS = 400;
 
   // 打ち切り緯度境界（Bounds + 1ステップ分バッファ）
-  // zoom ≤ 3（全球）では南極〜北極まで
+  // ±70° でクランプ：それ以上は geomag の偏角が不安定になり線が暴走するため
   const isGlobal = map.getZoom() <= 3;
-  const bufDeg   = stepKm / 100; // 概算：1km ≈ 0.01°
-  const minLat   = isGlobal ? -89.9 : bounds.getSouth() - bufDeg;
-  const maxLat   = isGlobal ?  89.9 : bounds.getNorth() + bufDeg;
+  const bufDeg   = stepKm / 100;
+  const minLat   = Math.max(-70, isGlobal ? -70 : bounds.getSouth() - bufDeg);
+  const maxLat   = Math.min( 89.9, isGlobal ? 89.9 : bounds.getNorth() + bufDeg);
 
   // ── 絶対座標グリッド方式 ──
-  // 赤道上の固定経度グリッドを基点にする。地図を動かしても線の位置が変わらない。
-  // dLng: 赤道での intervalKm に対応する経度幅（度）
+  // 経度グリッドを赤道基準の固定値にし、東西パンで線がズレないようにする。
+  // 緯度の基準点を最近傍整数度にスナップし、南北パンでのズレを最小化する。
+  // （0.5° ≈ 55km 以上パンしない限り基準点は変わらない）
   const EQ_KM_PER_DEG = Math.PI * 6371 / 180; // ≈ 111.195 km/deg（赤道）
-  const dLng = intervalKm / EQ_KM_PER_DEG;
+  const dLng   = intervalKm / EQ_KM_PER_DEG;
+  const refLat = Math.round(center.lat); // 最近傍整数度にスナップした基準緯度
 
   // ビューポートをカバーする経度範囲のグリッドインデックス
   const westLng  = isGlobal ? -180 : bounds.getWest()  - bufDeg;
@@ -3394,36 +3401,38 @@ function updateMagneticNorth() {
   const endIdx   = Math.ceil (eastLng / dLng);
 
   /**
-   * 開始座標から磁北方向（北向き）へ多角線座標を生成する。
+   * 基点座標から1方向へ多角線座標を生成する。
    * 各ステップで現在地点の geomag 偏角を再計算して軌道修正する。
-   * 南端→北端の1方向のみ歩くことで従来の南北2方向歩行より計算量を削減する。
-   * @param {number[]} startCoords [lng, lat]（ビューポート南端付近）
+   * @param {number[]} startCoords [lng, lat]
+   * @param {boolean}  towardNorth true=磁北方向, false=磁南方向
    * @returns {number[][]} 座標配列（startCoords を先頭に含む）
    */
-  function walkMagneticLine(startCoords) {
+  function walkMagneticLine(startCoords, towardNorth) {
     const pts = [startCoords];
     let lng = startCoords[0];
     let lat = startCoords[1];
     for (let s = 0; s < MAX_STEPS; s++) {
       // 現在地点の偏角を WMM で再計算（緯度を ±89.9° にクランプして極付近の発散を防ぐ）
-      const decl = geomag.field(Math.max(-89.9, Math.min(89.9, lat)), lng).declination;
-      const next = turf.destination(turf.point([lng, lat]), stepKm, decl, { units: 'kilometers' });
+      const decl    = geomag.field(Math.max(-89.9, Math.min(89.9, lat)), lng).declination;
+      const bearing = towardNorth ? decl : (decl + 180 + 360) % 360;
+      const next    = turf.destination(turf.point([lng, lat]), stepKm, bearing, { units: 'kilometers' });
       lng = next.geometry.coordinates[0];
       lat = next.geometry.coordinates[1];
       pts.push([lng, lat]);
-      // 北端を超えたら打ち切り（緯度のみで判定：経度は全球を巡回するため判定しない）
-      if (lat > maxLat) break;
+      // 緯度のみで打ち切り（経度は全球を巡回するため判定しない）
+      if (towardNorth ? lat > maxLat : lat < minLat) break;
     }
     return pts;
   }
 
   const features = [];
   for (let i = startIdx; i <= endIdx; i++) {
-    // 固定経度グリッドのビューポート南端を開始点にして北向きに歩く。
-    // 開始緯度を南端に固定することで東西パン時に線がズレない。
-    // 南北パン時も偏角変化が微小なため実用上は線が固定に見える。
-    const startLat = Math.max(-89.9, minLat);
-    const coords = walkMagneticLine([i * dLng, startLat]);
+    // 固定経度グリッド × スナップ済み基準緯度の基点から南北両方向に伸ばす
+    const basePt   = [i * dLng, refLat];
+    const northPts = walkMagneticLine(basePt, true);
+    const southPts = walkMagneticLine(basePt, false);
+    // 南端 → 基点 → 北端 の順に結合して1本の LineString にする
+    const coords   = [...southPts.slice(1).reverse(), ...northPts];
     if (coords.length >= 2) {
       features.push(turf.lineString(coords));
     }
