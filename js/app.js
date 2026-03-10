@@ -3421,8 +3421,14 @@ function updateMagneticNorth() {
       lng = next.geometry.coordinates[0];
       lat = next.geometry.coordinates[1];
       pts.push([lng, lat]);
-      // Bounds + バッファを超えたら打ち切り（1点はみ出すことで端まで線を引く）
-      if (lng < minLng || lng > maxLng || lat < minLat || lat > maxLat) break;
+      // Bounds を超えたら打ち切り（1点はみ出すことで端まで線を引く）
+      // zoom ≤ 3 のグローバルモードでは磁北線は南北方向に進むため緯度のみで判定する。
+      // 経度も判定すると turf が返す座標が ±180° を超えた場合に即打ち切りになる。
+      if (isGlobal) {
+        if (lat < minLat || lat > maxLat) break;
+      } else {
+        if (lng < minLng || lng > maxLng || lat < minLat || lat > maxLat) break;
+      }
     }
     return pts;
   }
