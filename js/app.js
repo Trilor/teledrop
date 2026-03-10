@@ -96,28 +96,29 @@ map.addControl(new maplibregl.AttributionControl({
 }), 'bottom-right');
 
 // 出典パネルの開閉を監視し、縮尺コントロールを出典の上に移動（重なり防止）
+// MutationObserver: 開閉クラスの変化を検知
+// ResizeObserver  : 複数行への折り返しなど高さ変化を都度追従
 {
-  const syncScaleWithAttrib = () => {
+  requestAnimationFrame(() => {
     const attribEl = document.querySelector('.maplibregl-ctrl-attrib');
     const scaleEl  = document.getElementById('scale-ctrl-container');
     if (!attribEl || !scaleEl) return;
-    const open = attribEl.classList.contains('maplibregl-compact-show');
-    if (open) {
+
+    const updateHeight = () => {
       document.documentElement.style.setProperty(
         '--attrib-h', attribEl.getBoundingClientRect().height + 'px'
       );
-      scaleEl.classList.add('above-attrib');
-    } else {
-      scaleEl.classList.remove('above-attrib');
-    }
-  };
-  // MapLibreはaddControl後にDOMを同期生成するが、タイミング保証のためdeferする
-  requestAnimationFrame(() => {
-    const attribEl = document.querySelector('.maplibregl-ctrl-attrib');
-    if (attribEl) {
-      new MutationObserver(syncScaleWithAttrib)
-        .observe(attribEl, { attributes: true, attributeFilter: ['class'] });
-    }
+    };
+
+    // クラス変化（開く/閉じる）に反応
+    new MutationObserver(() => {
+      const open = attribEl.classList.contains('maplibregl-compact-show');
+      scaleEl.classList.toggle('above-attrib', open);
+      if (open) updateHeight();
+    }).observe(attribEl, { attributes: true, attributeFilter: ['class'] });
+
+    // 出典の高さが変わるたびに（複数行折り返しを含む）--attrib-h を更新
+    new ResizeObserver(updateHeight).observe(attribEl);
   });
 }
 
