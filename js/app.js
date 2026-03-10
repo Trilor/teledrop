@@ -3573,7 +3573,7 @@ function updateRegionalAttribution() {
     attrInner.appendChild(attrEl);
   }
   const _overlayOn  = document.getElementById('chk-overlay')?.checked;
-  const _csOverlay  = _overlayOn ? document.getElementById('sel-overlay')?.value : 'none';
+  const _csOverlay  = _overlayOn ? currentOverlay : 'none';
   const _csBasemap  = currentBasemap;
   const _csKey      = _csOverlay !== 'none' ? _csOverlay : _csBasemap;
   const csRegionalOn = _csKey === 'cs-0.5m' && map.getZoom() >= 17;
@@ -3619,10 +3619,12 @@ function updatePlateauAttribution() {
 
 // ---- CS立体図 オーバーレイ制御 ----
 // 0.5m モードはズーム17以上で地域CSを表示し、ズーム17未満は1mに自動フォールバック
+let currentOverlay = 'cs-1m'; // 選択中のオーバーレイキー
+
 function updateCsVisibility() {
   const basemap    = currentBasemap;
   const overlayOn  = document.getElementById('chk-overlay').checked;
-  const overlay    = overlayOn ? document.getElementById('sel-overlay').value : 'none';
+  const overlay    = overlayOn ? currentOverlay : 'none';
 
   // オーバーレイ優先、なければベースマップ選択を参照
   const csKey = overlay !== 'none' ? overlay
@@ -3647,7 +3649,16 @@ function updateCsVisibility() {
   updateRegionalAttribution();
 }
 
-document.getElementById('sel-overlay').addEventListener('change', updateCsVisibility);
+// オーバーレイカードのクリックハンドラー
+document.getElementById('overlay-cards').addEventListener('click', (e) => {
+  const card = e.target.closest('.bm-card');
+  if (!card) return;
+  document.querySelectorAll('#overlay-cards .bm-card').forEach(c => c.classList.remove('active'));
+  card.classList.add('active');
+  currentOverlay = card.dataset.key;
+  updateCsVisibility();
+});
+
 document.getElementById('chk-overlay').addEventListener('change', updateCsVisibility);
 
 // ズーム17の境界を跨いだとき 0.5m ↔ 1m を自動切替

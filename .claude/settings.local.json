@@ -1,0 +1,25 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(python3 -:*)",
+      "WebFetch(domain:github.com)",
+      "WebFetch(domain:raw.githubusercontent.com)",
+      "Bash(git push origin main)",
+      "Bash(git add index.html)",
+      "Bash(git commit -m \"GeoJSON読み込み: terrains形式とframes形式を自動判別して処理\")",
+      "Bash(git commit -m \"地方・都道府県列にテレイン数バッジを追加\")",
+      "Bash(curl -s \"https://api.github.com/repos/qchizu-project/qchizu-maps-maplibregljs/contents/src\")",
+      "Bash(python3 -c \"import sys,json; [print\\(f[''name'']\\) for f in json.load\\(sys.stdin\\) if isinstance\\(f, dict\\)]\")",
+      "Bash(curl -s \"https://api.github.com/repos/qchizu-project/qchizu-maps-maplibregljs/contents/src/protocols\")",
+      "Bash(python3 -c \"import sys,json; [print\\(f[''name'']\\) for f in json.load\\(sys.stdin\\)]\")",
+      "Bash(curl -s \"https://raw.githubusercontent.com/qchizu-project/qchizu-maps-maplibregljs/main/src/stores/DemSources.js\")",
+      "Bash(git add style.css)",
+      "Bash(git commit:*)",
+      "Bash(git add js/app.js index.html)",
+      "Bash(git add js/app.js)",
+      "Bash(git add index.html style.css js/app.js)",
+      "WebFetch(domain:api.github.com)",
+      "Bash(git add index.html js/app.js)"
+    ]
+  }
+}
