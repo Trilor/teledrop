@@ -95,6 +95,31 @@ map.addControl(new maplibregl.AttributionControl({
     ' を加工して作成',
 }), 'bottom-right');
 
+// 出典パネルの開閉を監視し、縮尺コントロールを出典の上に移動（重なり防止）
+{
+  const syncScaleWithAttrib = () => {
+    const attribEl = document.querySelector('.maplibregl-ctrl-attrib');
+    const scaleEl  = document.getElementById('scale-ctrl-container');
+    if (!attribEl || !scaleEl) return;
+    const open = attribEl.classList.contains('maplibregl-compact-show');
+    if (open) {
+      document.documentElement.style.setProperty(
+        '--attrib-h', attribEl.getBoundingClientRect().height + 'px'
+      );
+      scaleEl.classList.add('above-attrib');
+    } else {
+      scaleEl.classList.remove('above-attrib');
+    }
+  };
+  // MapLibreはaddControl後にDOMを同期生成するが、タイミング保証のためdeferする
+  requestAnimationFrame(() => {
+    const attribEl = document.querySelector('.maplibregl-ctrl-attrib');
+    if (attribEl) {
+      new MutationObserver(syncScaleWithAttrib)
+        .observe(attribEl, { attributes: true, attributeFilter: ['class'] });
+    }
+  });
+}
 
 /*
   ========================================================
@@ -6440,10 +6465,18 @@ document.getElementById('import-decide-btn').addEventListener('click', () => {
     snapTo(nearestSnap(panel.getBoundingClientRect().height));
   });
 
-  // ---- ナビボタンタップ: min → mid に展開 ----
+  // ---- ナビボタンタップ: 開くときは mid に展開、閉じるときは min にスナップ ----
+  // 注: 一般ハンドラ（3881行）が先に実行され _sidebarOpen を更新済み
   document.querySelectorAll('.sidebar-nav-btn').forEach(btn => {
     btn.addEventListener('click', () => {
-      if (MQ.matches && snapState === 'min') snapTo('mid');
+      if (!MQ.matches) return;
+      if (_sidebarOpen) {
+        // パネルを開いた/切り替えた → min なら mid へ展開
+        if (snapState === 'min') snapTo('mid');
+      } else {
+        // 同じアイコンを再タップしてパネルを閉じた → min にスワイプダウン
+        snapTo('min');
+      }
     });
   });
 
