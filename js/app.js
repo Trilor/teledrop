@@ -172,7 +172,7 @@ const contourLayerIds = ['contour-regular', 'contour-index'];
 // 湖水深等高線レイヤーIDリスト（等高線トグルに連動）
 let seamlessContourLayerIds = [];
 // DEMソースモード: 'q1m'（Q地図1m）/ 'dem5a'（DEM5A 5m）/ 'dem1a'（地理院DEM1A 1m）
-let contourDemMode = 'q1m';
+let contourDemMode = 'dem5a'; // Q地図1m休止中のためDEM5A 5mをデフォルトに変更
 // DEM5A・DEM1A 専用レイヤーID
 const DEM5A_CONTOUR_LAYER_IDS = ['contour-regular-dem5a', 'contour-index-dem5a'];
 const DEM1A_CONTOUR_LAYER_IDS = ['contour-regular-dem1a', 'contour-index-dem1a'];
