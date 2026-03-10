@@ -797,6 +797,8 @@ map.on('load', async () => {
   // getEffectiveContourInterval() が離散値（5/10/25/50/100/200m）を返すため、
   // ズームレベルの境界をまたいだときだけ lastAppliedContourInterval の比較により setTiles が発火する。
   map.on('zoom', updateContourAutoInterval);
+  // 起動時は zoom イベントが発火しないため、load 完了後に一度だけ初期化する
+  updateContourAutoInterval();
 
   // 初期ベースマップ（OriLibre）の出典を表示
   // MapLibreはsource追加のたびに .maplibregl-ctrl-attrib-inner を書き換えるため
