@@ -25,7 +25,7 @@ This file provides guidance to Claude Code when working with code in this reposi
 
 ## GitHub リポジトリ
 
-URL: `https://github.com/Trilor/omap3d`
+URL: `https://github.com/Trilor/teledrop`
 
 ## Git ワークフロー
 

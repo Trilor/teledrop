@@ -435,6 +435,10 @@ body {
   gap: 4px;
   width: 100%;
 }
+/* オーバーレイカードは2枚なので2列 */
+#overlay-cards.bm-cards {
+  grid-template-columns: repeat(2, 1fr);
+}
 /* 正方形カード: 検索ボックスと同じ box-shadow スタイル */
 .bm-card {
   position: relative;

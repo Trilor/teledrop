@@ -38,7 +38,7 @@ SOFTWARE.
 ## 全国Ｑ地図 MapLibre GL JS版
 
 - **Repository:** https://github.com/qchizu-project/qchizu-maps-maplibregljs
-- **Usage:** DEM tile handling, terrain rendering
+- **Usage:** DEM tile handling, terrain rendering, CS relief map generation
 
 ```
 MIT License
@@ -69,6 +69,7 @@ SOFTWARE.
 #### maplibre-contour
 
 - **Repository:** https://github.com/onthegomap/maplibre-contour
+- **Usage:** Contour line generation from DEM tiles
 - **License:** BSD 3-Clause License
 
 ```
