@@ -788,48 +788,6 @@ map.on('load', async () => {
   });
   updateMagneticNorth();
 
-  // ── 回転軸（zoom ≤ 3 専用）GeoJSON ソース＋レイヤー ──
-  // 北極（89.9°）から南極（-89.9°）を経由する線を複数点で描画する。
-  // 球面上に貼り付く線のため、複数の経線に分割して半球ごとに1本ずつ描画する。
-  // （単一の LineString では背面側が意図しない描画になる場合があるため）
-  (function() {
-    // 北極→南極を 1° ステップで結ぶ2本の線（経度 0° と 180° の経線として表現）
-    const axisPts0   = Array.from({ length: 180 }, (_, i) => [  0,  89 - i]);
-    const axisPts180 = Array.from({ length: 180 }, (_, i) => [180,  89 - i]);
-    map.addSource('rotation-axis', {
-      type: 'geojson',
-      data: {
-        type: 'FeatureCollection',
-        features: [
-          { type: 'Feature', geometry: { type: 'LineString', coordinates: axisPts0   } },
-          { type: 'Feature', geometry: { type: 'LineString', coordinates: axisPts180 } },
-        ],
-      },
-    });
-    map.addLayer({
-      id: 'rotation-axis-layer',
-      type: 'line',
-      source: 'rotation-axis',
-      layout: { visibility: 'none' },
-      paint: {
-        'line-color': '#cc3300',
-        'line-width': 1.2,
-        'line-opacity': 0.7,
-        'line-dasharray': [4, 3],
-      },
-    });
-  })();
-
-  // zoom ≤ 3 のとき回転軸を表示、それ以外は非表示
-  function updateRotationAxisVisibility() {
-    const vis = map.getZoom() <= 3 ? 'visible' : 'none';
-    if (map.getLayer('rotation-axis-layer')) {
-      map.setLayoutProperty('rotation-axis-layer', 'visibility', vis);
-    }
-  }
-  map.on('zoom', updateRotationAxisVisibility);
-  updateRotationAxisVisibility();
-
   // 都道府県別CS出典の動的更新 — タイル読み込み完了を待たず即時反映するため moveend を使用
   map.on('moveend', updateRegionalAttribution);
   // スクロールズーム時に moveend が連続発火するため debounce でまとめて1回だけ実行する
