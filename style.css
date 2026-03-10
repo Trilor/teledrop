@@ -724,47 +724,20 @@ label.setting-label {
   color: var(--primary-hover);
 }
 
-/* オーバーレイ 2段組みレイアウト */
-.setting-row.overlay-stacked {
-  align-items: stretch;
-  padding: 0 12px;
-}
-.setting-row.overlay-stacked .setting-left {
-  flex-direction: column;
-  align-items: stretch;
-  justify-content: flex-start;
-  width: 80px;
-}
-.overlay-left-top {
+/* オーバーレイ ヘッダー行（ラベル＋トグル＋透明度スライダー） */
+.overlay-header {
   display: flex;
   align-items: center;
-  justify-content: flex-end;
-  flex: 1;
+  gap: 6px;
+  width: 100%;
+  padding: 0 8px;
 }
-.overlay-left-bottom {
-  display: flex;
-  align-items: center;
-  justify-content: flex-end;
-  flex: 1;
+.overlay-header .setting-label {
+  flex-shrink: 0;
 }
-.overlay-controls {
+.overlay-header input[type="range"] {
   flex: 1;
   min-width: 0;
-  display: flex;
-  flex-direction: column;
-  overflow: hidden;
-}
-.overlay-ctrl-top {
-  display: flex;
-  align-items: center;
-  padding: 5px 0 4px 4px;
-  gap: 5px;
-}
-.overlay-ctrl-bottom {
-  display: flex;
-  align-items: center;
-  gap: 5px;
-  padding: 3px 0 4px 4px;
 }
 
 /* 透明度スライダー行 */
@@ -795,19 +768,19 @@ label.setting-label {
   outline: none;
 }
 .opacity-row input[type="range"]:disabled,
-.overlay-ctrl-bottom input[type="range"]:disabled,
+.overlay-header input[type="range"]:disabled,
 .setting-right input[type="range"]:disabled {
   opacity: 0.35;
   cursor: default;
 }
 .opacity-row input[type="range"]:disabled ~ .opacity-val,
-.overlay-ctrl-bottom input[type="range"]:disabled ~ .opacity-val,
+.overlay-header input[type="range"]:disabled ~ .opacity-val,
 .setting-right input[type="range"]:disabled ~ .opacity-val {
   color: #aaa;
 }
 
 .opacity-row input[type="range"]::-webkit-slider-thumb,
-.overlay-ctrl-bottom input[type="range"]::-webkit-slider-thumb {
+.overlay-header input[type="range"]::-webkit-slider-thumb {
   -webkit-appearance: none;
   appearance: none;
   width: 12px;
@@ -819,7 +792,7 @@ label.setting-label {
 }
 
 .opacity-row input[type="range"]::-webkit-slider-thumb:hover,
-.overlay-ctrl-bottom input[type="range"]::-webkit-slider-thumb:hover {
+.overlay-header input[type="range"]::-webkit-slider-thumb:hover {
   border-color: var(--primary);
 }
 
