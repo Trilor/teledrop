@@ -3386,16 +3386,20 @@ function updateMagneticNorth() {
   const MAX_STEPS = 300;
 
   // 打ち切り境界（Bounds + 1ステップ分バッファ：線を画面端まで確実に伸ばす）
+  // zoom ≤ 3 では地球全域をカバーするため経度・緯度の上限を地球の端まで拡張
   const bufDeg = stepKm / 100; // 概算：1km ≈ 0.01°
-  const minLng = bounds.getWest()  - bufDeg;
-  const maxLng = bounds.getEast()  + bufDeg;
-  const minLat = bounds.getSouth() - bufDeg;
-  const maxLat = bounds.getNorth() + bufDeg;
+  const isGlobal = map.getZoom() <= 3;
+  const minLng = isGlobal ? -180 : bounds.getWest()  - bufDeg;
+  const maxLng = isGlobal ?  180 : bounds.getEast()  + bufDeg;
+  const minLat = isGlobal ?  -90 : bounds.getSouth() - bufDeg;
+  const maxLat = isGlobal ?   90 : bounds.getNorth() + bufDeg;
 
   // 基点を磁東方向に均等配置（視野中心の偏角で近似）
-  // nHalf を最大30本/側に制限してフレームレートを保護する
+  // zoom > 3 は最大30本/側に制限してフレームレートを保護する
+  // zoom ≤ 3 では地球全域をカバーするためキャップなし（間隔が広いため本数は多くても軽い）
   const perpBearing = centerDeclination + 90; // 磁北の右90° = 磁東
-  const nHalf       = Math.min(30, Math.ceil(halfExtentKm / intervalKm));
+  const nHalfRaw    = Math.ceil(halfExtentKm / intervalKm);
+  const nHalf       = map.getZoom() <= 3 ? nHalfRaw : Math.min(30, nHalfRaw);
   const centerPt    = turf.point([center.lng, center.lat]);
 
   /**
