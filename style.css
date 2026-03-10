@@ -1360,6 +1360,45 @@ label.setting-label {
 .imgw-place-btn:not(:disabled):hover { background: var(--primary-hover); }
 
 /* 地名検索 */
+/* ===== 開発用カラーピッカー ===== */
+#dev-color-picker {
+  position: absolute;
+  top: 52px; /* 検索ボックス(top:10px + h:36px) + 6px */
+  left: calc(var(--sidebar-w, 296px) + 8px);
+  z-index: 10;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  background: rgba(255,255,255,0.92);
+  backdrop-filter: blur(4px);
+  border-radius: 6px;
+  padding: 4px 8px;
+  box-shadow: 0 1px 6px rgba(0,0,0,0.18);
+  font-size: 11px;
+  color: #333;
+  user-select: none;
+}
+#dev-primary-color {
+  width: 28px;
+  height: 22px;
+  padding: 0;
+  border: 1px solid #ccc;
+  border-radius: 3px;
+  cursor: pointer;
+  background: none;
+}
+#dev-color-copy {
+  font-size: 10px;
+  padding: 2px 6px;
+  border: 1px solid #ccc;
+  border-radius: 3px;
+  background: #f5f5f5;
+  cursor: pointer;
+  color: #555;
+}
+#dev-color-copy:hover { background: #e8e8e8; }
+@media (max-width: 768px) { #dev-color-picker { display: none; } }
+
 /* ===== 統合検索ボックス（常時表示・サイドバー幅に連動） ===== */
 #unified-search {
   position: absolute;
