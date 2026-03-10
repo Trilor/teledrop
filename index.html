@@ -254,36 +254,26 @@ Oシミュレーターモードの仮想ジョイスティック（左手移動�
             </div>
             -->
           </div>
-          <div class="setting-row overlay-stacked">
-            <div class="setting-left">
-              <div class="overlay-left-top">
-                <label for="chk-overlay" class="setting-label">オーバーレイ</label>
-              </div>
-              <div class="overlay-left-bottom">
-                <label class="toggle-switch">
-                  <input type="checkbox" id="chk-overlay" />
-                  <span class="toggle-slider"></span>
-                </label>
-              </div>
+          <div class="setting-row bm-row">
+            <div class="overlay-header">
+              <span class="setting-label">オーバーレイ</span>
+              <label class="toggle-switch">
+                <input type="checkbox" id="chk-overlay" />
+                <span class="toggle-slider"></span>
+              </label>
+              <span class="opacity-row-label">透明度</span>
+              <input type="range" id="slider-cs" min="0" max="1" step="0.05" value="1.0" disabled />
+              <span class="opacity-val" id="val-cs">100%</span>
             </div>
-            <div class="overlay-controls">
-              <div class="overlay-ctrl-top">
-                <div id="overlay-cards" class="bm-cards">
-                  <button class="bm-card active" data-key="cs-1m">
-                    <img class="bm-card-img" src="assets/thumbnails/cs-1m.png" alt="">
-                    <span class="bm-card-label">CS 1m</span>
-                  </button>
-                  <button class="bm-card" data-key="cs-0.5m">
-                    <img class="bm-card-img" src="assets/thumbnails/cs-0.5m.png" alt="">
-                    <span class="bm-card-label">CS 0.5m</span>
-                  </button>
-                </div>
-              </div>
-              <div class="overlay-ctrl-bottom">
-                <span class="opacity-row-label">透明度</span>
-                <input type="range" id="slider-cs" min="0" max="1" step="0.05" value="1.0" disabled />
-                <span class="opacity-val" id="val-cs">100%</span>
-              </div>
+            <div id="overlay-cards" class="bm-cards">
+              <button class="bm-card active" data-key="cs-1m">
+                <img class="bm-card-img" src="assets/thumbnails/cs-1m.png" alt="">
+                <span class="bm-card-label">CS 1m</span>
+              </button>
+              <button class="bm-card" data-key="cs-0.5m">
+                <img class="bm-card-img" src="assets/thumbnails/cs-0.5m.png" alt="">
+                <span class="bm-card-label">CS 0.5m</span>
+              </button>
             </div>
           </div>
         </div>
