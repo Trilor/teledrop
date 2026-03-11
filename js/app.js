@@ -4045,7 +4045,8 @@ function autoFitColorRelief() {
   const w = canvas.width;
   const h = canvas.height;
 
-  let globalMin = Infinity, globalMax = -Infinity;
+  let nonZeroMin = Infinity, nonZeroMax = -Infinity; // 非ゼロ（陸地）
+  let allMin = Infinity,     allMax = -Infinity;     // フォールバック用（0 含む）
 
   for (let r = 0; r < GRID; r++) {
     for (let c = 0; c < GRID; c++) {
@@ -4053,16 +4054,21 @@ function autoFitColorRelief() {
       const py = (r + 0.5) / GRID * h;
       const lngLat = map.unproject([px, py]);
       const elev = map.queryTerrainElevation(lngLat, { exaggerated: false });
-      // null（テレイン無効）と 0 を除外する
-      // 0 は「海域ピクセル」と「未ロードタイルのデフォルト値」どちらも 0 を返すため除外
-      // min=0 固定なのでこれらを除外しても正確なフィットが得られる
-      if (elev == null || elev === 0) continue;
-      if (elev < globalMin) globalMin = elev;
-      if (elev > globalMax) globalMax = elev;
+      if (elev == null) continue;
+      if (elev < allMin) allMin = elev;
+      if (elev > allMax) allMax = elev;
+      // 0 は海域ピクセル or 未ロードタイルのデフォルト値のため非ゼロのみ別集計
+      if (elev !== 0) {
+        if (elev < nonZeroMin) nonZeroMin = elev;
+        if (elev > nonZeroMax) nonZeroMax = elev;
+      }
     }
   }
 
-  if (!isFinite(globalMin) || !isFinite(globalMax)) return; // 有効な陸地データなし
+  // 非ゼロサンプルがあれば陸地優先、なければ全データ（低ズーム時フォールバック）
+  const globalMin = isFinite(nonZeroMin) ? nonZeroMin : allMin;
+  const globalMax = isFinite(nonZeroMax) ? nonZeroMax : allMax;
+  if (!isFinite(globalMin) || !isFinite(globalMax)) return;
 
   // 10m 単位に丸め、最低 10m の幅を確保（最小値は 0 以上）
   const step = 10;
