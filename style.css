@@ -3115,26 +3115,26 @@ label.setting-label {
 }
 .cr-label-text {
   font-size: 11px;
-  color: #999;
-  font-weight: 500;
+  color: #333;
+  white-space: nowrap;
+  flex-shrink: 0;
 }
 
-/* 自動フィットボタン: アイコン付きで押せることが明確なデザイン */
+/* 自動フィットボタン */
 .cr-autofit-btn {
   display: inline-flex;
   align-items: center;
   gap: 3px;
-  font-size: 11px;
-  padding: 3px 8px;
+  font-size: 10px;
+  padding: 2px 7px;
   border-radius: 4px;
-  border: 1px solid rgba(255,255,255,0.35);
-  background: rgba(255,255,255,0.12);
-  color: #ddd;
+  border: 1px solid #ccc;
+  background: #f5f5f5;
+  color: #555;
   cursor: pointer;
   transition: background 0.15s, border-color 0.15s, color 0.15s;
   white-space: nowrap;
   flex-shrink: 0;
-  font-weight: 500;
 }
 .cr-autofit-btn:hover:not(:disabled) {
   background: var(--primary, #2563eb);
@@ -3149,7 +3149,6 @@ label.setting-label {
   cursor: default;
 }
 
-/* スライダー行: [min入力] [トラック] [max入力] を横並び */
 /* 数値表示エリア（ラベル行中央） */
 .cr-range-display {
   display: flex;
@@ -3160,22 +3159,22 @@ label.setting-label {
 }
 .cr-range-sep {
   font-size: 11px;
-  color: #777;
+  color: #999;
   padding: 0 1px;
 }
 
 /* 数値直接入力欄: テキスト風インライン */
 .cr-num-input {
   width: 40px;
-  padding: 1px 3px;
+  padding: 1px 2px;
   font-size: 11px;
   font-variant-numeric: tabular-nums;
   text-align: center;
   background: transparent;
   border: none;
-  border-bottom: 1px solid rgba(255,255,255,0.25);
+  border-bottom: 1px solid #ccc;
   border-radius: 0;
-  color: #ccc;
+  color: #333;
   outline: none;
   -moz-appearance: textfield;
   appearance: textfield;
@@ -3183,8 +3182,8 @@ label.setting-label {
 .cr-num-input::-webkit-inner-spin-button,
 .cr-num-input::-webkit-outer-spin-button { display: none; }
 .cr-num-input:focus {
-  border-bottom-color: var(--primary-light, #93c5fd);
-  color: #fff;
+  border-bottom-color: var(--primary, #2563eb);
+  color: #111;
 }
 
 /* グラデーショントラック + 2つのレンジ入力を重ねるコンテナ（全幅） */
