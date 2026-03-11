@@ -3957,12 +3957,14 @@ function applyColorReliefTiles() {
     `dem2relief://${COLOR_RELIEF_DEM_BASE}/{z}/{x}/{y}.webp?min=${crMin}&max=${crMax}`
   ]);
   clearTimeout(_crRepaintTimer);
+  // setTiles() 直後に triggerRepaint() を呼ぶと、タイルがまだゼロ枚の状態で
+  // レンダリングされ全画面が一瞬消えるため、最初のフレームは遅延させる
   let remaining = 20; // 20 × 100ms = 2 秒
   const repaint = () => {
     map.triggerRepaint();
     if (--remaining > 0) _crRepaintTimer = setTimeout(repaint, 100);
   };
-  repaint();
+  _crRepaintTimer = setTimeout(repaint, 100);
 }
 
 // ドラッグ中は UI のみ即座に更新し、タイル再フェッチはデバウンス（300ms）
