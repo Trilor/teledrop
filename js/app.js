@@ -11,7 +11,7 @@ import {
   TERRAIN_EXAGGERATION, OMAP_INITIAL_OPACITY, CS_INITIAL_OPACITY,
   RASTER_BASEMAPS
 } from './config.js';
-import { fetchCompositeDemBitmap } from './protocols.js';
+
 
 // ベースマップ切替の状態管理
 // oriLibreLayers: isomizer が追加したレイヤーを [{ id, defaultVisibility }] 形式で保持
@@ -4031,105 +4031,36 @@ function updateColorReliefSource() {
 })();
 
 // ---- 色別標高図: 表示範囲から自動フィット ----
-// 表示中のタイルを DEM デコードして min/max 標高を取得し、スライダーに反映する
-async function autoFitColorRelief() {
-  const btn = document.getElementById('cr-autofit-btn');
-  if (btn) { btn.disabled = true; btn.textContent = '取得中…'; btn.style.minWidth = btn.offsetWidth + 'px'; }
+// 画面内を 8×8 グリッドでサンプリング。
+// map.queryTerrainElevation() はロード済み地形タイルから同期取得するためネットワーク不要。
+function autoFitColorRelief() {
+  const GRID = 8; // 8×8 = 64 点
+  const bounds = map.getBounds();
+  const sw = bounds.getSouthWest();
+  const ne = bounds.getNorthEast();
 
-  try {
-    const bounds = map.getBounds();
-    const sw = bounds.getSouthWest();
-    const ne = bounds.getNorthEast();
+  let globalMin = Infinity, globalMax = -Infinity;
 
-    // サンプリングズームを計算（タイル枚数が多すぎないよう最大13に制限）
-    const z = Math.min(Math.floor(map.getZoom()), 13);
-    const n = Math.pow(2, z);
-
-    // 緯度 → タイル Y 変換
-    function latToY(lat) {
-      const rad = lat * Math.PI / 180;
-      return Math.floor((1 - Math.log(Math.tan(rad) + 1 / Math.cos(rad)) / Math.PI) / 2 * n);
+  for (let r = 0; r < GRID; r++) {
+    for (let c = 0; c < GRID; c++) {
+      const lng = sw.lng + (ne.lng - sw.lng) * (c + 0.5) / GRID;
+      const lat = sw.lat + (ne.lat - sw.lat) * (r + 0.5) / GRID;
+      const elev = map.queryTerrainElevation({ lng, lat });
+      if (elev == null) continue;
+      if (elev < globalMin) globalMin = elev;
+      if (elev > globalMax) globalMax = elev;
     }
-    // 経度 → タイル X 変換
-    function lngToX(lng) {
-      return Math.floor((lng + 180) / 360 * n);
-    }
-
-    const xMin = lngToX(sw.lng), xMax = lngToX(ne.lng);
-    // Y軸は南が大きい（緯度が小さい方が Y が大きい）
-    const yMin = latToY(ne.lat), yMax = latToY(sw.lat);
-
-    // タイル数が多すぎる場合はズームを下げて再計算
-    const tileCountX = xMax - xMin + 1;
-    const tileCountY = yMax - yMin + 1;
-    const totalTiles = tileCountX * tileCountY;
-
-    // タイル列挙（最大 36 枚）
-    const tiles = [];
-    if (totalTiles <= 36) {
-      for (let tx = xMin; tx <= xMax; tx++) {
-        for (let ty = yMin; ty <= yMax; ty++) {
-          tiles.push([z, tx, ty]);
-        }
-      }
-    } else {
-      // ズームを1段下げて再列挙
-      const z2 = Math.max(z - 1, 5);
-      const n2 = Math.pow(2, z2);
-      const x2min = Math.floor((sw.lng + 180) / 360 * n2);
-      const x2max = Math.floor((ne.lng + 180) / 360 * n2);
-      function latToY2(lat) {
-        const rad = lat * Math.PI / 180;
-        return Math.floor((1 - Math.log(Math.tan(rad) + 1 / Math.cos(rad)) / Math.PI) / 2 * n2);
-      }
-      const y2min = latToY2(ne.lat), y2max = latToY2(sw.lat);
-      for (let tx = x2min; tx <= x2max; tx++) {
-        for (let ty = y2min; ty <= y2max; ty++) {
-          tiles.push([z2, tx, ty]);
-        }
-      }
-    }
-
-    // 各タイルの DEM をデコードして標高 min/max を収集
-    let globalMin = Infinity, globalMax = -Infinity;
-
-    await Promise.all(tiles.map(async ([tz, tx, ty]) => {
-      const bitmap = await fetchCompositeDemBitmap(String(tz), String(tx), String(ty), null).catch(() => null);
-      if (!bitmap) return;
-
-      const cv = new OffscreenCanvas(bitmap.width, bitmap.height);
-      cv.getContext('2d').drawImage(bitmap, 0, 0);
-      bitmap.close();
-      const px = cv.getContext('2d').getImageData(0, 0, cv.width, cv.height).data;
-
-      for (let i = 0; i < px.length; i += 4) {
-        const r = px[i], g = px[i + 1], b = px[i + 2], a = px[i + 3];
-        // nodata ピクセルはスキップ
-        if ((r === 128 && g === 0 && b === 0) || a !== 255) continue;
-        // NumPNG → 標高（メートル）
-        const bits24 = (r << 16) | (g << 8) | b;
-        const elev = ((bits24 << 8) >> 8) * 0.01;
-        if (elev < globalMin) globalMin = elev;
-        if (elev > globalMax) globalMax = elev;
-      }
-    }));
-
-    if (!isFinite(globalMin) || !isFinite(globalMax)) return; // データなし
-
-    // 10m 単位に丸め、最低 10m の幅を確保
-    const step = 10;
-    const newMin = Math.floor(globalMin / step) * step;
-    const newMax = Math.ceil(globalMax  / step) * step;
-
-    crMin = newMin;
-    crMax = newMax;
-    if (crMax <= crMin) crMax = crMin + step;
-
-    // syncColorReliefUI が範囲拡張・スライダー・数値入力を一括同期する
-    updateColorReliefSource();
-  } finally {
-    if (btn) { btn.disabled = false; btn.innerHTML = '<svg xmlns="http://www.w3.org/2000/svg" width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"/><path d="M3 3v5h5"/></svg> 自動'; }
   }
+
+  if (!isFinite(globalMin) || !isFinite(globalMax)) return; // データなし
+
+  // 10m 単位に丸め、最低 10m の幅を確保
+  const step = 10;
+  crMin = Math.floor(globalMin / step) * step;
+  crMax = Math.ceil(globalMax  / step) * step;
+  if (crMax <= crMin) crMax = crMin + step;
+
+  updateColorReliefSource();
 }
 
 document.getElementById('cr-autofit-btn')?.addEventListener('click', autoFitColorRelief);
