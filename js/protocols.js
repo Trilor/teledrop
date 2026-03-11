@@ -5,6 +5,19 @@
 
 import { QCHIZU_DEM_BASE, DEM5A_BASE, LAKEDEPTH_BASE, LAKEDEPTH_STANDARD_BASE, LAND_DEM_BASE } from './config.js';
 
+// ================================================================
+// 共通フォールバック: 1×1 透明 PNG の ArrayBuffer
+// プロトコルハンドラが undefined・null・例外を返すと MapLibre の WebGL
+// テクスチャバインドがクラッシュするため、全プロトコルでこれを使う。
+// ================================================================
+const _TRANSPARENT_PNG_B64 = 'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNkYAAAAAYAAjCB0C8AAAAASUVORK5CYII=';
+function _transparentPngBuffer() {
+  const bin = atob(_TRANSPARENT_PNG_B64);
+  const buf = new Uint8Array(bin.length);
+  for (let i = 0; i < bin.length; i++) buf[i] = bin.charCodeAt(i);
+  return buf.buffer;
+}
+
 /*
   ========================================================
   PMTiles プロトコルの登録（将来の自前データ配信に備えて）
@@ -148,14 +161,15 @@ async function fetchCompositeDemBitmap(z, x, y, signal, regionalDemBase = null, 
   ========================================================
 */
 maplibregl.addProtocol('gsjdem', async (params, abortController) => {
+  try {
   // MapLibre が {z}/{x}/{y} を展開済みの URL から z/x/y を取り出す（?t= キャッシュバスト対応のため $ なし）
   const m = params.url.match(/\/(\d+)\/(\d+)\/(\d+)\.\w+/);
-  if (!m) throw new Error('gsjdem: URL format invalid');
+  if (!m) return { data: _transparentPngBuffer() };
   const [, z, x, y] = m;
 
   // 地形は常に全ソース合成（Q地図+DEM5A+湖水深）で滑らかに描画。DEMソース選択には連動しない。
   const bitmap = await fetchCompositeDemBitmap(z, x, y, abortController.signal);
-  if (!bitmap) throw new Error('gsjdem: no DEM data available');
+  if (!bitmap) return { data: _transparentPngBuffer() };
 
   // NumPNG → Terrarium 変換
   const canvas = new OffscreenCanvas(bitmap.width, bitmap.height);
@@ -185,6 +199,7 @@ maplibregl.addProtocol('gsjdem', async (params, abortController) => {
   ctx.putImageData(imageData, 0, 0);
   const blob = await canvas.convertToBlob({ type: 'image/png' });
   return { data: await blob.arrayBuffer() };
+  } catch { return { data: _transparentPngBuffer() }; }
 });
 
 
@@ -243,6 +258,7 @@ function _csRampMid(min, max, c0, c1, c2, t) {
 }
 
 maplibregl.addProtocol('csdem', async (params, abortController) => {
+  try {
   const url = params.url.replace('csdem://', 'https://');
   const m = url.match(/\/(\d+)\/(\d+)\/(\d+)\.(png|webp)$/);
   if (!m) return { data: null };
@@ -287,7 +303,7 @@ maplibregl.addProtocol('csdem', async (params, abortController) => {
   const bitmaps = await Promise.all(neighborOffsets.map(([dx, dy]) =>
     fetchCompositeDemBitmap(zoomLevel, tileX + dx, tileY + dy, abortController.signal, regionalDemBase, regionalDemExt)
   ));
-  if (!bitmaps[4]) return { data: null }; // 中央タイルが取得できなければ終了
+  if (!bitmaps[4]) return { data: _transparentPngBuffer() }; // 中央タイルが取得できなければ透明タイルを返す
 
   // ── ② マージキャンバスに描画 ──
   const mergedCanvas = new OffscreenCanvas(mergedSize, mergedSize);
@@ -397,6 +413,7 @@ maplibregl.addProtocol('csdem', async (params, abortController) => {
   );
   csRittaizuTensor.dispose();
   return { data: await outCanvas.convertToBlob({ type: 'image/png' }).then(b => b.arrayBuffer()) };
+  } catch { return { data: _transparentPngBuffer() }; }
 });
 
 
@@ -447,17 +464,6 @@ function _dem2reliefColor(t) {
     g: Math.round(lo.g + n * (hi.g - lo.g)),
     b: Math.round(lo.b + n * (hi.b - lo.b)),
   };
-}
-
-// DEM データが存在しない（404・CORS・nodata）タイルのフォールバック用 1×1 透明 PNG
-// プロトコルが undefined や例外を返すと MapLibre の WebGL テクスチャバインドがクラッシュするため
-// いかなる場合も有効な ArrayBuffer を返すことでレンダリングループを保護する
-const _TRANSPARENT_PNG_B64 = 'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNkYAAAAAYAAjCB0C8AAAAASUVORK5CYII=';
-function _transparentPngBuffer() {
-  const bin = atob(_TRANSPARENT_PNG_B64);
-  const buf = new Uint8Array(bin.length);
-  for (let i = 0; i < bin.length; i++) buf[i] = bin.charCodeAt(i);
-  return buf.buffer;
 }
 
 maplibregl.addProtocol('dem2relief', async (params, abortController) => {
