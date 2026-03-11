@@ -398,3 +398,109 @@ maplibregl.addProtocol('csdem', async (params, abortController) => {
   csRittaizuTensor.dispose();
   return { data: await outCanvas.convertToBlob({ type: 'image/png' }).then(b => b.arrayBuffer()) };
 });
+
+
+/*
+  ========================================================
+  色別標高図プロトコル (dem2relief://)
+  qchizu-project/qchizu-maps-maplibregljs の dem2ReliefProtocol.js を参考に実装。
+  https://github.com/qchizu-project/qchizu-maps-maplibregljs/blob/main/src/protocols/dem2ReliefProtocol.js
+
+  URLクエリパラメータ:
+    min: 最低標高（m）— この標高をカラーパレットの先頭色に対応させる
+    max: 最高標高（m）— この標高をカラーパレットの末尾色に対応させる
+
+  カラーパレット（地形段彩図の標準的な配色）:
+    t=0.00  #162a3b  深海・海底（ダークネイビー）
+    t=0.08  #2b5e7e  沿岸・浅海（オーシャンブルー）
+    t=0.18  #4fb3a9  低地・沿岸平野（ティール）
+    t=0.35  #8ec98a  平野・丘陵（ライトグリーン）
+    t=0.55  #e0d47e  中高地（イエローグリーン）
+    t=0.72  #c8a05a  山地（タン）
+    t=0.88  #9e7a3c  高山（ブラウン）
+    t=1.00  #ffffff  山頂・積雪域（ホワイト）
+  ========================================================
+*/
+
+// カラーパレット（正規化位置 t → RGB）
+const DEM2RELIEF_PALETTE = [
+  { t: 0.00, r: 22,  g: 42,  b: 59  },
+  { t: 0.08, r: 43,  g: 94,  b: 126 },
+  { t: 0.18, r: 79,  g: 179, b: 169 },
+  { t: 0.35, r: 142, g: 201, b: 138 },
+  { t: 0.55, r: 224, g: 212, b: 126 },
+  { t: 0.72, r: 200, g: 160, b: 90  },
+  { t: 0.88, r: 158, g: 122, b: 60  },
+  { t: 1.00, r: 255, g: 255, b: 255 },
+];
+
+// パレット補間: 正規化値 t（0〜1）→ {r, g, b}
+function _dem2reliefColor(t) {
+  t = Math.max(0, Math.min(1, t));
+  let i = 0;
+  // 対応区間を線形探索（パレットサイズは固定8点なので十分高速）
+  while (i < DEM2RELIEF_PALETTE.length - 2 && DEM2RELIEF_PALETTE[i + 1].t <= t) i++;
+  const lo = DEM2RELIEF_PALETTE[i];
+  const hi = DEM2RELIEF_PALETTE[i + 1];
+  const n  = (t - lo.t) / (hi.t - lo.t); // 区間内の正規化位置（0〜1）
+  return {
+    r: Math.round(lo.r + n * (hi.r - lo.r)),
+    g: Math.round(lo.g + n * (hi.g - lo.g)),
+    b: Math.round(lo.b + n * (hi.b - lo.b)),
+  };
+}
+
+maplibregl.addProtocol('dem2relief', async (params, abortController) => {
+  // URLスキームを https:// に置換して URL オブジェクトを生成
+  const rawUrl = params.url.replace(/^dem2relief:\/\//, 'https://');
+  let urlObj;
+  try { urlObj = new URL(rawUrl); } catch { throw new Error('dem2relief: invalid URL'); }
+
+  // クエリパラメータから min/max を取得（デフォルト 0〜3000m）
+  const min = parseFloat(urlObj.searchParams.get('min') ?? '0');
+  const max = parseFloat(urlObj.searchParams.get('max') ?? '3000');
+  const range = max - min || 1; // ゼロ除算を防ぐ
+
+  // z/x/y の抽出（クエリパラメータを除いたパス部分から取得）
+  const m = urlObj.pathname.match(/\/(\d+)\/(\d+)\/(\d+)\.\w+/);
+  if (!m) throw new Error('dem2relief: URL format invalid');
+  const [, z, x, y] = m;
+
+  // 合成 DEM ビットマップを取得（Q地図 > 陸域統合 > 湖水深 の優先順）
+  const bitmap = await fetchCompositeDemBitmap(z, x, y, abortController.signal);
+  if (!bitmap) throw new Error('dem2relief: no DEM data');
+
+  // NumPNG → RGB 色別標高図へ変換
+  const canvas = new OffscreenCanvas(bitmap.width, bitmap.height);
+  const ctx    = canvas.getContext('2d');
+  ctx.drawImage(bitmap, 0, 0);
+  bitmap.close();
+
+  const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
+  const data = imageData.data;
+
+  for (let i = 0; i < data.length; i += 4) {
+    const r = data[i], g = data[i + 1], b = data[i + 2], a = data[i + 3];
+
+    // nodata（R=128, G=0, B=0）または透明ピクセルは透明で出力
+    if ((r === 128 && g === 0 && b === 0) || a !== 255) {
+      data[i] = 0; data[i + 1] = 0; data[i + 2] = 0; data[i + 3] = 0;
+      continue;
+    }
+
+    // NumPNG → 標高（メートル）変換: 24bit 符号付き整数 × 0.01m
+    const bits24 = (r << 16) | (g << 8) | b;
+    const height = ((bits24 << 8) >> 8) * 0.01;
+
+    // 相対正規化: min〜max を 0.0〜1.0 にマッピング（クランプあり）
+    const t = (height - min) / range;
+
+    // パレット補間で RGB を決定し書き込み
+    const col = _dem2reliefColor(t);
+    data[i] = col.r; data[i + 1] = col.g; data[i + 2] = col.b; data[i + 3] = 255;
+  }
+
+  ctx.putImageData(imageData, 0, 0);
+  const blob = await canvas.convertToBlob({ type: 'image/png' });
+  return { data: await blob.arrayBuffer() };
+});

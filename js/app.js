@@ -698,6 +698,24 @@ map.on('load', async () => {
       ========================================================
     */
 
+  // 色別標高図（dem2relief://プロトコル・相対カラースケール）
+  // min/max パラメータはスライダー操作時に setTiles() で動的更新する
+  map.addSource('color-relief', {
+    type: 'raster',
+    tiles: ['dem2relief://mapdata.qchizu.xyz/03_dem/52_gsi/all_2025/1_02/{z}/{x}/{y}.webp?min=0&max=500'],
+    tileSize: 256,
+    minzoom: 5,
+    maxzoom: 17,
+    attribution: '',
+  });
+  map.addLayer({
+    id: 'color-relief-layer',
+    type: 'raster',
+    source: 'color-relief',
+    layout: { visibility: 'none' },
+    paint: { 'raster-opacity': 1.0, 'raster-fade-duration': 0 },
+  });
+
   // CS立体図（ブラウザ生成・Q地図DEMから動的生成）
   map.addSource('cs-relief', {
     type: 'raster',
@@ -3670,13 +3688,22 @@ function updateCsVisibility() {
   const overlayOn  = document.getElementById('chk-overlay').checked;
   const overlay    = overlayOn ? currentOverlay : 'none';
 
-  // オーバーレイ優先、なければベースマップ選択を参照
-  const csKey = overlay !== 'none' ? overlay
+  // 色別標高図の表示制御（他のオーバーレイとは排他）
+  const showColorRelief = overlayOn && overlay === 'color-relief';
+  if (map.getLayer('color-relief-layer')) {
+    map.setLayoutProperty('color-relief-layer', 'visibility', showColorRelief ? 'visible' : 'none');
+  }
+  const crCtrls = document.getElementById('color-relief-controls');
+  if (crCtrls) crCtrls.style.display = showColorRelief ? '' : 'none';
+
+  // CS立体図: color-relief 選択時は非表示
+  const csOverlay = showColorRelief ? 'none' : overlay;
+  const csKey = csOverlay !== 'none' ? csOverlay
               : basemap.startsWith('cs-') ? basemap
               : null;
 
   const z = map.getZoom();
-  const csRes   = csKey?.replace('cs-', '');              // '1m' | '0.5m' | undefined
+  const csRes   = csKey?.replace('cs-', '');
   const show1m  = !!csKey && (csRes === '1m' || (csRes === '0.5m' && z < 17));
   const show05m = !!csKey && csRes === '0.5m' && z >= 17;
 
@@ -3707,6 +3734,66 @@ document.getElementById('chk-overlay').addEventListener('change', updateCsVisibi
 
 // ズーム17の境界を跨いだとき 0.5m ↔ 1m を自動切替
 map.on('zoomend', updateCsVisibility);
+
+// ---- 色別標高図 デュアルレンジスライダー ----
+// DEM タイルベース URL（プロトコルを除いたパス部分）
+const COLOR_RELIEF_DEM_BASE = 'mapdata.qchizu.xyz/03_dem/52_gsi/all_2025/1_02';
+
+// 現在の min/max 値
+let crMin = 0;
+let crMax = 500;
+
+// ハイライト帯と数値ラベルを更新してソース URL を再生成する
+function updateColorReliefSource() {
+  const minSlider = document.getElementById('cr-min-slider');
+  const totalMin  = parseFloat(minSlider.min);
+  const totalMax  = parseFloat(minSlider.max);
+  const totalRange = totalMax - totalMin;
+
+  // ハイライト帯の位置・幅を計算（% 単位）
+  const leftPct  = ((crMin - totalMin) / totalRange) * 100;
+  const rightPct = ((crMax - totalMin) / totalRange) * 100;
+  const highlight = document.getElementById('cr-range-highlight');
+  if (highlight) {
+    highlight.style.left  = leftPct  + '%';
+    highlight.style.width = (rightPct - leftPct) + '%';
+  }
+
+  // 数値ラベル更新
+  document.getElementById('cr-min-val').textContent = crMin + ' m';
+  document.getElementById('cr-max-val').textContent = crMax + ' m';
+
+  // MapLibre ソース URL を更新してタイルを再取得させる
+  if (map.getSource('color-relief')) {
+    map.getSource('color-relief').setTiles([
+      `dem2relief://${COLOR_RELIEF_DEM_BASE}/{z}/{x}/{y}.webp?min=${crMin}&max=${crMax}`
+    ]);
+  }
+}
+
+// 初期ハイライト表示
+(function initColorReliefSlider() {
+  const minSlider = document.getElementById('cr-min-slider');
+  const maxSlider = document.getElementById('cr-max-slider');
+  if (!minSlider || !maxSlider) return;
+
+  minSlider.addEventListener('input', () => {
+    // min が max を追い越さないようにクランプ
+    crMin = Math.min(parseInt(minSlider.value, 10), crMax - 10);
+    minSlider.value = crMin;
+    updateColorReliefSource();
+  });
+
+  maxSlider.addEventListener('input', () => {
+    // max が min を下回らないようにクランプ
+    crMax = Math.max(parseInt(maxSlider.value, 10), crMin + 10);
+    maxSlider.value = crMax;
+    updateColorReliefSource();
+  });
+
+  // 初期ハイライト位置を反映
+  updateColorReliefSource();
+})();
 
 // ---- CS立体図 透明度スライダー（全国・地域別共通） ----
 const sliderCs = document.getElementById('slider-cs');
