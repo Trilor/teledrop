@@ -3070,34 +3070,37 @@ label.setting-label {
    色別標高図（dem2relief）— グラデーション背景付きデュアルレンジスライダー
    ============================================================ */
 
-/* コントロール全体のラッパー */
+/* コントロール全体のラッパー: カード一覧の直下に密着（区切り線なし） */
 .color-relief-ctrls {
-  padding: 6px 8px 8px;
+  width: 100%;
+  padding: 4px 8px 8px;
+  box-sizing: border-box;
 }
 
-/* スライダー行: [min値] [トラック] [max値] */
-.cr-slider-row {
+/* ラベル行: "標高(m)  [min] – [max]" */
+.cr-label-row {
   display: flex;
+  justify-content: space-between;
   align-items: center;
-  gap: 8px;
+  margin-bottom: 5px;
 }
-
-/* 数値表示ラベル */
-.cr-val {
+.cr-label-text {
+  font-size: 11px;
+  color: #999;
+  font-weight: 500;
+}
+.cr-range-display {
   font-size: 11px;
   color: #ccc;
-  white-space: nowrap;
-  min-width: 48px;
   font-variant-numeric: tabular-nums;
+  letter-spacing: 0.02em;
 }
-.cr-val-min { text-align: right; }
-.cr-val-max { text-align: left;  }
 
-/* グラデーショントラック + 2つのレンジ入力を重ねるコンテナ */
+/* グラデーショントラック + 2つのレンジ入力を重ねるコンテナ（全幅） */
 .cr-dual-track {
   position: relative;
-  flex: 1;
-  height: 24px;
+  width: 100%;
+  height: 28px;
 }
 
 /* グラデーション背景バー */

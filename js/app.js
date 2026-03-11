@@ -3759,9 +3759,9 @@ function updateColorReliefSource() {
     highlight.style.width = (rightPct - leftPct) + '%';
   }
 
-  // 数値ラベル更新
-  document.getElementById('cr-min-val').textContent = crMin + ' m';
-  document.getElementById('cr-max-val').textContent = crMax + ' m';
+  // 数値ラベル更新（単位は HTML 側の固定テキストで表示しないため数値のみ）
+  document.getElementById('cr-min-val').textContent = crMin;
+  document.getElementById('cr-max-val').textContent = crMax;
 
   // MapLibre ソース URL を更新してタイルを再取得させる
   if (map.getSource('color-relief')) {
