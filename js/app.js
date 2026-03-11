@@ -3895,11 +3895,12 @@ function updateColorReliefSource() {
   document.getElementById('cr-min-val').textContent = crMin;
   document.getElementById('cr-max-val').textContent = crMax;
 
-  // MapLibre ソース URL を更新してタイルを再取得させる
+  // MapLibre ソース URL を更新してタイルを再取得させ、即座に再描画する
   if (map.getSource('color-relief')) {
     map.getSource('color-relief').setTiles([
       `dem2relief://${COLOR_RELIEF_DEM_BASE}/{z}/{x}/{y}.webp?min=${crMin}&max=${crMax}`
     ]);
+    map.triggerRepaint();
   }
 }
 
