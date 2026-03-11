@@ -51,7 +51,7 @@ const map = new maplibregl.Map({
         type: 'raster-dem',
         tiles: [TERRAIN_URL],
         tileSize: 256,
-        minzoom: 8,
+        minzoom: 1,
         maxzoom: 15,
         encoding: 'terrarium',
         attribution: '',
