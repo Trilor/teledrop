@@ -3886,7 +3886,8 @@ function syncColorReliefUI() {
   // crMin/crMax がスライダー range を超えていたら動的に拡張
   const sMin = parseFloat(minSlider.min);
   const sMax = parseFloat(minSlider.max);
-  if (crMin < sMin) { minSlider.min = maxSlider.min = String(crMin - 100); }
+  // 下限は 0 固定（負の標高は対象外）
+  if (crMin < sMin) { minSlider.min = maxSlider.min = '0'; crMin = Math.max(crMin, 0); }
   if (crMax > sMax) { minSlider.max = maxSlider.max = String(crMax + 100); }
 
   // スライダーつまみ位置を同期
