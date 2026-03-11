@@ -11,6 +11,7 @@ import {
   TERRAIN_EXAGGERATION, OMAP_INITIAL_OPACITY, CS_INITIAL_OPACITY,
   RASTER_BASEMAPS
 } from './config.js';
+import { fetchCompositeDemBitmap } from './protocols.js';
 
 // ベースマップ切替の状態管理
 // oriLibreLayers: isomizer が追加したレイヤーを [{ id, defaultVisibility }] 形式で保持
@@ -3925,6 +3926,115 @@ function updateColorReliefSource() {
   // 初期ハイライト位置を反映
   updateColorReliefSource();
 })();
+
+// ---- 色別標高図: 表示範囲から自動フィット ----
+// 表示中のタイルを DEM デコードして min/max 標高を取得し、スライダーに反映する
+async function autoFitColorRelief() {
+  const btn = document.getElementById('cr-autofit-btn');
+  if (btn) { btn.disabled = true; btn.textContent = '取得中…'; }
+
+  try {
+    const bounds = map.getBounds();
+    const sw = bounds.getSouthWest();
+    const ne = bounds.getNorthEast();
+
+    // サンプリングズームを計算（タイル枚数が多すぎないよう最大13に制限）
+    const z = Math.min(Math.floor(map.getZoom()), 13);
+    const n = Math.pow(2, z);
+
+    // 緯度 → タイル Y 変換
+    function latToY(lat) {
+      const rad = lat * Math.PI / 180;
+      return Math.floor((1 - Math.log(Math.tan(rad) + 1 / Math.cos(rad)) / Math.PI) / 2 * n);
+    }
+    // 経度 → タイル X 変換
+    function lngToX(lng) {
+      return Math.floor((lng + 180) / 360 * n);
+    }
+
+    const xMin = lngToX(sw.lng), xMax = lngToX(ne.lng);
+    // Y軸は南が大きい（緯度が小さい方が Y が大きい）
+    const yMin = latToY(ne.lat), yMax = latToY(sw.lat);
+
+    // タイル数が多すぎる場合はズームを下げて再計算
+    const tileCountX = xMax - xMin + 1;
+    const tileCountY = yMax - yMin + 1;
+    const totalTiles = tileCountX * tileCountY;
+
+    // タイル列挙（最大 36 枚）
+    const tiles = [];
+    if (totalTiles <= 36) {
+      for (let tx = xMin; tx <= xMax; tx++) {
+        for (let ty = yMin; ty <= yMax; ty++) {
+          tiles.push([z, tx, ty]);
+        }
+      }
+    } else {
+      // ズームを1段下げて再列挙
+      const z2 = Math.max(z - 1, 5);
+      const n2 = Math.pow(2, z2);
+      const x2min = Math.floor((sw.lng + 180) / 360 * n2);
+      const x2max = Math.floor((ne.lng + 180) / 360 * n2);
+      function latToY2(lat) {
+        const rad = lat * Math.PI / 180;
+        return Math.floor((1 - Math.log(Math.tan(rad) + 1 / Math.cos(rad)) / Math.PI) / 2 * n2);
+      }
+      const y2min = latToY2(ne.lat), y2max = latToY2(sw.lat);
+      for (let tx = x2min; tx <= x2max; tx++) {
+        for (let ty = y2min; ty <= y2max; ty++) {
+          tiles.push([z2, tx, ty]);
+        }
+      }
+    }
+
+    // 各タイルの DEM をデコードして標高 min/max を収集
+    let globalMin = Infinity, globalMax = -Infinity;
+
+    await Promise.all(tiles.map(async ([tz, tx, ty]) => {
+      const bitmap = await fetchCompositeDemBitmap(String(tz), String(tx), String(ty), null).catch(() => null);
+      if (!bitmap) return;
+
+      const cv = new OffscreenCanvas(bitmap.width, bitmap.height);
+      cv.getContext('2d').drawImage(bitmap, 0, 0);
+      bitmap.close();
+      const px = cv.getContext('2d').getImageData(0, 0, cv.width, cv.height).data;
+
+      for (let i = 0; i < px.length; i += 4) {
+        const r = px[i], g = px[i + 1], b = px[i + 2], a = px[i + 3];
+        // nodata ピクセルはスキップ
+        if ((r === 128 && g === 0 && b === 0) || a !== 255) continue;
+        // NumPNG → 標高（メートル）
+        const bits24 = (r << 16) | (g << 8) | b;
+        const elev = ((bits24 << 8) >> 8) * 0.01;
+        if (elev < globalMin) globalMin = elev;
+        if (elev > globalMax) globalMax = elev;
+      }
+    }));
+
+    if (!isFinite(globalMin) || !isFinite(globalMax)) return; // データなし
+
+    // 10m 単位に丸め、最低 10m の幅を確保
+    const step = 10;
+    const newMin = Math.floor(globalMin / step) * step;
+    const newMax = Math.ceil(globalMax  / step) * step;
+
+    crMin = Math.max(newMin, -500);
+    crMax = Math.min(newMax,  4000);
+    if (crMax <= crMin) crMax = crMin + step;
+
+    // スライダー値も同期
+    const minSlider = document.getElementById('cr-min-slider');
+    const maxSlider = document.getElementById('cr-max-slider');
+    if (minSlider) minSlider.value = crMin;
+    if (maxSlider) maxSlider.value = crMax;
+
+    updateColorReliefSource();
+  } finally {
+    if (btn) { btn.disabled = false; btn.textContent = '自動'; }
+  }
+}
+
+document.getElementById('cr-autofit-btn')?.addEventListener('click', autoFitColorRelief);
 
 // ---- CS立体図 透明度スライダー（全国・地域別共通） ----
 const sliderCs = document.getElementById('slider-cs');

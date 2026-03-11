@@ -3123,6 +3123,28 @@ label.setting-label {
   color: #ccc;
   font-variant-numeric: tabular-nums;
   letter-spacing: 0.02em;
+  flex: 1;
+  text-align: center;
+}
+.cr-autofit-btn {
+  font-size: 10px;
+  padding: 1px 6px;
+  border-radius: 3px;
+  border: 1px solid rgba(255,255,255,0.2);
+  background: rgba(255,255,255,0.08);
+  color: #ccc;
+  cursor: pointer;
+  transition: background 0.15s;
+  white-space: nowrap;
+  flex-shrink: 0;
+}
+.cr-autofit-btn:hover:not(:disabled) {
+  background: rgba(255,255,255,0.18);
+  color: #fff;
+}
+.cr-autofit-btn:disabled {
+  opacity: 0.5;
+  cursor: default;
 }
 
 /* グラデーショントラック + 2つのレンジ入力を重ねるコンテナ（全幅） */

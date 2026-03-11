@@ -504,3 +504,5 @@ maplibregl.addProtocol('dem2relief', async (params, abortController) => {
   const blob = await canvas.convertToBlob({ type: 'image/png' });
   return { data: await blob.arrayBuffer() };
 });
+
+export { fetchCompositeDemBitmap };
