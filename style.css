@@ -3065,3 +3065,150 @@ label.setting-label {
 #sheet-mini-start-btn {
   color: var(--on-primary);
 }
+
+/* ============================================================
+   色別標高図（dem2relief）— グラデーション背景付きデュアルレンジスライダー
+   ============================================================ */
+
+/* コントロール全体のラッパー */
+.color-relief-ctrls {
+  padding: 6px 8px 8px;
+}
+
+/* スライダー行: [min値] [トラック] [max値] */
+.cr-slider-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+/* 数値表示ラベル */
+.cr-val {
+  font-size: 11px;
+  color: #ccc;
+  white-space: nowrap;
+  min-width: 48px;
+  font-variant-numeric: tabular-nums;
+}
+.cr-val-min { text-align: right; }
+.cr-val-max { text-align: left;  }
+
+/* グラデーショントラック + 2つのレンジ入力を重ねるコンテナ */
+.cr-dual-track {
+  position: relative;
+  flex: 1;
+  height: 24px;
+}
+
+/* グラデーション背景バー */
+.cr-gradient-track {
+  position: absolute;
+  top: 50%;
+  left: 0;
+  right: 0;
+  height: 6px;
+  transform: translateY(-50%);
+  border-radius: 3px;
+  /* パレット定義と同じ配色 */
+  background: linear-gradient(
+    to right,
+    #162a3b  0%,
+    #2b5e7e  8%,
+    #4fb3a9 18%,
+    #8ec98a 35%,
+    #e0d47e 55%,
+    #c8a05a 72%,
+    #9e7a3c 88%,
+    #ffffff 100%
+  );
+  pointer-events: none;
+}
+
+/* 選択範囲ハイライト（JS で left/width を動的に更新） */
+.cr-range-highlight {
+  position: absolute;
+  top: 50%;
+  height: 6px;
+  transform: translateY(-50%);
+  border-radius: 3px;
+  /* 同じグラデーション: highlightの位置に応じて background-position で調整 */
+  outline: 2px solid rgba(255,255,255,0.6);
+  pointer-events: none;
+}
+
+/* レンジ入力共通: トラック透明・つまみのみ操作可能 */
+.cr-range {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  margin: 0;
+  -webkit-appearance: none;
+  appearance: none;
+  background: transparent;
+  pointer-events: none;
+  outline: none;
+}
+
+/* WebKit/Blink: トラック非表示 */
+.cr-range::-webkit-slider-runnable-track {
+  background: transparent;
+  height: 100%;
+}
+
+/* WebKit/Blink: つまみ */
+.cr-range::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 16px;
+  height: 16px;
+  border-radius: 50%;
+  background: #fff;
+  border: 2px solid #555;
+  cursor: pointer;
+  pointer-events: auto;
+  box-shadow: 0 1px 4px rgba(0,0,0,0.4);
+  transition: border-color 0.15s, box-shadow 0.15s;
+}
+.cr-range::-webkit-slider-thumb:hover {
+  border-color: var(--primary, #2563eb);
+  box-shadow: 0 0 0 3px rgba(37,99,235,0.25), 0 1px 4px rgba(0,0,0,0.4);
+}
+
+/* Firefox: トラック非表示 */
+.cr-range::-moz-range-track {
+  background: transparent;
+  height: 100%;
+}
+
+/* Firefox: つまみ */
+.cr-range::-moz-range-thumb {
+  width: 16px;
+  height: 16px;
+  border-radius: 50%;
+  background: #fff;
+  border: 2px solid #555;
+  cursor: pointer;
+  pointer-events: auto;
+  box-shadow: 0 1px 4px rgba(0,0,0,0.4);
+}
+
+/* 色別標高図カード: グラデーションサムネイル */
+.bm-card-gradient {
+  position: absolute;
+  inset: 0;
+  bottom: 0;
+  background: linear-gradient(
+    135deg,
+    #162a3b  0%,
+    #2b5e7e 20%,
+    #4fb3a9 40%,
+    #8ec98a 55%,
+    #e0d47e 70%,
+    #c8a05a 82%,
+    #9e7a3c 92%,
+    #ffffff 100%
+  );
+  border-radius: inherit;
+}
