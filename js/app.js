@@ -170,13 +170,14 @@ map.addControl(new maplibregl.GeolocateControl({
   印刷アイコンボタンを右上に追加。PDF / PNG / JPG で出力可能。
   ========================================================
 */
-const { MaplibreExportControl, Size, PageOrientation, Format, DPI } = MaplibreGlExport;
-
-map.addControl(new MaplibreExportControl({
-  PageSize: Size.A4,
-  PageOrientation: PageOrientation.Landscape,
-  Format: Format.PNG,
-  DPI: DPI[96],
+// UMDビルドでは globalThis.MaplibreExportControl が名前空間オブジェクト
+// その中にクラス・定数が全てまとまっている
+const _exp = window.MaplibreExportControl;
+map.addControl(new _exp.MaplibreExportControl({
+  PageSize: _exp.Size.A4,
+  PageOrientation: _exp.PageOrientation.Landscape,
+  Format: _exp.Format.PNG,
+  DPI: _exp.DPI[96],
   Crosshair: false,
   PrintableArea: true,
   Local: 'ja',
