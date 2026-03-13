@@ -3246,7 +3246,7 @@ label.setting-label {
    ============================================================ */
 
 /* primary 背景上で白/黒を切り替える全要素 */
-.sidebar-nav-btn.active,
+/* .sidebar-nav-btn.active は直接ルールで color:#fff !important を指定済みのため除外 */
 .panel-btn-primary,
 .panel-btn-outline:hover,
 .sim-map-fly-btn:hover,
