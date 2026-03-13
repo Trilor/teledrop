@@ -88,7 +88,7 @@ body {
   display: flex;
   align-items: center;
   justify-content: center;
-  background: #f6f6f6;
+  background: #fff;
   flex-shrink: 0;
   margin-bottom: 4px;
   user-select: none;
@@ -105,7 +105,7 @@ body {
   height: 52px;
   border: none;
   background: transparent;
-  color: var(--primary);
+  color: #888;
   border-radius: 6px;
   cursor: pointer;
   display: flex;
@@ -135,10 +135,10 @@ body {
   background: rgba(0,0,0,0.07);
   color: #444;
 }
-/* アクティブ時: 薄い背景 + プライマリカラーテキスト */
+/* アクティブ時: メインカラー背景 + 白テキスト */
 .sidebar-nav-btn.active {
-  background: var(--primary-light);
-  color: var(--primary);
+  background: var(--primary);
+  color: #fff;
 }
 /* 左ボーダーは不要（背景色で強調するため削除） */
 .sidebar-nav-btn.active::before {
