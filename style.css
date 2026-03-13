@@ -140,6 +140,9 @@ body {
   background: var(--primary);
   color: #fff !important;
 }
+.sidebar-nav-btn.active .nav-label {
+  color: #fff !important;
+}
 /* 左ボーダーは不要（背景色で強調するため削除） */
 .sidebar-nav-btn.active::before {
   display: none;
