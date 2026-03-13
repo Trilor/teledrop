@@ -138,7 +138,7 @@ body {
 /* アクティブ時: メインカラー背景 + 白テキスト */
 .sidebar-nav-btn.active {
   background: var(--primary);
-  color: #fff;
+  color: #fff !important;
 }
 /* 左ボーダーは不要（背景色で強調するため削除） */
 .sidebar-nav-btn.active::before {
