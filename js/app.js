@@ -4406,7 +4406,7 @@ document.getElementById('basemap-cards').addEventListener('click', (e) => {
   switchBasemap(card.dataset.key);
 });
 
-/* ---- サムネイル生成関連（非表示中・復帰用に保存） ----
+// ---- サムネイル生成関連 ----
 
 // ---- OriLibre サムネイル生成（正方形） ----
 const ORILIBRE_THUMB_KEY = 'orilibre-thumb';
@@ -4537,7 +4537,51 @@ async function captureAllBasemapThumbs() {
 const btnOriLibreThumb = document.getElementById('btn-orilibre-thumb');
 if (btnOriLibreThumb) btnOriLibreThumb.addEventListener('click', captureAllBasemapThumbs);
 
----- サムネイル生成関連ここまで ---- */
+// ---- 色別標高図サムネイル生成 ----
+async function captureColorReliefThumb() {
+  const btn = document.getElementById('btn-color-relief-thumb');
+  if (btn) { btn.disabled = true; btn.textContent = '生成中...'; }
+
+  // 色別標高図に切り替え
+  const prevOverlay = currentOverlay;
+  currentOverlay = 'color-relief';
+  document.querySelectorAll('#overlay-cards .bm-card').forEach(c => {
+    c.classList.toggle('active', c.dataset.key === 'color-relief');
+  });
+  updateCsVisibility();
+  applyColorReliefTiles();
+
+  await waitForMapIdle(5000);
+  await new Promise(r => { map.once('render', r); map.triggerRepaint(); });
+
+  const canvas = map.getCanvas();
+  const size = Math.min(canvas.width, canvas.height);
+  const sx = Math.round((canvas.width - size) / 2);
+  const sy = Math.round((canvas.height - size) / 2);
+  const out = document.createElement('canvas');
+  out.width = ORILIBRE_THUMB_SIZE;
+  out.height = ORILIBRE_THUMB_SIZE;
+  out.getContext('2d').drawImage(canvas, sx, sy, size, size, 0, 0, ORILIBRE_THUMB_SIZE, ORILIBRE_THUMB_SIZE);
+
+  const dataUrl = out.toDataURL('image/png');
+  const stamp = new Date().toISOString().replace(/[:.]/g, '-');
+  downloadDataUrl(dataUrl, `color-relief-${stamp}.png`);
+
+  // 元のオーバーレイに戻す
+  currentOverlay = prevOverlay;
+  document.querySelectorAll('#overlay-cards .bm-card').forEach(c => {
+    c.classList.toggle('active', c.dataset.key === prevOverlay);
+  });
+  updateCsVisibility();
+  if (prevOverlay === 'color-relief') applyColorReliefTiles();
+
+  if (btn) { btn.disabled = false; btn.textContent = '色別標高図サムネ生成'; }
+}
+
+const btnColorReliefThumb = document.getElementById('btn-color-relief-thumb');
+if (btnColorReliefThumb) btnColorReliefThumb.addEventListener('click', captureColorReliefThumb);
+
+// ---- サムネイル生成関連ここまで ----
 
 // ---- サイドバーナビゲーション ----
 let _sidebarCurrentPanel = 'sim';
