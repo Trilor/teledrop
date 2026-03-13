@@ -4519,6 +4519,16 @@ function exportFramesAsGeoJson() {
 
 document.getElementById('btn-export-frames-geojson')?.addEventListener('click', exportFramesAsGeoJson);
 
+// 「その他の地図」セクションのエクスポートボタン
+// img-import-* フレームが1件以上あれば表示する
+function syncImgExportBtn() {
+  const btn = document.getElementById('btn-export-img-geojson');
+  if (!btn) return;
+  const hasImport = mapFrames.some(f => f.id.startsWith('img-import-'));
+  btn.style.display = hasImport ? '' : 'none';
+}
+document.getElementById('btn-export-img-geojson')?.addEventListener('click', exportFramesAsGeoJson);
+
 // ---- サムネイル生成関連 ----
 
 // ---- OriLibre サムネイル生成（正方形） ----
@@ -7240,6 +7250,7 @@ document.getElementById('import-decide-btn').addEventListener('click', () => {
   });
   updateFrameGeoJsonSource();
   renderFrameTree();
+  syncImgExportBtn();
 
   closeImportModal(false);
 });
