@@ -4068,69 +4068,6 @@ document.getElementById('overlay-cards').addEventListener('click', (e) => {
 // ズーム17の境界を跨いだとき 0.5m ↔ 1m を自動切替
 map.on('zoomend', updateCsVisibility);
 
-// Q地図1m等高線: ズームレベル変化時に DemSource を再作成してキャッシュを完全リセット
-// ─────────────────────────────────────────────────────────────────
-// setTiles() は mlcontour の内部キャッシュが保持する detached ArrayBuffer を
-// MapLibre Worker へ再転送しようとして DataCloneError を引き起こすため使用不可。
-// DemSource ごと作り直すことで mlcontour のプロトコル URL を更新し、
-// MapLibre が完全に新しいソースとしてタイルを要求するようにする。
-// ─────────────────────────────────────────────────────────────────
-let _contourRecreateScheduled = false;
-
-async function recreateQ1mContourSource() {
-  _contourRecreateScheduled = false;
-  if (contourDemMode !== 'q1m') return;
-  if (!map.getSource('contour-source')) return;
-
-  // 1. contour-source を使用するレイヤーを順序付きで収集
-  const allLayers = map.getStyle().layers;
-  const contourLayerDefs = [];
-  for (let i = 0; i < allLayers.length; i++) {
-    if (allLayers[i].source === 'contour-source') {
-      contourLayerDefs.push({
-        def: { ...allLayers[i] },
-        beforeId: allLayers[i + 1]?.id,
-      });
-    }
-  }
-
-  // 2. レイヤーとソースを削除
-  contourLayerDefs.forEach(({ def }) => { if (map.getLayer(def.id)) map.removeLayer(def.id); });
-  map.removeSource('contour-source');
-
-  // 3. 新しい DemSource を作成（mlcontour が新しいプロトコル URL を割り当てる）
-  contourDemSource = new mlcontour.DemSource({
-    url: `${QCHIZU_DEM_BASE}/{z}/{x}/{y}.webp`,
-    encoding: 'numpng',
-    minzoom: 0,
-    maxzoom: 16,
-    worker: false,
-    cacheSize: 100,
-    timeoutMs: 30_000,
-  });
-  contourDemSource.setupMaplibre(maplibregl);
-
-  // 4. ソースを新しいプロトコル URL で再追加
-  map.addSource('contour-source', {
-    type: 'vector',
-    tiles: [buildContourTileUrl(userContourInterval)],
-    maxzoom: 16,
-    attribution: '',
-  });
-
-  // 5. レイヤーを元の順序で再追加
-  contourLayerDefs.forEach(({ def, beforeId }) => {
-    try { map.addLayer(def, beforeId); } catch (e) { /* beforeId が削除済みの場合は末尾に追加 */ map.addLayer(def); }
-  });
-}
-
-map.on('zoomend', () => {
-  if (contourDemMode !== 'q1m') return;
-  if (_contourRecreateScheduled) return; // 連続ズームでの多重実行を防止
-  _contourRecreateScheduled = true;
-  map.once('idle', () => setTimeout(recreateQ1mContourSource, 0));
-});
-
 
 // ---- 色別標高図 デュアルレンジスライダー ----
 // DEM タイルベース URL（プロトコルを除いたパス部分）
