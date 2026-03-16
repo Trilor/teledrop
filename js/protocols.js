@@ -270,6 +270,10 @@ maplibregl.addProtocol('csdem', async (params, abortController) => {
   const regionalDemBase = (baseUrl === QCHIZU_DEM_BASE) ? null : baseUrl;
   const regionalDemExt  = regionalDemBase ? ext : null;
 
+  // z<=14 は DEM5A（5m・全国・軽量）を使用。Q地図1mは高解像度だが低ズームでは精細さが不要。
+  // z>14 は Q地図1m + 陸域統合DEM の全ソース合成（demMode=null）で高品質を優先。
+  const demMode = zoomLevel <= 14 ? 'dem5a' : null;
+
   // ── ① 9タイル全て並列fetch（地域DEM優先 → Q地図 → DEM5A の順で補完） ──
   // 各タイルを fetchCompositeDemBitmap で取得（地域DEM/Q地図優先・nodata はシームレスで補完）
   const neighborOffsets = [
@@ -279,7 +283,7 @@ maplibregl.addProtocol('csdem', async (params, abortController) => {
   ];
 
   const bitmaps = await Promise.all(neighborOffsets.map(([dx, dy]) =>
-    fetchCompositeDemBitmap(zoomLevel, tileX + dx, tileY + dy, abortController.signal, regionalDemBase, regionalDemExt)
+    fetchCompositeDemBitmap(zoomLevel, tileX + dx, tileY + dy, abortController.signal, regionalDemBase, regionalDemExt, demMode)
   ));
   if (!bitmaps[4]) return { data: _transparentPngBuffer() }; // 中央タイルが取得できなければ透明タイルを返す
 
