@@ -263,34 +263,12 @@ maplibregl.addProtocol('csdem', async (params, abortController) => {
   const m = url.match(/\/(\d+)\/(\d+)\/(\d+)\.(png|webp)$/);
   if (!m) return { data: null };
   const zoomLevel = +m[1], tileX = +m[2], tileY = +m[3], ext = m[4];
-  const tileSize = 256;
 
   // 地域DEM ベースURL の抽出（z/x/y より前のパス部分）
   // 全国CS（QCHIZU_DEM_BASE）か地域DEMかを判定し、地域DEMの場合は優先ソースとして渡す
   const baseUrl = url.replace(/\/\d+\/\d+\/\d+\.\w+$/, '');
   const regionalDemBase = (baseUrl === QCHIZU_DEM_BASE) ? null : baseUrl;
   const regionalDemExt  = regionalDemBase ? ext : null;
-
-  // ピクセル解像度（m/pixel）― qchizu-project/protocolUtils.calculatePixelResolution
-  const L = 85.05112878;
-  const py = 256 * tileY + tileSize / 2;
-  const lat = (180 / Math.PI) * Math.asin(
-    Math.tanh((-Math.PI / (1 << (zoomLevel + 7))) * py + Math.atanh(Math.sin(L * Math.PI / 180)))
-  );
-  const pixelLength = 156543.04 * Math.cos(lat * Math.PI / 180) / (1 << zoomLevel);
-
-  // NumPNG → 標高（GSJ/Q地図形式, u=0.01m）
-  const toHeight = (r, g, b, a) => {
-    const x = r * 65536 + g * 256 + b;
-    if (a === 0 || x === 8388608) return -99999;
-    return x < 8388608 ? x * 0.01 : (x - 16777216) * 0.01;
-  };
-
-  // ガウシアンパラメータ
-  const sigma = Math.min(Math.max(3 / pixelLength, 1.6), 7);
-  const kernelRadius = Math.ceil(sigma * 3);
-  const buffer = kernelRadius + 1;
-  const mergedSize = tileSize + buffer * 2;
 
   // ── ① 9タイル全て並列fetch（地域DEM優先 → Q地図 → DEM5A の順で補完） ──
   // 各タイルを fetchCompositeDemBitmap で取得（地域DEM/Q地図優先・nodata はシームレスで補完）
@@ -304,6 +282,31 @@ maplibregl.addProtocol('csdem', async (params, abortController) => {
     fetchCompositeDemBitmap(zoomLevel, tileX + dx, tileY + dy, abortController.signal, regionalDemBase, regionalDemExt)
   ));
   if (!bitmaps[4]) return { data: _transparentPngBuffer() }; // 中央タイルが取得できなければ透明タイルを返す
+
+  // タイルサイズを中央タイルから動的検出（256px または 512px タイルに対応）
+  const tileSize = bitmaps[4].width;
+
+  // ピクセル解像度（m/pixel）― qchizu-project/protocolUtils.calculatePixelResolution
+  // py は常に 256px タイル基準の座標系で計算し、pixelLength を (256/tileSize) で補正する
+  const L = 85.05112878;
+  const py = 256 * tileY + 128; // 256px タイル基準で固定（512px タイルでも地理座標は同一）
+  const lat = (180 / Math.PI) * Math.asin(
+    Math.tanh((-Math.PI / (1 << (zoomLevel + 7))) * py + Math.atanh(Math.sin(L * Math.PI / 180)))
+  );
+  const pixelLength = 156543.04 * Math.cos(lat * Math.PI / 180) / (1 << zoomLevel) * (256 / tileSize);
+
+  // NumPNG → 標高（GSJ/Q地図形式, u=0.01m）
+  const toHeight = (r, g, b, a) => {
+    const x = r * 65536 + g * 256 + b;
+    if (a === 0 || x === 8388608) return -99999;
+    return x < 8388608 ? x * 0.01 : (x - 16777216) * 0.01;
+  };
+
+  // ガウシアンパラメータ
+  const sigma = Math.min(Math.max(3 / pixelLength, 1.6), 7);
+  const kernelRadius = Math.ceil(sigma * 3);
+  const buffer = kernelRadius + 1;
+  const mergedSize = tileSize + buffer * 2;
 
   // ── ② マージキャンバスに描画 ──
   const mergedCanvas = new OffscreenCanvas(mergedSize, mergedSize);
@@ -334,8 +337,8 @@ maplibregl.addProtocol('csdem', async (params, abortController) => {
     mergedHeights[i] = toHeight(mergedPx[p], mergedPx[p + 1], mergedPx[p + 2], mergedPx[p + 3]);
   }
 
-  // 中央タイル（256×256）の無効値マスク — 無効ピクセルを透明にするためのアルファ値
-  // mergedHeights の中央領域 (buffer,buffer)〜(buffer+256,buffer+256) を参照
+  // 中央タイルの無効値マスク — 無効ピクセルを透明にするためのアルファ値
+  // mergedHeights の中央領域 (buffer,buffer)〜(buffer+tileSize,buffer+tileSize) を参照
   const centerAlpha = new Float32Array(tileSize * tileSize);
   for (let row = 0; row < tileSize; row++) {
     for (let col = 0; col < tileSize; col++) {
@@ -401,7 +404,7 @@ maplibregl.addProtocol('csdem', async (params, abortController) => {
     const rgb = mulBlend(blend(blend(blend(L1, L2, 0.5), L3, 0.5), L4, 0.5), L5);
     // 無効値（NoData）領域をアルファ0（透明）にするため、centerAlpha を第4チャンネルとして結合
     const alphaT = tf.tensor1d(centerAlpha, 'float32').reshape([tileSize, tileSize, 1]);
-    return tf.concat([rgb, alphaT], -1); // [256,256,4] RGBA出力
+    return tf.concat([rgb, alphaT], -1); // [tileSize,tileSize,4] RGBA出力
   });
   [hT, valid].forEach(t => t.dispose()); // 平滑化フェーズで使い終わったテンソルを解放
 

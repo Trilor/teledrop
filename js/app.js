@@ -416,10 +416,10 @@ map.on('load', async () => {
   // （worker: true の場合、Blob URL Worker の Origin が null になり Q地図サーバーが 404 を返す）
   try {
     contourDemSource = new mlcontour.DemSource({
-      url: 'https://mapdata.qchizu.xyz/03_dem/52_gsi/all_2025/1_02/{z}/{x}/{y}.webp',
+      url: 'https://mapdata.qchizu.xyz/03_dem/52_gsi/all_2026/1_01/{z}/{x}/{y}.webp',
       encoding: 'numpng',
       minzoom: 0,
-      maxzoom: 17,
+      maxzoom: 16,
       worker: false,
       cacheSize: 100,
       timeoutMs: 30_000,
@@ -428,7 +428,7 @@ map.on('load', async () => {
     map.addSource('contour-source', {
       type: 'vector',
       tiles: [buildContourTileUrl(userContourInterval)],
-      maxzoom: 17,
+      maxzoom: 16,
       attribution: '',
     });
     console.log('Q地図 1m 等高線ソース登録完了');
@@ -734,8 +734,8 @@ map.on('load', async () => {
   // min/max パラメータはスライダー操作時に setTiles() で動的更新する
   map.addSource('color-relief', {
     type: 'raster',
-    tiles: ['dem2relief://mapdata.qchizu.xyz/03_dem/52_gsi/all_2025/1_02/{z}/{x}/{y}.webp?min=0&max=500&_init=1'],
-    tileSize: 256,
+    tiles: ['dem2relief://mapdata.qchizu.xyz/03_dem/52_gsi/all_2026/1_01/{z}/{x}/{y}.webp?min=0&max=500&_init=1'],
+    tileSize: 512,
     minzoom: 5,
     maxzoom: 14, // Q地図DEMタイルの提供上限よりひとつ下。これ以上のズームはオーバーズームで補完
     attribution: '',
@@ -755,9 +755,9 @@ map.on('load', async () => {
   map.addSource('cs-relief', {
     type: 'raster',
     tiles: [CS_RELIEF_URL],
-    tileSize: 256,
+    tileSize: 512,
     minzoom: 5,
-    maxzoom: 17,
+    maxzoom: 16,
     attribution: '',
   });
 
@@ -4069,7 +4069,7 @@ map.on('zoomend', updateCsVisibility);
 
 // ---- 色別標高図 デュアルレンジスライダー ----
 // DEM タイルベース URL（プロトコルを除いたパス部分）
-const COLOR_RELIEF_DEM_BASE = 'mapdata.qchizu.xyz/03_dem/52_gsi/all_2025/1_02';
+const COLOR_RELIEF_DEM_BASE = 'mapdata.qchizu.xyz/03_dem/52_gsi/all_2026/1_01';
 
 // 現在の min/max 値
 let crMin = 0;

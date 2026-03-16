@@ -11,14 +11,14 @@
 // Q地図 DEM / DEM5A / 湖水深タイルは共に国土地理院 NumPNG 形式（x=2^16R+2^8G+B, u=0.01m）
 // gsjdem:// プロトコルが Q地図 > DEM5A > 湖水深 の優先順で合成し Terrarium 形式に変換する。
 // DEM5A・湖水深タイルは標準の {z}/{x}/{y} 順。
-export const QCHIZU_DEM_BASE  = 'https://mapdata.qchizu.xyz/03_dem/52_gsi/all_2025/1_02';
+export const QCHIZU_DEM_BASE  = 'https://mapdata.qchizu.xyz/03_dem/52_gsi/all_2026/1_01';
 export const DEM5A_BASE       = 'https://cyberjapandata.gsi.go.jp/xyz/dem5a_png'; // 基盤地図情報DEM5A {z}/{x}/{y}.png
 export const DEM1A_BASE       = 'https://cyberjapandata.gsi.go.jp/xyz/dem1a_png'; // 基盤地図情報DEM1A {z}/{x}/{y}.png
 export const LAKEDEPTH_BASE          = 'https://cyberjapandata.gsi.go.jp/xyz/lakedepth';          // 湖水深タイル {z}/{x}/{y}.png
 export const LAKEDEPTH_STANDARD_BASE = 'https://cyberjapandata.gsi.go.jp/xyz/lakedepth_standard'; // 基準水面標高タイル {z}/{x}/{y}.png
 export const LAND_DEM_BASE    = 'https://tiles.gsj.jp/tiles/elev/land'; // 陸域統合DEM（産総研）※ {z}/{y}/{x}.png（y・x 逆順）
 
-export const TERRAIN_URL = 'gsjdem://mapdata.qchizu.xyz/03_dem/52_gsi/all_2025/1_02/{z}/{x}/{y}.webp';
+export const TERRAIN_URL = 'gsjdem://mapdata.qchizu.xyz/03_dem/52_gsi/all_2026/1_01/{z}/{x}/{y}.webp';
 
 // ★ OriLibre（オリエンテーリング風地図）
 //   isomizer と設定データはローカルコピーを使用（js/isomizer/ 以下）
@@ -26,7 +26,7 @@ export const TERRAIN_URL = 'gsjdem://mapdata.qchizu.xyz/03_dem/52_gsi/all_2025/1
 
 // ★ CS立体図（ブラウザ生成・Q地図DEMから動的生成）
 //   csdem:// プロトコルでQ地図DEMタイルをリアルタイムにCS立体図へ変換します。
-export const CS_RELIEF_URL = 'csdem://mapdata.qchizu.xyz/03_dem/52_gsi/all_2025/1_02/{z}/{x}/{y}.webp';
+export const CS_RELIEF_URL = 'csdem://mapdata.qchizu.xyz/03_dem/52_gsi/all_2026/1_01/{z}/{x}/{y}.webp';
 
 // ★ 地域別CS立体図（0.5mDEM由来・高精度）の定義リスト
 //   在る地域では全国地理院CSタイルよりも高解像度なため、上層に重ねて表示する。
