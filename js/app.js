@@ -4068,6 +4068,17 @@ document.getElementById('overlay-cards').addEventListener('click', (e) => {
 // ズーム17の境界を跨いだとき 0.5m ↔ 1m を自動切替
 map.on('zoomend', updateCsVisibility);
 
+// Q地図1m等高線のキャッシュ問題対策:
+// worker:false（メインスレッド）のため新ズームのタイル生成が遅く、古いキャッシュが残りやすい。
+// zoomend 時に setTiles() でソースを強制リフレッシュして即時更新させる。
+map.on('zoomend', () => {
+  if (contourDemMode !== 'q1m') return;
+  const src = map.getSource('contour-source');
+  if (src) src.setTiles([buildContourTileUrl(userContourInterval)]);
+  const lakeSrc = map.getSource('contour-source-lake');
+  if (lakeSrc) lakeSrc.setTiles([buildLakeContourTileUrl(userContourInterval)]);
+});
+
 // ---- 色別標高図 デュアルレンジスライダー ----
 // DEM タイルベース URL（プロトコルを除いたパス部分）
 const COLOR_RELIEF_DEM_BASE = 'mapdata.qchizu.xyz/03_dem/52_gsi/all_2026/1_01';
