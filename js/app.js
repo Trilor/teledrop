@@ -4033,7 +4033,9 @@ function updateCsVisibility() {
 
   const z = map.getZoom();
   const csRes   = csKey?.replace('cs-', '');
-  const show1m  = !!csKey && (csRes === '1m' || (csRes === '0.5m' && z < 17));
+  // z>=17 かつ 0.5m 選択時は 1m を下敷きにして 0.5m を上に重ねる（プログレッシブ表示）
+  // 0.5m タイルが読み込まれると 1m を覆うため、読み込み中は 1m がフォールバックとして見える
+  const show1m  = !!csKey && (csRes === '1m' || csRes === '0.5m');
   const show05m = !!csKey && csRes === '0.5m' && z >= 17;
 
   if (map.getLayer('cs-relief-layer')) {
