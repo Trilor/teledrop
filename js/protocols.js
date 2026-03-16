@@ -489,9 +489,11 @@ maplibregl.addProtocol('dem2relief', async (params, abortController) => {
     if (!m) return { data: _transparentPngBuffer() };
     const [, z, x, y] = m;
 
+    // z<=14 は DEM5A（軽量）、z>14 は Q地図1m + 陸域統合DEM 全ソース合成
+    const demMode = +z <= 14 ? 'dem5a' : null;
     // 合成 DEM ビットマップを取得（Q地図 > 陸域統合 > 湖水深 の優先順）
     // データなし（海域・範囲外・404・CORS）の場合は透明タイルを返す
-    const bitmap = await fetchCompositeDemBitmap(z, x, y, abortController.signal);
+    const bitmap = await fetchCompositeDemBitmap(z, x, y, abortController.signal, null, 'png', demMode);
     if (!bitmap) return { data: _transparentPngBuffer() };
 
     // NumPNG → RGB 色別標高図へ変換
