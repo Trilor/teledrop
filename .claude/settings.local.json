@@ -19,7 +19,12 @@
       "Bash(git add js/app.js)",
       "Bash(git add index.html style.css js/app.js)",
       "WebFetch(domain:api.github.com)",
-      "Bash(git add index.html js/app.js)"
+      "Bash(git add index.html js/app.js)",
+      "Bash(git add:*)",
+      "WebFetch(domain:app.unpkg.com)",
+      "WebFetch(domain:unpkg.com)",
+      "Bash(curl -s \"https://unpkg.com/@watergis/maplibre-gl-export/dist/maplibre-gl-export.umd.js\")",
+      "Bash(curl -s \"https://unpkg.com/@watergis/maplibre-gl-export@4.1.1/dist/maplibre-gl-export.umd.js\")"
     ]
   }
 }
