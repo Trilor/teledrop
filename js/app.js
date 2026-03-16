@@ -4070,13 +4070,16 @@ map.on('zoomend', updateCsVisibility);
 
 // Q地図1m等高線のキャッシュ問題対策:
 // worker:false（メインスレッド）のため新ズームのタイル生成が遅く、古いキャッシュが残りやすい。
-// zoomend 時に setTiles() でソースを強制リフレッシュして即時更新させる。
+// idle 後に setTiles() でリフレッシュ（zoomend 直後は処理中 ArrayBuffer があり
+// 二重転送による DataCloneError が発生するため idle まで待つ）。
 map.on('zoomend', () => {
   if (contourDemMode !== 'q1m') return;
-  const src = map.getSource('contour-source');
-  if (src) src.setTiles([buildContourTileUrl(userContourInterval)]);
-  const lakeSrc = map.getSource('contour-source-lake');
-  if (lakeSrc) lakeSrc.setTiles([buildLakeContourTileUrl(userContourInterval)]);
+  map.once('idle', () => {
+    const src = map.getSource('contour-source');
+    if (src) src.setTiles([buildContourTileUrl(userContourInterval)]);
+    const lakeSrc = map.getSource('contour-source-lake');
+    if (lakeSrc) lakeSrc.setTiles([buildLakeContourTileUrl(userContourInterval)]);
+  });
 });
 
 // ---- 色別標高図 デュアルレンジスライダー ----
