@@ -4051,6 +4051,21 @@ function updateCsVisibility() {
   updateRegionalAttribution();
 }
 
+// CS立体図 読み込み中インジケーター
+const _csLoadingEl = document.getElementById('cs-loading');
+let _csLoadingIdleRegistered = false;
+
+function showCsLoading() {
+  if (_csLoadingEl) _csLoadingEl.style.display = 'flex';
+  if (_csLoadingIdleRegistered) return;
+  _csLoadingIdleRegistered = true;
+  map.once('idle', hideCsLoading);
+}
+function hideCsLoading() {
+  _csLoadingIdleRegistered = false;
+  if (_csLoadingEl) _csLoadingEl.style.display = 'none';
+}
+
 // オーバーレイカードのクリックハンドラー
 document.getElementById('overlay-cards').addEventListener('click', (e) => {
   const card = e.target.closest('.bm-card');
@@ -4059,6 +4074,9 @@ document.getElementById('overlay-cards').addEventListener('click', (e) => {
   card.classList.add('active');
   currentOverlay = card.dataset.key;
   updateCsVisibility();
+  // CS立体図選択時はローディング表示（idle で非表示）
+  if (currentOverlay === 'cs') showCsLoading();
+  else hideCsLoading();
   // 色別標高図選択時はタイルを即座にリクエスト（visibility:none 中はMapLibreがフェッチしないため）
   if (currentOverlay === 'color-relief') applyColorReliefTiles();
 });
