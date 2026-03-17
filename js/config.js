@@ -12,6 +12,8 @@
 // gsjdem:// プロトコルが Q地図 > DEM5A > 湖水深 の優先順で合成し Terrarium 形式に変換する。
 // DEM5A・湖水深タイルは標準の {z}/{x}/{y} 順。
 export const QCHIZU_DEM_BASE  = 'https://mapdata.qchizu.xyz/03_dem/52_gsi/all_2026/1_01';
+// Cloudflare Worker 経由の CORS プロキシ URL（mlcontour worker: true を可能にするため）
+export const QCHIZU_PROXY_BASE = 'https://teledrop-proxy.trilor.workers.dev/qchizu/03_dem/52_gsi/all_2026/1_01';
 export const DEM5A_BASE       = 'https://cyberjapandata.gsi.go.jp/xyz/dem5a_png'; // 基盤地図情報DEM5A {z}/{x}/{y}.png
 export const DEM1A_BASE       = 'https://cyberjapandata.gsi.go.jp/xyz/dem1a_png'; // 基盤地図情報DEM1A {z}/{x}/{y}.png
 export const LAKEDEPTH_BASE          = 'https://cyberjapandata.gsi.go.jp/xyz/lakedepth';          // 湖水深タイル {z}/{x}/{y}.png

@@ -3,7 +3,7 @@
    ================================================================ */
 
 import {
-  QCHIZU_DEM_BASE, DEM5A_BASE, DEM1A_BASE,
+  QCHIZU_DEM_BASE, QCHIZU_PROXY_BASE, DEM5A_BASE, DEM1A_BASE,
   LAKEDEPTH_BASE, LAKEDEPTH_STANDARD_BASE,
   TERRAIN_URL, CS_RELIEF_URL,
   REGIONAL_CS_LAYERS,
@@ -415,15 +415,14 @@ map.on('load', async () => {
   ========================================================
 */
   // Q地図 1m 等高線ソース
-  // worker: false = メインスレッドで fetch → Blob URL Worker の null Origin 問題を回避
-  // （worker: true の場合、Blob URL Worker の Origin が null になり Q地図サーバーが 404 を返す）
+  // Cloudflare Worker プロキシ経由で CORS を解決し、worker: true（バックグラウンドスレッド）で安定動作させる
   try {
     contourDemSource = new mlcontour.DemSource({
-      url: 'https://mapdata.qchizu.xyz/03_dem/52_gsi/all_2026/1_01/{z}/{x}/{y}.webp',
+      url: `${QCHIZU_PROXY_BASE}/{z}/{x}/{y}.webp`,
       encoding: 'numpng',
       minzoom: 0,
       maxzoom: 16,
-      worker: false,
+      worker: true,
       cacheSize: 100,
       timeoutMs: 30_000,
     });
