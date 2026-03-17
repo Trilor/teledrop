@@ -3569,3 +3569,33 @@ label.setting-label {
 @keyframes cs-spin {
   to { transform: rotate(360deg); }
 }
+
+/* CS立体図 地図移動中タイル生成インジケーター（右下・小） */
+#cs-tile-loading {
+  position: fixed;
+  bottom: 36px;
+  right: 10px;
+  z-index: 200;
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  gap: 7px;
+  background: rgba(255, 255, 255, 0.88);
+  backdrop-filter: blur(4px);
+  border-radius: 20px;
+  padding: 5px 10px 5px 6px;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.12);
+  font-size: 12px;
+  color: #333;
+  pointer-events: none;
+}
+.cs-tile-loading-spinner {
+  position: relative;
+  width: 22px;
+  height: 22px;
+  border: 2px solid #e0e0e0;
+  border-top-color: var(--primary);
+  border-radius: 50%;
+  animation: cs-spin 1.2s linear infinite;
+  flex-shrink: 0;
+}

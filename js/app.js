@@ -4049,7 +4049,7 @@ function updateCsVisibility() {
   updateRegionalAttribution();
 }
 
-// CS立体図 読み込み中インジケーター
+// CS立体図 読み込み中インジケーター（中央・オーバーレイ選択時）
 const _csLoadingEl = document.getElementById('cs-loading');
 let _csLoadingIdleRegistered = false;
 
@@ -4063,6 +4063,31 @@ function hideCsLoading() {
   _csLoadingIdleRegistered = false;
   if (_csLoadingEl) _csLoadingEl.style.display = 'none';
 }
+
+// CS立体図 タイル生成インジケーター（右下・地図移動/ズーム時）
+const _csTileLoadingEl = document.getElementById('cs-tile-loading');
+let _csTileLoadingIdleRegistered = false;
+
+function showCsTileLoading() {
+  if (_csTileLoadingEl) _csTileLoadingEl.style.display = 'flex';
+  if (_csTileLoadingIdleRegistered) return;
+  _csTileLoadingIdleRegistered = true;
+  map.once('idle', hideCsTileLoading);
+}
+function hideCsTileLoading() {
+  _csTileLoadingIdleRegistered = false;
+  if (_csTileLoadingEl) _csTileLoadingEl.style.display = 'none';
+}
+
+// CS立体図レイヤーが現在表示中かどうか
+function isCsLayerVisible() {
+  return !!(map.getLayer('cs-relief-layer') &&
+    map.getLayoutProperty('cs-relief-layer', 'visibility') === 'visible');
+}
+
+map.on('movestart', () => {
+  if (isCsLayerVisible()) showCsTileLoading();
+});
 
 // オーバーレイカードのクリックハンドラー
 document.getElementById('overlay-cards').addEventListener('click', (e) => {
