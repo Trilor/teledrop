@@ -4673,7 +4673,7 @@ function captureFrameShot(frame) {
 
 // ---- 枠 GeoJSON エクスポート ----
 // 地方→都道府県→テレインの3段カスケードダイアログ。
-// 解決値: { pref, terrainId, terrainName, isNew } または null（キャンセル）
+// 解決値: { pref, terrainId, terrainName, isNew, eventName } または null（キャンセル）
 function promptTerrainInfo() {
   return new Promise(resolve => {
     const dialog      = document.getElementById('export-terrain-dialog');
@@ -4683,11 +4683,15 @@ function promptTerrainInfo() {
     const terrainRow  = document.getElementById('export-terrain-row');
     const terrainList = document.getElementById('export-terrain-list');
     const nameInp     = document.getElementById('export-terrain-name');
+    const eventRow    = document.getElementById('export-event-row');
+    const eventList   = document.getElementById('export-event-list');
+    const eventInp    = document.getElementById('export-event-name');
     const okBtn       = document.getElementById('export-dialog-ok');
     const cancelBtn   = document.getElementById('export-dialog-cancel');
 
     // 状態リセット
     let selRegion = null, selPref = null, selTerrainId = null, selTerrainName = null;
+    let selEventName = null;
     regionList.innerHTML = '';
     prefRow.style.display = 'none';
     prefList.innerHTML = '';
@@ -4695,12 +4699,17 @@ function promptTerrainInfo() {
     terrainList.innerHTML = '';
     nameInp.style.display = 'none';
     nameInp.value = '';
+    eventRow.style.display = 'none';
+    eventList.innerHTML = '';
+    eventInp.style.display = 'none';
+    eventInp.value = '';
     okBtn.disabled = true;
     dialog.style.display = 'flex';
 
     function updateOk() {
-      const nameOk = selTerrainId === '__new__' ? nameInp.value.trim() !== '' : selTerrainId !== null;
-      okBtn.disabled = !nameOk;
+      const terrainOk = selTerrainId === '__new__' ? nameInp.value.trim() !== '' : selTerrainId !== null;
+      const eventOk   = selEventName === '__new__' ? eventInp.value.trim() !== '' : selEventName !== null;
+      okBtn.disabled = !(terrainOk && eventOk);
     }
 
     // Step1: 地方ピルを生成
@@ -4710,17 +4719,17 @@ function promptTerrainInfo() {
       btn.textContent = region;
       btn.type = 'button';
       btn.addEventListener('click', () => {
-        // 地方選択
         regionList.querySelectorAll('.export-pill-btn').forEach(b => b.classList.remove('active'));
         btn.classList.add('active');
         selRegion = region;
-        selPref = null; selTerrainId = null; selTerrainName = null;
+        selPref = null; selTerrainId = null; selTerrainName = null; selEventName = null;
+        eventRow.style.display = 'none';
 
         // Step2: 都道府県を展開
         prefList.innerHTML = '';
         const prefs = REGION_PREF_MAP[region];
         if (prefs.length === 0) {
-          // 海外など都道府県なし → テレイン選択へ直行（その他のみ）
+          // 海外など都道府県なし → テレイン選択へ直行
           prefRow.style.display = 'none';
           buildTerrainList(null);
         } else {
@@ -4738,7 +4747,8 @@ function promptTerrainInfo() {
               prefList.querySelectorAll('.export-pill-btn').forEach(b => b.classList.remove('active'));
               pb.classList.add('active');
               selPref = pref;
-              selTerrainId = null; selTerrainName = null;
+              selTerrainId = null; selTerrainName = null; selEventName = null;
+              eventRow.style.display = 'none';
               buildTerrainList(pref);
             });
             prefList.appendChild(pb);
@@ -4755,6 +4765,7 @@ function promptTerrainInfo() {
       nameInp.style.display = 'none';
       nameInp.value = '';
       selTerrainId = null; selTerrainName = null;
+      eventRow.style.display = 'none';
       okBtn.disabled = true;
 
       // terrainMap から該当都道府県のテレインを列挙
@@ -4778,7 +4789,8 @@ function promptTerrainInfo() {
           selTerrainName = t.name;
           nameInp.style.display = 'none';
           nameInp.value = '';
-          updateOk();
+          selEventName = null;
+          buildEventList(t.id);
         });
         terrainList.appendChild(ib);
       }
@@ -4796,12 +4808,72 @@ function promptTerrainInfo() {
         nameInp.style.display = '';
         nameInp.value = '';
         nameInp.focus();
+        selEventName = null;
+        // 新規テレインの場合は大会名も新規入力のみ
+        buildEventList(null);
         updateOk();
       });
       terrainList.appendChild(newBtn);
     }
 
+    // Step4: 大会名一覧を生成（terrainId=null なら既存なしで新規入力のみ）
+    function buildEventList(terrainId) {
+      eventRow.style.display = '';
+      eventList.innerHTML = '';
+      eventInp.style.display = 'none';
+      eventInp.value = '';
+      selEventName = null;
+      okBtn.disabled = true;
+
+      // 同テレインに紐づく既存大会名を mapFrames から収集（重複排除）
+      const existing = [];
+      if (terrainId && terrainId !== '__new__') {
+        const seen = new Set();
+        for (const f of mapFrames) {
+          const en = f.properties?.event_name;
+          if (f.properties?.terrain_id === terrainId && en && !seen.has(en)) {
+            seen.add(en);
+            existing.push(en);
+          }
+        }
+        existing.sort((a, b) => a.localeCompare(b, 'ja'));
+      }
+
+      for (const en of existing) {
+        const ib = document.createElement('button');
+        ib.className = 'export-item-btn';
+        ib.textContent = en;
+        ib.type = 'button';
+        ib.addEventListener('click', () => {
+          eventList.querySelectorAll('.export-item-btn').forEach(b => b.classList.remove('active'));
+          ib.classList.add('active');
+          selEventName = en;
+          eventInp.style.display = 'none';
+          eventInp.value = '';
+          updateOk();
+        });
+        eventList.appendChild(ib);
+      }
+
+      // 「その他（新規入力）」
+      const newEvBtn = document.createElement('button');
+      newEvBtn.className = 'export-item-btn';
+      newEvBtn.textContent = '新規入力';
+      newEvBtn.type = 'button';
+      newEvBtn.addEventListener('click', () => {
+        eventList.querySelectorAll('.export-item-btn').forEach(b => b.classList.remove('active'));
+        newEvBtn.classList.add('active');
+        selEventName = '__new__';
+        eventInp.style.display = '';
+        eventInp.value = '';
+        eventInp.focus();
+        updateOk();
+      });
+      eventList.appendChild(newEvBtn);
+    }
+
     nameInp.addEventListener('input', updateOk);
+    eventInp.addEventListener('input', updateOk);
 
     function finish(result) {
       dialog.style.display = 'none';
@@ -4812,13 +4884,17 @@ function promptTerrainInfo() {
     function onOk() {
       if (okBtn.disabled) return;
       const pref = selPref ?? '海外';
-      if (selTerrainId === '__new__') {
-        const name = nameInp.value.trim();
-        if (!name) { nameInp.focus(); return; }
-        finish({ pref, terrainId: null, terrainName: name, isNew: true });
-      } else {
-        finish({ pref, terrainId: selTerrainId, terrainName: selTerrainName, isNew: false });
-      }
+      const terrainName = selTerrainId === '__new__' ? nameInp.value.trim() : selTerrainName;
+      const eventName   = selEventName === '__new__' ? eventInp.value.trim() : selEventName;
+      if (!terrainName) { nameInp.focus(); return; }
+      if (!eventName)   { eventInp.focus(); return; }
+      finish({
+        pref,
+        terrainId:   selTerrainId === '__new__' ? null : selTerrainId,
+        terrainName,
+        isNew:       selTerrainId === '__new__',
+        eventName,
+      });
     }
     function onCancel() { finish(null); }
     okBtn.addEventListener('click', onOk);
@@ -4890,7 +4966,7 @@ async function exportFramesAsGeoJson() {
       ...targets.map(f => ({
         type: 'Feature',
         id: f.id,
-        properties: { ...f.properties, terrain_id: terrainId },
+        properties: { ...f.properties, terrain_id: terrainId, event_name: info.eventName },
         geometry: {
           type: 'Polygon',
           coordinates: [[...f.coordinates, f.coordinates[0]]],
@@ -4901,7 +4977,7 @@ async function exportFramesAsGeoJson() {
   const blob = new Blob([JSON.stringify(fc, null, 2)], { type: 'application/geo+json' });
   const a = document.createElement('a');
   a.href = URL.createObjectURL(blob);
-  a.download = `${info.terrainName}.geojson`;
+  a.download = `${info.eventName}.geojson`;
   document.body.appendChild(a);
   a.click();
   a.remove();
