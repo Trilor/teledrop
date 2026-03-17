@@ -4686,6 +4686,10 @@ function promptTerrainInfo() {
     const eventRow    = document.getElementById('export-event-row');
     const eventList   = document.getElementById('export-event-list');
     const eventInp    = document.getElementById('export-event-name');
+    const detailRow   = document.getElementById('export-detail-row');
+    const dateInp     = document.getElementById('export-event-date');
+    const scaleInp    = document.getElementById('export-scale');
+    const mapSizeInp  = document.getElementById('export-map-size');
     const okBtn       = document.getElementById('export-dialog-ok');
     const cancelBtn   = document.getElementById('export-dialog-cancel');
 
@@ -4703,6 +4707,10 @@ function promptTerrainInfo() {
     eventList.innerHTML = '';
     eventInp.style.display = 'none';
     eventInp.value = '';
+    detailRow.style.display = 'none';
+    dateInp.value = '';
+    scaleInp.value = '';
+    mapSizeInp.value = '';
     okBtn.disabled = true;
     dialog.style.display = 'flex';
 
@@ -4839,6 +4847,29 @@ function promptTerrainInfo() {
         existing.sort((a, b) => a.localeCompare(b, 'ja'));
       }
 
+      // 大会名選択時に詳細フォームを表示し、既存データがあれば prefill する
+      function onEventSelect(en) {
+        selEventName = en;
+        eventInp.style.display = 'none';
+        eventInp.value = '';
+        detailRow.style.display = '';
+        dateInp.value = '';
+        scaleInp.value = '';
+        mapSizeInp.value = '';
+        // 既存の大会データから prefill
+        if (en && en !== '__new__') {
+          const src = mapFrames.find(f =>
+            f.properties?.terrain_id === selTerrainId && f.properties?.event_name === en
+          );
+          if (src) {
+            dateInp.value    = src.properties.event_date  ?? '';
+            scaleInp.value   = src.properties.scale       ?? '';
+            mapSizeInp.value = src.properties.map_size    ?? '';
+          }
+        }
+        updateOk();
+      }
+
       for (const en of existing) {
         const ib = document.createElement('button');
         ib.className = 'export-item-btn';
@@ -4847,15 +4878,12 @@ function promptTerrainInfo() {
         ib.addEventListener('click', () => {
           eventList.querySelectorAll('.export-item-btn').forEach(b => b.classList.remove('active'));
           ib.classList.add('active');
-          selEventName = en;
-          eventInp.style.display = 'none';
-          eventInp.value = '';
-          updateOk();
+          onEventSelect(en);
         });
         eventList.appendChild(ib);
       }
 
-      // 「その他（新規入力）」
+      // 「新規入力」
       const newEvBtn = document.createElement('button');
       newEvBtn.className = 'export-item-btn';
       newEvBtn.textContent = '新規入力';
@@ -4867,6 +4895,10 @@ function promptTerrainInfo() {
         eventInp.style.display = '';
         eventInp.value = '';
         eventInp.focus();
+        detailRow.style.display = '';
+        dateInp.value = '';
+        scaleInp.value = '';
+        mapSizeInp.value = '';
         updateOk();
       });
       eventList.appendChild(newEvBtn);
@@ -4894,6 +4926,9 @@ function promptTerrainInfo() {
         terrainName,
         isNew:       selTerrainId === '__new__',
         eventName,
+        eventDate:   dateInp.value   || null,
+        scale:       scaleInp.value  || null,
+        mapSize:     mapSizeInp.value || null,
       });
     }
     function onCancel() { finish(null); }
@@ -4966,7 +5001,7 @@ async function exportFramesAsGeoJson() {
       ...targets.map(f => ({
         type: 'Feature',
         id: f.id,
-        properties: { ...f.properties, terrain_id: terrainId, event_name: info.eventName },
+        properties: { ...f.properties, terrain_id: terrainId, event_name: info.eventName, event_date: info.eventDate, scale: info.scale, map_size: info.mapSize },
         geometry: {
           type: 'Polygon',
           coordinates: [[...f.coordinates, f.coordinates[0]]],
