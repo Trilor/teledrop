@@ -427,7 +427,7 @@ map.on('load', async () => {
     map.addSource('contour-source', {
       type: 'vector',
       tiles: [buildContourTileUrl(userContourInterval)],
-      maxzoom: 16,
+      maxzoom: 15, // z16以上はz15タイルをオーバーズーム（ズーム変更時のブランクを防ぐ）
       attribution: '',
     });
     console.log('Q地図 1m 等高線ソース登録完了');
