@@ -4085,8 +4085,12 @@ function isCsLayerVisible() {
     map.getLayoutProperty('cs-relief-layer', 'visibility') === 'visible');
 }
 
+function isGeneratingLayer() {
+  return isCsLayerVisible() || currentOverlay === 'color-relief';
+}
+
 map.on('movestart', () => {
-  if (isCsLayerVisible()) showMapTileLoading();
+  if (isGeneratingLayer()) showMapTileLoading();
 });
 
 // オーバーレイカードのクリックハンドラー
@@ -4097,8 +4101,8 @@ document.getElementById('overlay-cards').addEventListener('click', (e) => {
   card.classList.add('active');
   currentOverlay = card.dataset.key;
   updateCsVisibility();
-  // CS立体図選択時はローディング表示（idle で非表示）
-  if (currentOverlay === 'cs') showMapLoading();
+  // CS立体図・色別標高図選択時はローディング表示（idle で非表示）
+  if (currentOverlay === 'cs' || currentOverlay === 'color-relief') showMapLoading();
   else hideMapLoading();
   // 色別標高図選択時はタイルを即座にリクエスト（visibility:none 中はMapLibreがフェッチしないため）
   if (currentOverlay === 'color-relief') applyColorReliefTiles();
