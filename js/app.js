@@ -848,10 +848,9 @@ map.on('load', async () => {
     clearTimeout(_magnNorthTimer);
     _magnNorthTimer = setTimeout(updateMagneticNorth, 200);
   });
-  // moveend ではなく zoom で等高線間隔を更新することで、ズーム中も即座にしきい値が更新される。
-  // getEffectiveContourInterval() が離散値（5/10/25/50/100/200m）を返すため、
-  // ズームレベルの境界をまたいだときだけ lastAppliedContourInterval の比較により setTiles が発火する。
-  map.on('zoom', updateContourAutoInterval);
+  // zoomend で等高線間隔を更新する（zoom イベントだとズーム中に setTiles が呼ばれてキャッシュが
+  // クリアされ等高線が一瞬消えるため、ズーム完了後に一度だけ実行する）
+  map.on('zoomend', updateContourAutoInterval);
   // 起動時は zoom イベントが発火しないため、load 完了後に一度だけ初期化する
   updateContourAutoInterval();
 
