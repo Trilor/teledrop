@@ -3547,14 +3547,11 @@ label.setting-label {
 .compass-needle-group {
   transform-box: view-box;
   transform-origin: 32px 32px;
-  animation: magnetic-spin 2s linear infinite;
+  animation: magnetic-spin 1.5s cubic-bezier(0.68, -0.55, 0.265, 1.55) infinite;
 }
 
 @keyframes magnetic-spin {
-  /* 0→75%: ease-in で加速しながら300度まで回転 */
-  0%   { transform: rotate(0deg);   animation-timing-function: ease-in; }
-  /* 75→100%: 北に近づくと強く減速し吸い付くように止まる */
-  75%  { transform: rotate(300deg); animation-timing-function: cubic-bezier(0.22, 1, 0.36, 1); }
+  0%   { transform: rotate(0deg); }
   100% { transform: rotate(360deg); }
 }
 
