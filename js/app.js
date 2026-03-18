@@ -427,7 +427,7 @@ map.on('load', async () => {
     map.addSource('contour-source', {
       type: 'vector',
       tiles: [buildContourTileUrl(userContourInterval)],
-      maxzoom: 15, // z16以上はz15タイルをオーバーズーム（ズーム変更時のブランクを防ぐ）
+      maxzoom: 14, // z14タイルをz15以上でオーバーズーム
       attribution: '',
     });
     console.log('Q地図 1m 等高線ソース登録完了');
@@ -452,7 +452,7 @@ map.on('load', async () => {
     map.addSource('contour-source-lake', {
       type: 'vector',
       tiles: [buildLakeContourTileUrl(userContourInterval)],
-      maxzoom: 15,
+      maxzoom: 14, // z14タイルをz15以上でオーバーズーム
       attribution: '',
     });
     console.log('湖水深等高線ソース登録完了');
@@ -475,7 +475,7 @@ map.on('load', async () => {
     map.addSource('contour-source-dem5a', {
       type: 'vector',
       tiles: [buildSeamlessContourTileUrl(userContourInterval)],
-      maxzoom: 15,
+      maxzoom: 14, // z14タイルをz15以上でオーバーズーム
       attribution: '',
     });
     console.log('DEM5A 等高線ソース登録完了');
@@ -498,7 +498,7 @@ map.on('load', async () => {
     map.addSource('contour-source-dem1a', {
       type: 'vector',
       tiles: [buildDem1aContourTileUrl(userContourInterval)],
-      maxzoom: 15,
+      maxzoom: 14, // z14タイルをz15以上でオーバーズーム
       attribution: '',
     });
     console.log('DEM1A 等高線ソース登録完了');
@@ -617,7 +617,6 @@ map.on('load', async () => {
       type: 'line',
       source: 'contour-source',
       'source-layer': 'contours',
-      maxzoom: 15, // z14以下のみ表示
       filter: ['!=', ['get', 'level'], 1], // level=0: 主曲線（細線）
       layout: { 'visibility': 'none', 'line-join': 'round', 'line-cap': 'round' },
       paint: { 'line-color': '#c86400', 'line-width': 1.0, 'line-opacity': 0.85 },
@@ -627,7 +626,6 @@ map.on('load', async () => {
       type: 'line',
       source: 'contour-source',
       'source-layer': 'contours',
-      maxzoom: 15, // z14以下のみ表示
       filter: ['==', ['get', 'level'], 1], // level=1: 計曲線（太線、5本ごと）
       layout: { 'visibility': 'none', 'line-join': 'round', 'line-cap': 'round' },
       paint: { 'line-color': '#c86400', 'line-width': 1.79, 'line-opacity': 1.0 },
@@ -647,7 +645,6 @@ map.on('load', async () => {
         type: 'line',
         source: 'contour-source-dem5a',
         'source-layer': 'contours',
-        maxzoom: 15, // z14以下のみ表示
         filter: ['!=', ['get', 'level'], 1],
         layout: { 'visibility': 'none', 'line-join': 'round', 'line-cap': 'round' },
         paint: { 'line-color': '#c86400', 'line-width': 1.0, 'line-opacity': 0.85 },
@@ -657,7 +654,6 @@ map.on('load', async () => {
         type: 'line',
         source: 'contour-source-dem5a',
         'source-layer': 'contours',
-        maxzoom: 15, // z14以下のみ表示
         filter: ['==', ['get', 'level'], 1],
         layout: { 'visibility': 'none', 'line-join': 'round', 'line-cap': 'round' },
         paint: { 'line-color': '#c86400', 'line-width': 1.79, 'line-opacity': 1.0 },
@@ -671,7 +667,6 @@ map.on('load', async () => {
         type: 'line',
         source: 'contour-source-dem1a',
         'source-layer': 'contours',
-        maxzoom: 15, // z14以下のみ表示
         filter: ['!=', ['get', 'level'], 1],
         layout: { 'visibility': 'none', 'line-join': 'round', 'line-cap': 'round' },
         paint: { 'line-color': '#c86400', 'line-width': 1.0, 'line-opacity': 0.85 },
@@ -681,7 +676,6 @@ map.on('load', async () => {
         type: 'line',
         source: 'contour-source-dem1a',
         'source-layer': 'contours',
-        maxzoom: 15, // z14以下のみ表示
         filter: ['==', ['get', 'level'], 1],
         layout: { 'visibility': 'none', 'line-join': 'round', 'line-cap': 'round' },
         paint: { 'line-color': '#c86400', 'line-width': 1.79, 'line-opacity': 1.0 },
@@ -695,7 +689,6 @@ map.on('load', async () => {
         type: 'line',
         source: 'contour-source-lake',
         'source-layer': 'contours',
-        maxzoom: 15, // z14以下のみ表示
         filter: ['==', ['get', 'level'], 0],
         layout: { 'line-join': 'round', 'line-cap': 'round' },
         paint: { 'line-color': '#4a90d9', 'line-width': 0.8, 'line-opacity': 0.75, 'line-blur': 0.5 },
@@ -705,7 +698,6 @@ map.on('load', async () => {
         type: 'line',
         source: 'contour-source-lake',
         'source-layer': 'contours',
-        maxzoom: 15, // z14以下のみ表示
         filter: ['==', ['get', 'level'], 1],
         layout: { 'line-join': 'round', 'line-cap': 'round' },
         paint: { 'line-color': '#4a90d9', 'line-width': 1.4, 'line-opacity': 0.85, 'line-blur': 0.5 },
@@ -7240,20 +7232,20 @@ function _addPreviewContourAndNorth(m) {
               : contourDemMode === 'dem1a' ? buildDem1aContourTileUrl(iv)
               : buildContourTileUrl(iv);
     if (url) {
-      m.addSource('prev-contour', { type: 'vector', tiles: [url], maxzoom: 15, attribution: '' });
+      m.addSource('prev-contour', { type: 'vector', tiles: [url], maxzoom: 14, attribution: '' });
       m.addLayer({ id: 'prev-contour-regular', type: 'line', source: 'prev-contour', 'source-layer': 'contours',
-        maxzoom: 15, filter: ['!=', ['get', 'level'], 1],
+        filter: ['!=', ['get', 'level'], 1],
         paint: { 'line-color': '#c86400', 'line-width': 1.0, 'line-opacity': 0.85 } });
       m.addLayer({ id: 'prev-contour-index', type: 'line', source: 'prev-contour', 'source-layer': 'contours',
-        maxzoom: 15, filter: ['==', ['get', 'level'], 1],
+        filter: ['==', ['get', 'level'], 1],
         paint: { 'line-color': '#c86400', 'line-width': 1.79, 'line-opacity': 1.0 } });
     }
     // 湖水深等高線
     const lakeUrl = buildLakeContourTileUrl(iv);
     if (lakeUrl && lakeContourDemSource) {
-      m.addSource('prev-contour-lake', { type: 'vector', tiles: [lakeUrl], maxzoom: 15, attribution: '' });
+      m.addSource('prev-contour-lake', { type: 'vector', tiles: [lakeUrl], maxzoom: 14, attribution: '' });
       m.addLayer({ id: 'prev-contour-lake-regular', type: 'line', source: 'prev-contour-lake', 'source-layer': 'contours',
-        maxzoom: 15, filter: ['==', ['get', 'level'], 0],
+        filter: ['==', ['get', 'level'], 0],
         paint: { 'line-color': '#4a90d9', 'line-width': 0.8, 'line-opacity': 0.75, 'line-blur': 0.5 } });
     }
   }
