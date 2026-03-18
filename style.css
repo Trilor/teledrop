@@ -1461,19 +1461,9 @@ label.setting-label {
   overflow-x: auto;
 }
 .miller-bc-root { color: #888; font-size: 10px; cursor: default; white-space: nowrap; }
-.miller-bc-root.clickable { color: var(--primary); cursor: pointer; font-weight: 600; }
-.miller-bc-root.clickable:hover { text-decoration: underline; }
 .miller-bc-sep { color: #bbb; margin: 0 1px; flex-shrink: 0; }
-.miller-bc-item {
-  cursor: pointer;
-  color: var(--primary);
-  font-weight: 600;
-  position: relative;
-  flex-shrink: 0;
-  white-space: nowrap;
-}
-.miller-bc-item:hover { text-decoration: underline; }
-.miller-bc-current { color: #333; font-weight: 600; flex-shrink: 0; white-space: nowrap; }
+.miller-bc-item { color: var(--primary); font-weight: 600; position: relative; flex-shrink: 0; white-space: nowrap; }
+.miller-bc-current { color: var(--primary); font-weight: 600; flex-shrink: 0; white-space: nowrap; }
 .miller-bc-dropdown {
   position: absolute;
   top: calc(100% + 4px);
