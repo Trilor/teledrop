@@ -1550,9 +1550,9 @@ function addImageLayerToMap(sourceId, layerId, imageUrl, coordinates, opacity) {
       'raster-resampling':    'linear',
     },
   });
-  // オーバーレイ（色別標高図・CS立体図）の下、ベースマップの上に配置する
+  // オーバーレイ（色別等高線・色別標高図・CS立体図）の下、ベースマップの上に配置する
   // → オーバーレイが常に地図画像より前面に表示される
-  const overlayAnchor = ['color-relief-layer', 'cs-relief-layer']
+  const overlayAnchor = ['color-contour-regular', 'color-relief-layer', 'cs-relief-layer']
     .find(id => map.getLayer(id));
   if (overlayAnchor) {
     map.moveLayer(layerId, overlayAnchor);
