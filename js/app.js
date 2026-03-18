@@ -4717,7 +4717,8 @@ function promptTerrainInfo() {
     function updateOk() {
       const terrainOk = selTerrainId === '__new__' ? nameInp.value.trim() !== '' : selTerrainId !== null;
       const eventOk   = selEventName === '__new__' ? eventInp.value.trim() !== '' : selEventName !== null;
-      okBtn.disabled = !(terrainOk && eventOk);
+      const detailOk  = dateInp.value.trim() !== '' && scaleInp.value !== '' && mapSizeInp.value !== '';
+      okBtn.disabled = !(terrainOk && eventOk && detailOk);
     }
 
     // Step1: 地方ピルを生成
@@ -4906,6 +4907,9 @@ function promptTerrainInfo() {
 
     nameInp.addEventListener('input', updateOk);
     eventInp.addEventListener('input', updateOk);
+    dateInp.addEventListener('input', updateOk);
+    scaleInp.addEventListener('change', updateOk);
+    mapSizeInp.addEventListener('change', updateOk);
 
     function finish(result) {
       dialog.style.display = 'none';
@@ -5012,7 +5016,8 @@ async function exportFramesAsGeoJson() {
   const blob = new Blob([JSON.stringify(fc, null, 2)], { type: 'application/geo+json' });
   const a = document.createElement('a');
   a.href = URL.createObjectURL(blob);
-  a.download = `${info.pref}_${info.terrainName}_${info.eventName}.geojson`;
+  const dateStr = (info.eventDate ?? '').replace(/-/g, '');
+  a.download = `${dateStr}_${info.eventName}_${info.terrainName}_${info.pref}.geojson`;
   document.body.appendChild(a);
   a.click();
   a.remove();
