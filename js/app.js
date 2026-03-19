@@ -4473,6 +4473,7 @@ async function _applyDeckLod2(visible) {
     _deckOverlay?.setProps({ layers: [] });
     return;
   }
+  showMapLoading(); // ロード開始時にくるくるを表示
   try {
     await _loadDeckGl();
     _initDeckOverlay();
@@ -4484,6 +4485,7 @@ async function _applyDeckLod2(visible) {
           loader: window.loaders?.Tiles3DLoader,
           opacity: 0.8,
           pointSize: 1,
+          onTilesetLoad: () => hideMapLoading(), // タイルセット読み込み完了でくるくるを非表示
           // PLATEAU は楕円体高のため地形とずれる → onTileLoad で高度補正
           onTileLoad: (tile) => {
             if (tile.content?.cartographicOrigin) {
@@ -4495,6 +4497,7 @@ async function _applyDeckLod2(visible) {
       ],
     });
   } catch (e) {
+    hideMapLoading();
     console.error('PLATEAU LOD2 の表示に失敗:', e);
   }
 }
