@@ -8086,6 +8086,288 @@ document.getElementById('import-decide-btn').addEventListener('click', () => {
 
 
 // ============================================================
+// 印刷・エクスポートダイアログ
+// 右上の maplibre-gl-export ボタンをクリックしたとき、
+// 独自ダイアログを表示して PNG / JPEG / PDF を出力する。
+// ============================================================
+(function initPrintDialog() {
+  // 用紙サイズ定義（縦向き基準: [width_mm, height_mm]）
+  const PAPER_SIZES_MM = {
+    A2: [420, 594], A3: [297, 420], A4: [210, 297], A5: [148, 210],
+    B2: [515, 728], B3: [364, 515], B4: [257, 364], B5: [182, 257],
+  };
+
+  let _previewMap = null;  // プレビュー用 MapLibre インスタンス
+  let _dialogOpen = false;
+
+  const overlay        = document.getElementById('print-overlay');
+  const closeBtn       = document.getElementById('print-overlay-close-btn');
+  const cancelBtn      = document.getElementById('print-cancel-btn');
+  const exportBtn      = document.getElementById('print-export-btn');
+  const selPaper       = document.getElementById('print-paper-size');
+  const selOrientation = document.getElementById('print-orientation');
+  const selScale       = document.getElementById('print-scale');
+  const selFormat      = document.getElementById('print-format');
+  const selDpi         = document.getElementById('print-dpi');
+  const infoEl         = document.getElementById('print-info');
+
+  if (!overlay) return; // HTML が存在しない場合はスキップ
+
+  // 向きを考慮した用紙寸法 [width_mm, height_mm] を返す
+  function getPaperDim() {
+    const [pw, ph] = PAPER_SIZES_MM[selPaper.value] || [210, 297];
+    return selOrientation.value === 'landscape'
+      ? [Math.max(pw, ph), Math.min(pw, ph)]
+      : [Math.min(pw, ph), Math.max(pw, ph)];
+  }
+
+  // 指定 DPI・縮尺・緯度に対応したエクスポートズームを計算
+  // 導出: 156543 × cos(lat) / 2^z = 0.0254 × scale / dpi
+  function calcExportZoom(dpi, scale, lat) {
+    return Math.log2(156543.03392 * Math.cos(lat * Math.PI / 180) * dpi / (0.0254 * scale));
+  }
+
+  // プレビューマップ中心から印刷範囲の GeoJSON ポリゴンを計算して更新
+  function updateRectangle() {
+    if (!_previewMap) return;
+    const [pw_mm, ph_mm] = getPaperDim();
+    const scale = parseInt(selScale.value, 10);
+    const c = _previewMap.getCenter();
+    const groundW = (pw_mm / 1000) * scale;  // 印刷幅（地上m）
+    const groundH = (ph_mm / 1000) * scale;  // 印刷高（地上m）
+    const dLng = groundW / (111320 * Math.cos(c.lat * Math.PI / 180));
+    const dLat = groundH / 110540;
+    const coords = [[
+      [c.lng - dLng/2, c.lat + dLat/2],
+      [c.lng + dLng/2, c.lat + dLat/2],
+      [c.lng + dLng/2, c.lat - dLat/2],
+      [c.lng - dLng/2, c.lat - dLat/2],
+      [c.lng - dLng/2, c.lat + dLat/2],
+    ]];
+    const src = _previewMap.getSource('print-area');
+    if (src) src.setData({ type: 'FeatureCollection', features: [{ type: 'Feature', geometry: { type: 'Polygon', coordinates: coords } }] });
+  }
+
+  // 出力サイズ情報を更新
+  function updateInfo() {
+    const [pw_mm, ph_mm] = getPaperDim();
+    const dpi = parseInt(selDpi.value, 10);
+    const scale = parseInt(selScale.value, 10);
+    const outW = Math.round(pw_mm / 25.4 * dpi);
+    const outH = Math.round(ph_mm / 25.4 * dpi);
+    const groundW = Math.round((pw_mm / 1000) * scale);
+    const groundH = Math.round((ph_mm / 1000) * scale);
+    infoEl.textContent = `出力: ${outW}×${outH} px\n範囲: ${groundW}×${groundH} m`;
+  }
+
+  // ダイアログを開く
+  function openDialog() {
+    if (_dialogOpen) return;
+    _dialogOpen = true;
+    overlay.classList.add('visible');
+
+    if (!_previewMap) {
+      // 現在のスタイルを取得（地形は除去して 2D 表示）
+      const rawStyle = map.getStyle();
+      const previewStyle = { ...rawStyle, terrain: undefined };
+
+      _previewMap = new maplibregl.Map({
+        container: 'print-preview-map',
+        style: previewStyle,
+        center: map.getCenter(),
+        zoom: Math.max(map.getZoom() - 1, 8),
+        bearing: 0,
+        pitch: 0,
+        interactive: true,
+        attributionControl: false,
+        preserveDrawingBuffer: false,
+      });
+
+      _previewMap.on('load', () => {
+        // 印刷範囲を表す GeoJSON ソース・レイヤーを追加
+        _previewMap.addSource('print-area', {
+          type: 'geojson',
+          data: { type: 'FeatureCollection', features: [] },
+        });
+        // 半透明の塗り
+        _previewMap.addLayer({
+          id: 'print-area-fill',
+          type: 'fill',
+          source: 'print-area',
+          paint: { 'fill-color': 'rgba(255,255,255,0.08)' },
+        });
+        // 赤の破線枠
+        _previewMap.addLayer({
+          id: 'print-area-line',
+          type: 'line',
+          source: 'print-area',
+          paint: { 'line-color': '#dd0000', 'line-width': 2, 'line-dasharray': [4, 2] },
+        });
+        updateRectangle();
+      });
+
+      // プレビューマップが移動するたびに矩形を再描画（常に中心に表示）
+      _previewMap.on('move', updateRectangle);
+    } else {
+      // 再度開いたときはメインマップの中心に合わせる
+      _previewMap.setCenter(map.getCenter());
+      updateRectangle();
+    }
+    updateInfo();
+  }
+
+  // ダイアログを閉じる
+  function closeDialog() {
+    _dialogOpen = false;
+    overlay.classList.remove('visible');
+  }
+
+  // エクスポート実行
+  async function execExport() {
+    const [pw_mm, ph_mm] = getPaperDim();
+    const scale = parseInt(selScale.value, 10);
+    const dpi   = parseInt(selDpi.value, 10);
+    const fmt   = selFormat.value;
+    const outW  = Math.round(pw_mm / 25.4 * dpi);
+    const outH  = Math.round(ph_mm / 25.4 * dpi);
+
+    // 大きすぎる場合は警告
+    if (outW > 8192 || outH > 8192) {
+      alert(`出力サイズ ${outW}×${outH}px は大きすぎます。\nDPI または用紙サイズを小さくしてください。`);
+      return;
+    }
+
+    exportBtn.disabled = true;
+    exportBtn.textContent = '生成中...';
+    showMapLoading();
+
+    try {
+      // エクスポート時の中心はプレビューマップの中心を使用
+      const center = _previewMap ? _previewMap.getCenter() : map.getCenter();
+      const zoom   = calcExportZoom(dpi, scale, center.lat);
+
+      // 隠しコンテナを生成（画面外に配置）
+      const container = document.createElement('div');
+      container.style.cssText =
+        `position:fixed;left:-${outW + 100}px;top:0;width:${outW}px;height:${outH}px;visibility:hidden;`;
+      document.body.appendChild(container);
+
+      // 現在のスタイルをそのまま利用（地形のみ除去して平面化）
+      const rawStyle   = map.getStyle();
+      const exportStyle = { ...rawStyle, terrain: undefined };
+
+      const exportMap = new maplibregl.Map({
+        container,
+        style: exportStyle,
+        center,
+        zoom,
+        bearing: map.getBearing(),
+        pitch: 0,
+        interactive: false,
+        attributionControl: false,
+        preserveDrawingBuffer: true,
+        fadeDuration: 0,
+      });
+
+      // タイル読み込み完了（idle）を最大30秒待機
+      await new Promise((resolve) => {
+        exportMap.once('idle', resolve);
+        setTimeout(resolve, 30000);
+      });
+
+      // マップ canvas → 出力 canvas（DPR 補正）
+      const srcCanvas = exportMap.getCanvas();
+      const outCanvas = document.createElement('canvas');
+      outCanvas.width  = outW;
+      outCanvas.height = outH;
+      outCanvas.getContext('2d').drawImage(srcCanvas, 0, 0, outW, outH);
+
+      exportMap.remove();
+      container.remove();
+
+      const mimeType = fmt === 'jpeg' ? 'image/jpeg' : 'image/png';
+      const dataURL  = outCanvas.toDataURL(mimeType, 0.92);
+
+      if (fmt === 'pdf') {
+        await exportAsPdf(dataURL, pw_mm, ph_mm);
+      } else {
+        const a = document.createElement('a');
+        a.href = dataURL;
+        a.download = `map_export.${fmt}`;
+        a.click();
+      }
+    } catch (e) {
+      console.error('エクスポートエラー:', e);
+      alert('エクスポートに失敗しました:\n' + e.message);
+    } finally {
+      exportBtn.disabled = false;
+      exportBtn.textContent = 'エクスポート';
+      hideMapLoading();
+    }
+  }
+
+  // jsPDF を使って PDF に変換してダウンロード
+  async function exportAsPdf(dataURL, pw_mm, ph_mm) {
+    if (!window.jspdf) {
+      await new Promise((resolve, reject) => {
+        const s = document.createElement('script');
+        s.src = 'https://unpkg.com/jspdf@2.5.1/dist/jspdf.umd.min.js';
+        s.onload = resolve;
+        s.onerror = () => reject(new Error('jsPDF の読み込みに失敗しました'));
+        document.head.appendChild(s);
+      });
+    }
+    const { jsPDF } = window.jspdf;
+    const doc = new jsPDF({
+      orientation: pw_mm > ph_mm ? 'landscape' : 'portrait',
+      unit: 'mm',
+      format: [pw_mm, ph_mm],
+    });
+    doc.addImage(dataURL, 'PNG', 0, 0, pw_mm, ph_mm);
+    doc.save('map_export.pdf');
+  }
+
+  // maplibre-gl-export のボタンクリックを横取りして独自ダイアログを表示
+  // capture フェーズで先にイベントを捕捉し、ライブラリの動作を抑制する
+  map.once('idle', () => {
+    const tryIntercept = () => {
+      const btn = document.querySelector('.maplibregl-ctrl-export button');
+      if (btn) {
+        btn.addEventListener('click', (e) => {
+          e.stopImmediatePropagation();
+          e.preventDefault();
+          openDialog();
+        }, true);
+      } else {
+        setTimeout(tryIntercept, 200);
+      }
+    };
+    tryIntercept();
+  });
+
+  // コントロール変更時の更新
+  [selPaper, selOrientation, selScale].forEach(el => {
+    el.addEventListener('change', updateRectangle);
+  });
+  [selPaper, selOrientation, selScale, selDpi].forEach(el => {
+    el.addEventListener('change', updateInfo);
+  });
+
+  // ダイアログ操作イベント
+  closeBtn.addEventListener('click', closeDialog);
+  cancelBtn.addEventListener('click', closeDialog);
+  overlay.addEventListener('click', (e) => { if (e.target === overlay) closeDialog(); });
+  exportBtn.addEventListener('click', execExport);
+  document.addEventListener('keydown', (e) => {
+    if (e.key === 'Escape' && _dialogOpen) closeDialog();
+  });
+
+  // 初期情報表示
+  updateInfo();
+})();
+
+
+// ============================================================
 // 開発用テーマカラーピッカー
 // メインカラーを選ぶと他の変数を自動導出して :root に即時反映
 // ============================================================

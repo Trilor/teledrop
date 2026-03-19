@@ -3223,6 +3223,125 @@ label.setting-label {
 }
 
 /* ============================================================
+   印刷・エクスポートダイアログ
+   ============================================================ */
+#print-overlay {
+  display: none;
+  position: fixed;
+  inset: 0;
+  z-index: 50;
+  background: rgba(0, 0, 0, 0.55);
+  align-items: center;
+  justify-content: center;
+}
+#print-overlay.visible { display: flex; }
+
+#print-modal-wrapper {
+  position: relative;
+  width: min(92vw, 900px);
+  height: min(88vh, 640px);
+  border-radius: 12px;
+  overflow: hidden;
+  box-shadow: 0 6px 24px rgba(0, 0, 0, 0.65);
+  border: 2px solid rgba(255, 255, 255, 0.25);
+  background: #fff;
+  display: flex;
+  flex-direction: column;
+}
+#print-modal-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 6px 10px;
+  flex-shrink: 0;
+  background: var(--primary);
+  color: #fff;
+  font-size: 12px;
+  font-weight: bold;
+}
+#print-overlay-close-btn {
+  background: rgba(255,255,255,0.15);
+  border: none;
+  color: #fff;
+  font-size: 14px;
+  width: 24px;
+  height: 24px;
+  border-radius: 50%;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  line-height: 1;
+  transition: background 0.15s;
+}
+#print-overlay-close-btn:hover { background: rgba(255,255,255,0.3); }
+
+#print-modal-body {
+  flex: 1;
+  display: flex;
+  overflow: hidden;
+  min-height: 0;
+}
+#print-preview-map {
+  flex: 1;
+  min-width: 0;
+  position: relative;
+  background: #ccc;
+}
+#print-controls {
+  width: 200px;
+  flex-shrink: 0;
+  background: #fafafa;
+  color: #333;
+  padding: 14px 12px;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  font-size: 12px;
+  border-left: 1px solid #d8d8d8;
+}
+#print-modal-footer {
+  display: flex;
+  justify-content: flex-end;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 12px;
+  background: #f0f0f0;
+  flex-shrink: 0;
+  border-top: 1px solid #d8d8d8;
+}
+#print-export-btn {
+  background: var(--primary);
+  color: #fff;
+  border: none;
+  border-radius: 3px;
+  padding: 6px 20px;
+  font-size: 12px;
+  font-weight: bold;
+  font-family: inherit;
+  cursor: pointer;
+  transition: background 0.15s;
+}
+#print-export-btn:hover { background: var(--primary-hover); }
+#print-export-btn:disabled { background: #aaa; cursor: not-allowed; }
+#print-cancel-btn {
+  background: #fff;
+  color: #555;
+  border: 1px solid #c8c8c8;
+  border-radius: 3px;
+  padding: 6px 14px;
+  font-size: 12px;
+  font-family: inherit;
+  cursor: pointer;
+  transition: background 0.15s;
+}
+#print-cancel-btn:hover { background: #f0f0f0; color: #333; }
+
+/* maplibre-gl-export のドロップダウンパネルを非表示（独自ダイアログに置換） */
+.maplibregl-export-list { display: none !important; }
+
+/* ============================================================
    モバイル専用要素: デスクトップでは非表示
    ============================================================ */
 #sheet-handle,
