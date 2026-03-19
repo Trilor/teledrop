@@ -6103,7 +6103,7 @@ function setCameraFromPlayer() {
     backH + Math.max(1, Math.min(8, pcCamDistM * 0.3)) // 後方地形マージンをカメラ距離に比例させる
   );
 
-  const targetZoom = Math.max(12, Math.min(22, Math.log2(
+  const targetZoom = Math.max(12, Math.min(map.getMaxZoom(), Math.log2(
     H * 2 * Math.PI * R * Math.cos(lat_rad) /
     (1024 * Math.tan(fov_rad / 2) * Math.max(0.3, cameraAlt))
   )));
