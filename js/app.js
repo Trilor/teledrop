@@ -4069,8 +4069,10 @@ function updatePlateauAttribution() {
   }
   const buildingOn = document.getElementById('chk-building')?.checked ?? false;
   const mode       = document.getElementById('sel-building')?.value ?? 'plateau';
-  attrEl.innerHTML = (buildingOn && mode === 'plateau')
-    ? ' | <a href="https://www.mlit.go.jp/plateau/open-data/" target="_blank">国土交通省3D都市モデルPLATEAU</a>（<a href="https://github.com/shiwaku/mlit-plateau-bldg-pmtiles" target="_blank">shiwaku</a>加工）'
+  const plateauLink = ' | <a href="https://www.mlit.go.jp/plateau/open-data/" target="_blank">国土交通省3D都市モデルPLATEAU</a>';
+  attrEl.innerHTML = !buildingOn ? ''
+    : mode === 'plateau'     ? plateauLink + '（<a href="https://github.com/shiwaku/mlit-plateau-bldg-pmtiles" target="_blank">shiwaku</a>加工）'
+    : mode === 'plateau-lod2' ? plateauLink + '（京都市左京区 LOD2）'
     : '';
 }
 
@@ -4433,8 +4435,56 @@ sliderCs.addEventListener('input', () => {
 });
 
 
+// ---- deck.gl 遅延ロード（PLATEAU LOD2 選択時のみ読み込む）----
+const PLATEAU_LOD2_URL =
+  'https://assets.cms.plateau.reearth.io/assets/13/c46d11-e56e-4515-97ef-fde8f98786e1' +
+  '/26100_kyoto-shi_city_2023_citygml_1_op_bldg_3dtiles_26103_sakyo-ku_lod2_no_texture/tileset.json';
+
+let _deckOverlay = null; // deck.MapboxOverlay インスタンス（初回のみ生成）
+
+function _loadDeckGl() {
+  if (window.deck) return Promise.resolve();
+  return new Promise((resolve, reject) => {
+    const s = document.createElement('script');
+    s.src = 'https://unpkg.com/deck.gl@9/dist.min.js';
+    s.onload = resolve;
+    s.onerror = () => reject(new Error('deck.gl の読み込みに失敗しました'));
+    document.head.appendChild(s);
+  });
+}
+
+function _initDeckOverlay() {
+  if (_deckOverlay || !window.deck) return;
+  _deckOverlay = new deck.MapboxOverlay({ layers: [] });
+  map.addControl(_deckOverlay);
+}
+
+async function _applyDeckLod2(visible) {
+  if (!visible) {
+    _deckOverlay?.setProps({ layers: [] });
+    return;
+  }
+  try {
+    await _loadDeckGl();
+    _initDeckOverlay();
+    _deckOverlay.setProps({
+      layers: [
+        new deck.Tile3DLayer({
+          id: 'plateau-lod2',
+          data: PLATEAU_LOD2_URL,
+          opacity: 0.8,
+          pointSize: 2,
+          getPointColor: [180, 180, 180],
+        }),
+      ],
+    });
+  } catch (e) {
+    console.error('PLATEAU LOD2 の表示に失敗:', e);
+  }
+}
+
 // ---- 3D建物レイヤー切替 ----
-/* 建物モード: 'ofm'（OpenFreeMap） | 'plateau'（PLATEAU LOD1 全国）
+/* 建物モード: 'ofm'（OpenFreeMap） | 'plateau'（PLATEAU LOD1 全国） | 'plateau-lod2'（PLATEAU LOD2 3D Tiles）
    3D地形の ON/OFF とは独立して制御可能。 */
 const BUILDING_CFG = {
   ofm: {
@@ -4451,12 +4501,21 @@ const BUILDING_CFG = {
   },
 };
 
-function updateBuildingLayer() {
+async function updateBuildingLayer() {
   const mode       = document.getElementById('sel-building')?.value ?? 'plateau';
   const buildingOn = document.getElementById('chk-building')?.checked ?? true;
 
-  // 既存レイヤーを一旦削除
+  // 既存 MapLibre レイヤーを一旦削除
   if (map.getLayer('building-3d')) map.removeLayer('building-3d');
+
+  // LOD2 モード: deck.gl Tile3DLayer で表示
+  if (mode === 'plateau-lod2') {
+    await _applyDeckLod2(buildingOn);
+    updatePlateauAttribution();
+    return;
+  }
+  // LOD2 以外: deck.gl レイヤーをクリア
+  _deckOverlay?.setProps({ layers: [] });
 
   if (!buildingOn) { updatePlateauAttribution(); return; }
 
