@@ -8330,11 +8330,14 @@ document.getElementById('import-decide-btn').addEventListener('click', () => {
   // maplibre-gl-export のボタンクリックを横取りして独自ダイアログを表示
   // capture フェーズで先にイベントを捕捉し、ライブラリの動作を抑制する
   map.once('idle', () => {
+    // maplibre-gl-export はボタン自体に class="maplibregl-export-control" を付与する
     const tryIntercept = () => {
-      const btn = document.querySelector('.maplibregl-ctrl-export button');
+      const btn = document.querySelector('.maplibregl-export-control');
       if (btn) {
+        // capture フェーズで先に捕捉してライブラリのクリックハンドラを抑制
         btn.addEventListener('click', (e) => {
           e.stopImmediatePropagation();
+          e.stopPropagation();
           e.preventDefault();
           openDialog();
         }, true);
