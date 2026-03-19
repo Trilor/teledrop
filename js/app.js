@@ -4483,8 +4483,12 @@ async function _applyDeckLod2(visible) {
           id: 'plateau-lod2',
           data: PLATEAU_LOD2_URL,
           loader: window.loaders?.Tiles3DLoader,
-          opacity: 1.0,
+          opacity: 0.8,
           pointSize: 1,
+          // PBR ライティングを無効化してテクスチャ色をフラットに描画
+          _subLayerProps: {
+            scenegraph: { _lighting: 'flat' },
+          },
           onTilesetLoad: (tileset) => {
             // tileset.json 解析完了後も個別タイル(b3dm)が生成中のため
             // isLoaded が true になるまで rAF でポーリングし続ける
