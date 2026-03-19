@@ -4483,7 +4483,7 @@ async function _applyDeckLod2(visible) {
           id: 'plateau-lod2',
           data: PLATEAU_LOD2_URL,
           loader: window.loaders?.Tiles3DLoader,
-          opacity: 0.8,
+          opacity: 1.0,
           pointSize: 1,
           onTilesetLoad: () => hideMapLoading(), // タイルセット読み込み完了でくるくるを非表示
           // PLATEAU は楕円体高のため地形とずれる → onTileLoad で高度補正
