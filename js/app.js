@@ -6099,13 +6099,13 @@ function setCameraFromPlayer() {
   ) ?? h;
 
   const cameraAlt = Math.max(
-    h + Math.max(1, pcCamDistM * Math.cos(pitchRad)),
-    backH + 8   // カメラが後方地形より必ず8m上に位置するよう保証
+    h + Math.max(0.3, pcCamDistM * Math.cos(pitchRad)),
+    backH + Math.max(1, Math.min(8, pcCamDistM * 0.3)) // 後方地形マージンをカメラ距離に比例させる
   );
 
   const targetZoom = Math.max(12, Math.min(22, Math.log2(
     H * 2 * Math.PI * R * Math.cos(lat_rad) /
-    (1024 * Math.tan(fov_rad / 2) * Math.max(1, cameraAlt))
+    (1024 * Math.tan(fov_rad / 2) * Math.max(0.3, cameraAlt))
   )));
 
   map.jumpTo({
