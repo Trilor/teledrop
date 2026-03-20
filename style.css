@@ -2293,6 +2293,11 @@ label.setting-label {
   color: #fff;
   border-color: var(--primary);
 }
+#view-toggle-btn.active-chase {
+  background: #d06000;
+  color: #fff;
+  border-color: #d06000;
+}
 
 /* ---- タイムラインパネル（画面下部） ---- */
 #timeline-panel {
@@ -3533,6 +3538,7 @@ label.setting-label {
 .imgw-step-num,
 .imgw-place-btn,
 #view-toggle-btn.active-first,
+#view-toggle-btn.active-chase,
 #play-pause-btn,
 #sim-toggle-btn:not(.sim-active),
 #pc-sim-toggle-btn:not(.pc-sim-active),

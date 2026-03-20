@@ -975,8 +975,12 @@ let gpxIsPlaying = false;
 let gpxAnimFrameId = null;
 // 前フレームのタイムスタンプ（差分計算用）
 let gpxLastTimestamp = null;
-// 視点モード: 'first'＝1人称ドローン視点 / 'third'＝3人称俯瞰視点
+// 視点モード: 'third'＝俯瞰 / 'first'＝1人称ドローン / 'chase'＝PCシム追尾
 let gpxViewMode = 'third';
+// 追尾カメラ用の地形高度キャッシュ（queryTerrainElevation が null のときに維持）
+let _gpxCachedTerrainH = 0;
+// 前フレームの進行方向（端点など bearing=0 になる箇所の補完用）
+let _lastGpxBearing = 0;
 
 
 /* ========================================================
@@ -2925,6 +2929,11 @@ async function loadGpx(file) {
     gpxCurrentTime = 0;
     gpxIsPlaying = false;
     gpxLastTimestamp = null;
+    // 追尾カメラ用キャッシュを先頭ポイントの地形高度でリセット
+    _gpxCachedTerrainH = map.queryTerrainElevation(
+      { lng: points[0].lng, lat: points[0].lat }, { exaggerated: false }
+    ) ?? 0;
+    _lastGpxBearing = 0;
 
     // 再生中ならキャンセルする
     if (gpxAnimFrameId) {
@@ -3133,14 +3142,17 @@ function interpolateGpxPosition(t) {
     両モードとも Center は現在地座標に追従する
     ======================================================== */
 function updateCamera(pos) {
-  if (gpxViewMode === 'first') {
+  if (gpxViewMode === 'chase') {
+    // PC シム追尾視点：setCameraFromPlayer() と同じロジックで GPX 位置を追尾
+    updateCameraChase(pos);
+  } else if (gpxViewMode === 'first') {
     // 1人称（ドローン追従）視点：進行方向に正面を向けて追従する
     map.easeTo({
       center: [pos.lng, pos.lat],
       zoom: 18.5,
       pitch: 72,
-      bearing: pos.bearing, // Turf.js で計算した進行方向
-      duration: 100,        // フレームごとに滑らかに更新するため短く設定
+      bearing: pos.bearing,
+      duration: 100,
     });
   } else {
     // 3人称（俯瞰）視点：常に北を向いて現在地を追従する
@@ -3148,10 +3160,57 @@ function updateCamera(pos) {
       center: [pos.lng, pos.lat],
       zoom: 15.5,
       pitch: 47,
-      bearing: 0,  // 北固定（常にマップを北向きで表示）
+      bearing: 0,
       duration: 100,
     });
   }
+}
+
+/* ========================================================
+    GPX 追尾カメラ（PC シムと同じ画角・設定）
+    setCameraFromPlayer() と同じロジックを GPX 位置で実行する。
+    pcCamDistM・pcPitch を共有することで PC シムの設定値がそのまま反映される。
+    ======================================================== */
+function updateCameraChase(pos) {
+  // 地形標高取得（タイル未読み込み時はキャッシュ維持）
+  const rawH = map.queryTerrainElevation(
+    { lng: pos.lng, lat: pos.lat }, { exaggerated: false }
+  );
+  if (rawH !== null) _gpxCachedTerrainH += (rawH - _gpxCachedTerrainH) * 0.25;
+  const h = _gpxCachedTerrainH;
+
+  const H       = map.getCanvas().height || 600;
+  const fov_rad = 0.6435; // PC シムと同じ FOV
+  const R       = 6371008.8;
+  const lat_rad = pos.lat * Math.PI / 180;
+
+  // PC シムと同じピッチ・カメラ距離を使用
+  const pitchDeg = Math.max(0, Math.min(map.getMaxPitch(), pcPitch));
+  const pitchRad = pitchDeg * Math.PI / 180;
+
+  // 後方地点の地形高度を取得してカメラのめり込みを防止
+  const backDistKm = pcCamDistM * Math.sin(pitchRad) / 1000;
+  const backPt = turf.destination(
+    [pos.lng, pos.lat], backDistKm, (pos.bearing + 180) % 360
+  );
+  const backH = map.queryTerrainElevation(
+    { lng: backPt.geometry.coordinates[0], lat: backPt.geometry.coordinates[1] },
+    { exaggerated: false }
+  ) ?? h;
+
+  // カメラズームを地形面からの相対高度で計算（PCシムと同じ式）
+  const relativeAlt = Math.max(0.3, pcCamDistM * Math.cos(pitchRad));
+  const targetZoom = Math.max(12, Math.min(map.getMaxZoom(), Math.log2(
+    H * 2 * Math.PI * R * Math.cos(lat_rad) /
+    (1024 * Math.tan(fov_rad / 2) * relativeAlt)
+  )));
+
+  map.jumpTo({
+    center:  [pos.lng, pos.lat],
+    bearing: pos.bearing,
+    pitch:   pitchDeg,
+    zoom:    targetZoom,
+  });
 }
 
 /* ========================================================
@@ -3195,8 +3254,12 @@ function gpxAnimationLoop(timestamp) {
   const pos = interpolateGpxPosition(gpxCurrentTime);
 
   if (pos) {
-    // 現在地マーカーを新しい座標に移動させる（カメラは追従しない）
+    // 進行方向をキャッシュ（端点で bearing=0 になる箇所の補完）
+    if (pos.bearing !== 0) _lastGpxBearing = pos.bearing;
+    else pos.bearing = _lastGpxBearing;
+    // 現在地マーカーと視点カメラを更新する
     updateGpxMarker(pos);
+    updateCamera(pos);
   }
 
   // まだ再生中であれば次のフレームをリクエストする
@@ -3233,17 +3296,23 @@ function toggleGpxPlayPause() {
     視点モードを切り替える（1人称 ↔ 3人称）
     ======================================================== */
 function toggleViewMode() {
-  gpxViewMode = gpxViewMode === 'third' ? 'first' : 'third';
-  const btn = document.getElementById('view-toggle-btn');
+  // third → first → chase → third のサイクルで切り替え
+  if (gpxViewMode === 'third')       gpxViewMode = 'first';
+  else if (gpxViewMode === 'first')  gpxViewMode = 'chase';
+  else                               gpxViewMode = 'third';
 
+  const btn = document.getElementById('view-toggle-btn');
   if (gpxViewMode === 'first') {
-    // 1人称視点：ドローン追従モードを示すスタイルに変更
     btn.textContent = '🚁 1人称視点';
     btn.classList.add('active-first');
-  } else {
-    // 3人称視点：俯瞰モードを示すスタイルに変更
-    btn.textContent = '🗺 3人称視点';
+    btn.classList.remove('active-chase');
+  } else if (gpxViewMode === 'chase') {
+    btn.textContent = '🎥 追尾視点';
     btn.classList.remove('active-first');
+    btn.classList.add('active-chase');
+  } else {
+    btn.textContent = '🗺 俯瞰視点';
+    btn.classList.remove('active-first', 'active-chase');
   }
 }
 
