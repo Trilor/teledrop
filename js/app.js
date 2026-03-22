@@ -445,7 +445,7 @@ map.on('load', async () => {
     map.addSource('contour-source', {
       type: 'vector',
       tiles: [buildContourTileUrl(userContourInterval)],
-      maxzoom: 14, // z14タイルをz15以上でオーバーズーム
+      maxzoom: 16, // z16タイルをz17以上でオーバーズーム
       attribution: '',
     });
     console.log('Q地図 1m 等高線ソース登録完了');
@@ -470,7 +470,7 @@ map.on('load', async () => {
     map.addSource('contour-source-lake', {
       type: 'vector',
       tiles: [buildLakeContourTileUrl(userContourInterval)],
-      maxzoom: 14, // z14タイルをz15以上でオーバーズーム
+      maxzoom: 16, // z16タイルをz17以上でオーバーズーム
       attribution: '',
     });
     console.log('湖水深等高線ソース登録完了');
@@ -493,7 +493,7 @@ map.on('load', async () => {
     map.addSource('contour-source-dem5a', {
       type: 'vector',
       tiles: [buildSeamlessContourTileUrl(userContourInterval)],
-      maxzoom: 14, // z14タイルをz15以上でオーバーズーム
+      maxzoom: 16, // z16タイルをz17以上でオーバーズーム
       attribution: '',
     });
     console.log('DEM5A 等高線ソース登録完了');
@@ -516,7 +516,7 @@ map.on('load', async () => {
     map.addSource('contour-source-dem1a', {
       type: 'vector',
       tiles: [buildDem1aContourTileUrl(userContourInterval)],
-      maxzoom: 14, // z14タイルをz15以上でオーバーズーム
+      maxzoom: 16, // z16タイルをz17以上でオーバーズーム
       attribution: '',
     });
     console.log('DEM1A 等高線ソース登録完了');
