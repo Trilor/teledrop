@@ -52,7 +52,7 @@ const map = new maplibregl.Map({
         tiles: [TERRAIN_URL],
         tileSize: 256,
         minzoom: 1,
-        maxzoom: 15,
+        maxzoom: 14, // 産総研陸域統合DEM の上限に合わせる（z14タイルを z15+ でオーバーズーム）
         encoding: 'terrarium',
         attribution: '',
       }
