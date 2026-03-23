@@ -3,7 +3,10 @@
    MapLibre の addProtocol() でブラウザ内 DEM 変換を実現します
    ================================================================ */
 
-import { QCHIZU_DEM_BASE, QCHIZU_PROXY_BASE, DEM5A_BASE, LAKEDEPTH_BASE, LAKEDEPTH_STANDARD_BASE, LAND_DEM_BASE } from './config.js';
+import { QCHIZU_DEM_BASE, QCHIZU_PROXY_BASE, DEM5A_BASE, LAND_DEM_BASE } from './config.js';
+// DEM1A_BASE: protocols.js では未使用（等高線用のみ app.js で使用）
+// 湖水深・湖水面タイルはコメントアウト済み（2026-03-23 廃止）
+// import { DEM1A_BASE, LAKEDEPTH_BASE, LAKEDEPTH_STANDARD_BASE } from './config.js';
 
 // ================================================================
 // 共通フォールバック: 1×1 透明 PNG の ArrayBuffer
@@ -32,30 +35,105 @@ maplibregl.addProtocol('pmtiles', pmtilesProtocol.tile.bind(pmtilesProtocol));
 
 /*
   ========================================================
-  DEM 合成ユーティリティ（Q地図 > DEM5A > 湖水深）
+  3D地形用 DEM 合成（Q地図1m > DEM5A > DEM10B）
+  q地図 maplibre 版の demTranscoderProtocol.js を参考に実装。
   優先度:
-    1. Q地図 DEM（1m、最高品質）
-    2. 基盤地図情報数値PNGタイル DEM5A（5m、陸域全域）
-    3. 湖水深タイル（湖底地形。深さ値を符号反転して湖底標高として使用）
+    1. Q地図1m DEM（CF Workers プロキシ経由・maxzoom 16・最高品質）
+    2. DEM5A（地理院 5mDEM・基盤地図情報・maxzoom 15）
+    3. DEM10B（地理院 10mDEM・全国カバレッジ保証・maxzoom 14）
   全タイル共通の国土地理院 NumPNG 形式（R=high, G=mid, B=low, nodata=R128,G0,B0）。
+  湖水深合成は廃止（コメントアウト済み）。
   ========================================================
 */
+async function fetchTerrainDemBitmap(z, x, y, signal) {
+  const dem10bUrl = `${LAND_DEM_BASE}/${z}/${x}/${y}.png`;         // DEM10B: 10mメッシュ・全国カバレッジ（maxzoom 14）
+  const dem5aUrl  = `${DEM5A_BASE}/${z}/${x}/${y}.png`;             // DEM5A:  5mメッシュ・基盤地図情報（maxzoom 15）
+  const qUrl      = `${QCHIZU_PROXY_BASE}/${z}/${x}/${y}.webp`;     // Q地図1m: CF Workers プロキシ経由（maxzoom 16）
 
+  async function toImageData(url) {
+    try {
+      const r = await fetch(url, { signal });
+      if (!r.ok) return null;
+      const bm = await createImageBitmap(await r.blob());
+      const cv = new OffscreenCanvas(bm.width, bm.height);
+      cv.getContext('2d').drawImage(bm, 0, 0);
+      bm.close();
+      return cv.getContext('2d').getImageData(0, 0, cv.width, cv.height);
+    } catch { return null; }
+  }
+
+  const [dem10b, dem5a, qData] = await Promise.all([
+    toImageData(dem10bUrl),
+    toImageData(dem5aUrl),
+    toImageData(qUrl),
+  ]);
+  if (!dem10b && !dem5a && !qData) return null;
+
+  function isNodata(d, i) {
+    return (d[i] === 128 && d[i + 1] === 0 && d[i + 2] === 0) || d[i + 3] !== 255;
+  }
+
+  // 合成先を全 nodata で初期化し、低優先度から順に上書き
+  const { width, height: h } = (dem10b ?? dem5a ?? qData);
+  const cv  = new OffscreenCanvas(width, h);
+  const ctx = cv.getContext('2d');
+  const out = ctx.createImageData(width, h);
+  const o = out.data;
+  for (let i = 0; i < o.length; i += 4) { o[i] = 128; o[i + 3] = 255; } // all nodata
+
+  // 優先度 低: DEM10B（10mメッシュ・全国カバレッジ保証）
+  if (dem10b) {
+    const d = dem10b.data;
+    for (let i = 0; i < o.length; i += 4) {
+      if (isNodata(d, i)) continue;
+      o[i] = d[i]; o[i + 1] = d[i + 1]; o[i + 2] = d[i + 2]; o[i + 3] = 255;
+    }
+  }
+
+  // 優先度 中: DEM5A（5mメッシュ・基盤地図情報）
+  if (dem5a) {
+    const d = dem5a.data;
+    for (let i = 0; i < o.length; i += 4) {
+      if (isNodata(d, i)) continue;
+      o[i] = d[i]; o[i + 1] = d[i + 1]; o[i + 2] = d[i + 2]; o[i + 3] = 255;
+    }
+  }
+
+  // 優先度 高: Q地図1m（CF Workers プロキシ経由）
+  if (qData) {
+    const q = qData.data;
+    for (let i = 0; i < o.length; i += 4) {
+      if (isNodata(q, i)) continue;
+      o[i] = q[i]; o[i + 1] = q[i + 1]; o[i + 2] = q[i + 2]; o[i + 3] = 255;
+    }
+  }
+
+  ctx.putImageData(out, 0, 0);
+  return createImageBitmap(cv);
+}
+
+
+/*
+  ========================================================
+  CS立体図用 DEM 合成（csdem:// から呼ばれる）
+  Q地図 > DEM10B > 地域DEM の優先順で合成。
+  湖水深合成は廃止（コメントアウト済み）。
+  ========================================================
+*/
 // regionalDemBase: 地域DEMのベースURL（csdem://地域層の場合のみ指定）
 // regionalDemExt : 地域DEMの拡張子（'png' または 'webp'）
-// demMode: null（陸域統合DEM+Q地図+地域DEM全合成）, 'land'（陸域統合DEMのみ）,
+// demMode: null（DEM10B+Q地図+地域DEM全合成）, 'land'（DEM10Bのみ）,
 //          'dem5a'（DEM5Aのみ）, 'q1m'（Q地図のみ）
-// 地形(gsjdem://)は null で全合成。等高線は DEMソース選択に従い排他使用。
 async function fetchCompositeDemBitmap(z, x, y, signal, regionalDemBase = null, regionalDemExt = 'png', demMode = null) {
   const useQ    = demMode !== 'dem5a' && demMode !== 'land'; // Q地図: 陸域統合DEM/DEM5A単独時は除外
-  // DEM5A（国土地理院 5mDEM）: DEM10B より高解像度だが一部ギャップあり
-  const useS    = !demMode || demMode === 'dem5a'; // 全合成(null)・dem5a 明示時に使用
-  const useLand = !demMode || demMode === 'land';  // DEM10B（GSI 10m・全国カバレッジ）: null または 'land' 単独
+  const useS    = !demMode || demMode === 'dem5a';
+  const useLand = !demMode || demMode === 'land';
   const sUrl    = useS    ? `${DEM5A_BASE}/${z}/${x}/${y}.png`         : null;
-  const landUrl = useLand ? `${LAND_DEM_BASE}/${z}/${x}/${y}.png`      : null; // DEM10B: 標準 {z}/{x}/{y} 順
-  const qUrl    = useQ    ? `${QCHIZU_PROXY_BASE}/${z}/${x}/${y}.webp` : null; // CF Workers プロキシ経由
-  const lUrl    = `${LAKEDEPTH_BASE}/${z}/${x}/${y}.png`;
-  const lsUrl   = `${LAKEDEPTH_STANDARD_BASE}/${z}/${x}/${y}.png`;
+  const landUrl = useLand ? `${LAND_DEM_BASE}/${z}/${x}/${y}.png`      : null;
+  const qUrl    = useQ    ? `${QCHIZU_PROXY_BASE}/${z}/${x}/${y}.webp` : null;
+  // 湖水深タイルはコメントアウト（2026-03-23 廃止）
+  // const lUrl  = `${LAKEDEPTH_BASE}/${z}/${x}/${y}.png`;
+  // const lsUrl = `${LAKEDEPTH_STANDARD_BASE}/${z}/${x}/${y}.png`;
   const rUrl    = (useQ && regionalDemBase) ? `${regionalDemBase}/${z}/${x}/${y}.${regionalDemExt}` : null;
 
   async function toImageData(url) {
@@ -70,45 +148,32 @@ async function fetchCompositeDemBitmap(z, x, y, signal, regionalDemBase = null, 
     } catch { return null; }
   }
 
-  const [qData, sData, landData, lData, lsData, rData] = await Promise.all([
+  const [qData, sData, landData, rData] = await Promise.all([
     qUrl     ? toImageData(qUrl)     : Promise.resolve(null),
     sUrl     ? toImageData(sUrl)     : Promise.resolve(null),
     landUrl  ? toImageData(landUrl)  : Promise.resolve(null),
-    toImageData(lUrl), toImageData(lsUrl),
+    // 湖水深タイルはコメントアウト（2026-03-23 廃止）
+    // toImageData(lUrl), toImageData(lsUrl),
     rUrl     ? toImageData(rUrl)     : Promise.resolve(null),
   ]);
-  if (!qData && !sData && !landData && !lData && !rData) return null;
+  if (!qData && !sData && !landData && !rData) return null;
 
   function isNodata(d, i) {
     return (d[i] === 128 && d[i + 1] === 0 && d[i + 2] === 0) || d[i + 3] !== 255;
   }
 
   // 合成先を全 nodata で初期化し、低優先度から順に上書き
-  const { width, height: h } = (qData ?? sData ?? landData ?? lData ?? rData);
+  const { width, height: h } = (qData ?? sData ?? landData ?? rData);
   const cv  = new OffscreenCanvas(width, h);
   const ctx = cv.getContext('2d');
   const out = ctx.createImageData(width, h);
   const o = out.data;
   for (let i = 0; i < o.length; i += 4) { o[i] = 128; o[i + 3] = 255; } // all nodata
 
-  // 優先度 最低: 湖水深（基準水面標高 - 湖水深 → 実際の湖底標高へ変換）
-  // 湖底標高(m) = 基準水面標高(m) - 湖水深(m)
-  // NumPNG単位(0.01m): actual_int = stdSigned - depth
-  if (lData && lsData) {
-    const l = lData.data, ls = lsData.data;
-    for (let i = 0; i < o.length; i += 4) {
-      if (isNodata(l, i) || isNodata(ls, i)) continue;
-      const depth     = (l[i]  << 16) | (l[i + 1]  << 8) | l[i + 2];  // 湖水深 (正値, 0.01m単位)
-      const stdRaw    = (ls[i] << 16) | (ls[i + 1] << 8) | ls[i + 2]; // 基準水面標高 (24bit符号なし)
-      const stdSigned = stdRaw >= 0x800000 ? stdRaw - 0x1000000 : stdRaw; // 符号付きに変換
-      let actual = stdSigned - depth;                                    // 湖底標高 (0.01m単位)
-      if (actual < 0) actual += 0x1000000;
-      actual &= 0xFFFFFF;
-      o[i] = (actual >> 16) & 0xFF; o[i + 1] = (actual >> 8) & 0xFF; o[i + 2] = actual & 0xFF; o[i + 3] = 255;
-    }
-  }
+  // 湖水深合成ブロックはコメントアウト（2026-03-23 廃止）
+  // if (lData && lsData) { ... }
 
-  // 優先度 中低: DEM5A（demMode='dem5a' 明示時のみ。通常は dead code）
+  // 優先度 中低: DEM5A
   if (sData) {
     const s = sData.data;
     for (let i = 0; i < o.length; i += 4) {
@@ -164,8 +229,8 @@ maplibregl.addProtocol('gsjdem', async (params, abortController) => {
   if (!m) return { data: _transparentPngBuffer() };
   const [, z, x, y] = m;
 
-  // 地形は常に全ソース合成（Q地図+DEM5A+湖水深）で滑らかに描画。DEMソース選択には連動しない。
-  const bitmap = await fetchCompositeDemBitmap(z, x, y, abortController.signal);
+  // 3D地形は Q地図1m > DEM5A > DEM10B の優先順で合成（湖水深なし）
+  const bitmap = await fetchTerrainDemBitmap(z, x, y, abortController.signal);
 
   // 出力は常に256×256固定（MapLibre backfillBorder の dimension mismatch を防止）
   const OUT = 256;

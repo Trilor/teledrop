@@ -4,7 +4,7 @@
 
 import {
   QCHIZU_DEM_BASE, QCHIZU_PROXY_BASE, DEM5A_BASE, DEM1A_BASE,
-  LAKEDEPTH_BASE, LAKEDEPTH_STANDARD_BASE,
+  // LAKEDEPTH_BASE, LAKEDEPTH_STANDARD_BASE, // 湖水深タイルは廃止（2026-03-23）
   TERRAIN_URL, CS_RELIEF_URL,
   REGIONAL_CS_LAYERS,
   INITIAL_CENTER, INITIAL_ZOOM, INITIAL_PITCH, INITIAL_BEARING,
@@ -52,7 +52,7 @@ const map = new maplibregl.Map({
         tiles: [TERRAIN_URL],
         tileSize: 256,
         minzoom: 1,
-        maxzoom: 14, // DEM10B の上限に合わせる（z14タイルを z15+ でオーバーズーム）
+        maxzoom: 16, // Q地図1m の上限（z16タイルを z17+ でオーバーズーム）
         encoding: 'terrarium',
         attribution: '',
       }
@@ -302,98 +302,17 @@ function buildDem1aContourTileUrl(intervalM) {
 
 /*
   ========================================================
-  湖水深等高線用: 実際の湖底標高タイル合成
-  mlcontour の DemSource は maplibregl.addProtocol を経由せず自前の fetch() を使うため、
-  window.fetch をオーバーライドし LAKE_ELEV_PREFIX へのリクエストをインターセプトして
-  「基準水面標高 - 湖水深」を計算した合成 NumPNG を返す。
-  lakeContourDemSource は worker: false（メインスレッド）で動かすことで
-  このオーバーライドされた fetch() が呼ばれるようにする。
+  湖水深等高線関連コード — 廃止（2026-03-23 コメントアウト）
+  window.fetch オーバーライド・湖底標高合成・lakeContourDemSource
   ========================================================
 */
-const LAKE_ELEV_PREFIX = 'https://lake-elevation.internal/tiles/';
-const _origFetch = window.fetch.bind(window);
-
-// nodata NumPNG（1×1 ピクセル、全て nodata）を返す — 404 の代わりに使い mlcontour のエラーを防ぐ
-async function _nodataNumPngResponse() {
-  const cv = new OffscreenCanvas(1, 1);
-  const ctx = cv.getContext('2d');
-  const img = ctx.createImageData(1, 1);
-  img.data[0] = 128; img.data[1] = 0; img.data[2] = 0; img.data[3] = 255;
-  ctx.putImageData(img, 0, 0);
-  const blob = await cv.convertToBlob({ type: 'image/png' });
-  return new Response(blob, { headers: { 'Content-Type': 'image/png' } });
-}
-
-async function synthesizeLakeElevationTile(url) {
-  const m = url.match(/\/(\d+)\/(\d+)\/(\d+)\.png$/);
-  if (!m) return _nodataNumPngResponse();
-  const [, z, x, y] = m;
-
-  async function fetchNumPngData(src) {
-    try {
-      const r = await _origFetch(src);
-      if (!r.ok) return null;
-      const bm = await createImageBitmap(await r.blob());
-      const cv = new OffscreenCanvas(bm.width, bm.height);
-      cv.getContext('2d').drawImage(bm, 0, 0);
-      bm.close();
-      return cv.getContext('2d').getImageData(0, 0, cv.width, cv.height);
-    } catch { return null; }
-  }
-
-  const [lData, lsData] = await Promise.all([
-    fetchNumPngData(`${LAKEDEPTH_BASE}/${z}/${x}/${y}.png`),
-    fetchNumPngData(`${LAKEDEPTH_STANDARD_BASE}/${z}/${x}/${y}.png`),
-  ]);
-  if (!lData || !lsData) return _nodataNumPngResponse();
-
-  const { width, height } = lData;
-  const cv = new OffscreenCanvas(width, height);
-  const ctx = cv.getContext('2d');
-  const out = ctx.createImageData(width, height);
-  const o = out.data;
-  const l = lData.data, ls = lsData.data;
-
-  for (let i = 0; i < o.length; i += 4) {
-    const lNodata  = (l[i]  === 128 && l[i+1]  === 0 && l[i+2]  === 0) || l[i+3]  !== 255;
-    const lsNodata = (ls[i] === 128 && ls[i+1] === 0 && ls[i+2] === 0) || ls[i+3] !== 255;
-    if (lNodata || lsNodata) {
-      o[i] = 128; o[i+1] = 0; o[i+2] = 0; o[i+3] = 255; // nodata
-      continue;
-    }
-    const depth     = (l[i]  << 16) | (l[i+1]  << 8) | l[i+2];  // 湖水深 (正値, 0.01m単位)
-    const stdRaw    = (ls[i] << 16) | (ls[i+1] << 8) | ls[i+2]; // 基準水面標高 (24bit符号なし)
-    const stdSigned = stdRaw >= 0x800000 ? stdRaw - 0x1000000 : stdRaw; // 符号付きに変換
-    let actual = stdSigned - depth;                                      // 湖底実際の標高 (0.01m単位)
-    if (actual < 0) actual += 0x1000000;
-    actual &= 0xFFFFFF;
-    o[i] = (actual >> 16) & 0xFF; o[i+1] = (actual >> 8) & 0xFF; o[i+2] = actual & 0xFF; o[i+3] = 255;
-  }
-
-  ctx.putImageData(out, 0, 0);
-  const blob = await cv.convertToBlob({ type: 'image/png' });
-  return new Response(blob, { headers: { 'Content-Type': 'image/png' } });
-}
-
-// 湖水深合成タイルのみをインターセプト（Q地図・DEM5A は独立 DemSource で処理するため不要）。
-window.fetch = function(input, init) {
-  const url = typeof input === 'string' ? input : (input instanceof Request ? input.url : String(input));
-  if (url.startsWith(LAKE_ELEV_PREFIX)) return synthesizeLakeElevationTile(url);
-  return _origFetch(input, init);
-};
-
-let lakeContourDemSource = null;
-function buildLakeContourTileUrl(intervalM) {
-  if (!lakeContourDemSource) return null;
-  return lakeContourDemSource.contourProtocolUrl({
-    thresholds: buildContourThresholds(intervalM),
-    contourLayer: 'contours',
-    elevationKey: 'ele',
-    levelKey: 'level',
-    extent: 4096,
-    buffer: 1,
-  });
-}
+// const LAKE_ELEV_PREFIX = 'https://lake-elevation.internal/tiles/';
+// const _origFetch = window.fetch.bind(window);
+// async function _nodataNumPngResponse() { ... }
+// async function synthesizeLakeElevationTile(url) { ... }
+// window.fetch = function(input, init) { ... };
+// let lakeContourDemSource = null;
+// function buildLakeContourTileUrl(intervalM) { ... }
 
 map.on('load', async () => {
 
@@ -453,30 +372,12 @@ map.on('load', async () => {
     console.warn('Q地図 DemSource の初期化に失敗:', e);
   }
 
-  // 湖水深等高線（湖底実際の標高 = 基準水面標高 - 湖水深）
-  // worker: false でメインスレッドで動かし、window.fetch オーバーライドで
-  // LAKE_ELEV_PREFIX への合成タイルを取得する。
-  try {
-    lakeContourDemSource = new mlcontour.DemSource({
-      url: `${LAKE_ELEV_PREFIX}{z}/{x}/{y}.png`,
-      encoding: 'numpng',
-      minzoom: 1,
-      maxzoom: 14,
-      worker: false,
-      cacheSize: 100,
-      timeoutMs: 30_000,
-    });
-    lakeContourDemSource.setupMaplibre(maplibregl);
-    map.addSource('contour-source-lake', {
-      type: 'vector',
-      tiles: [buildLakeContourTileUrl(userContourInterval)],
-      maxzoom: 16, // z16タイルをz17以上でオーバーズーム
-      attribution: '',
-    });
-    console.log('湖水深等高線ソース登録完了');
-  } catch (e) {
-    console.warn('湖水深 DemSource の初期化に失敗:', e);
-  }
+  // 湖水深等高線 — 廃止（2026-03-23 コメントアウト）
+  // try {
+  //   lakeContourDemSource = new mlcontour.DemSource({ url: `${LAKE_ELEV_PREFIX}{z}/{x}/{y}.png`, ... });
+  //   lakeContourDemSource.setupMaplibre(maplibregl);
+  //   map.addSource('contour-source-lake', { ... });
+  // } catch (e) { ... }
 
   // DEM5A 5m 等高線ソース（Q地図と完全独立・標高タイルのある範囲で全域描画）
   try {
@@ -700,40 +601,19 @@ map.on('load', async () => {
       }, firstQchizuId);
     }
 
-    // ② 湖水深等高線（Q地図・DEM5Aの下）
-    if (map.getSource('contour-source-lake')) {
-      map.addLayer({
-        id: 'contour-regular-lake',
-        type: 'line',
-        source: 'contour-source-lake',
-        'source-layer': 'contours',
-        filter: ['==', ['get', 'level'], 0],
-        layout: { 'line-join': 'round', 'line-cap': 'round' },
-        paint: { 'line-color': '#4a90d9', 'line-width': 0.8, 'line-opacity': 0.75, 'line-blur': 0.5 },
-      }, firstQchizuId);
-      map.addLayer({
-        id: 'contour-index-lake',
-        type: 'line',
-        source: 'contour-source-lake',
-        'source-layer': 'contours',
-        filter: ['==', ['get', 'level'], 1],
-        layout: { 'line-join': 'round', 'line-cap': 'round' },
-        paint: { 'line-color': '#4a90d9', 'line-width': 1.4, 'line-opacity': 0.85, 'line-blur': 0.5 },
-      }, firstQchizuId);
-    }
+    // ② 湖水深等高線 — 廃止（2026-03-23 コメントアウト）
+    // if (map.getSource('contour-source-lake')) { ... }
 
-    // seamlessContourLayerIds: 湖水深レイヤー（等高線トグルに連動して一括制御）
-    seamlessContourLayerIds = ['contour-regular-lake', 'contour-index-lake']
-      .filter(id => map.getLayer(id));
+    // seamlessContourLayerIds は湖水深廃止により空配列
+    seamlessContourLayerIds = [];
 
     // OriLibre の水域フィルレイヤーが等高線の上に配置されるため最上位へ移動。
-    // 移動順: DEM1A < DEM5A < 湖水深 < Q地図 の順（Q地図が最終的に一番上）。
+    // 移動順: DEM1A < DEM5A < Q地図 の順（Q地図が最終的に一番上）。
     ['contour-regular-dem1a', 'contour-index-dem1a',
      'contour-regular-dem5a', 'contour-index-dem5a',
-     'contour-regular-lake',  'contour-index-lake',
      ...contourLayerIds,
     ].forEach(id => { if (map.getLayer(id)) map.moveLayer(id); });
-    console.log('等高線レイヤー追加完了（Q地図 + DEM5A + DEM1A + 湖水深）');
+    console.log('等高線レイヤー追加完了（Q地図 + DEM5A + DEM1A）');
   }
 
   // 色別等高線レイヤー（オーバーレイ「色別等高線」選択時に表示）
@@ -4781,18 +4661,19 @@ function applyContourInterval(intervalM) {
   const newUrl      = buildContourTileUrl(intervalM);
   const newUrlDem5a = buildSeamlessContourTileUrl(intervalM);
   const newUrlDem1a = buildDem1aContourTileUrl(intervalM);
-  const newUrlLake  = buildLakeContourTileUrl(intervalM);
+  // 湖水深等高線は廃止（2026-03-23）
+  // const newUrlLake  = buildLakeContourTileUrl(intervalM);
   // 各ソースを個別にチェック（1つが未登録でも他のソースは更新し続ける）
   const hasQchizu = newUrl      && map.getSource('contour-source');
   const hasDem5a  = newUrlDem5a && map.getSource('contour-source-dem5a');
   const hasDem1a  = newUrlDem1a && map.getSource('contour-source-dem1a');
-  const hasLake   = newUrlLake  && map.getSource('contour-source-lake');
-  if (!hasQchizu && !hasDem5a && !hasDem1a && !hasLake) return;
+  // const hasLake   = newUrlLake  && map.getSource('contour-source-lake');
+  if (!hasQchizu && !hasDem5a && !hasDem1a) return;
   // visibility:none で一旦消すとフリックが起きるため、表示を維持したまま setTiles のみ実行
   if (hasQchizu) map.getSource('contour-source').setTiles([newUrl]);
   if (hasDem5a)  map.getSource('contour-source-dem5a').setTiles([newUrlDem5a]);
   if (hasDem1a)  map.getSource('contour-source-dem1a').setTiles([newUrlDem1a]);
-  if (hasLake)   map.getSource('contour-source-lake').setTiles([newUrlLake]);
+  // if (hasLake)   map.getSource('contour-source-lake').setTiles([newUrlLake]);
   // 初期 visibility:none で追加されるため、ここで visible に設定する（フリック防止のため none は経由しない）
   if (chkContour.checked) setAllContourVisibility('visible');
   lastAppliedContourInterval = intervalM;
@@ -7563,14 +7444,9 @@ function _addPreviewContourAndNorth(m) {
         filter: ['==', ['get', 'level'], 1],
         paint: { 'line-color': '#c86400', 'line-width': 1.79, 'line-opacity': 1.0 } });
     }
-    // 湖水深等高線
-    const lakeUrl = buildLakeContourTileUrl(iv);
-    if (lakeUrl && lakeContourDemSource) {
-      m.addSource('prev-contour-lake', { type: 'vector', tiles: [lakeUrl], maxzoom: 14, attribution: '' });
-      m.addLayer({ id: 'prev-contour-lake-regular', type: 'line', source: 'prev-contour-lake', 'source-layer': 'contours',
-        filter: ['==', ['get', 'level'], 0],
-        paint: { 'line-color': '#4a90d9', 'line-width': 0.8, 'line-opacity': 0.75, 'line-blur': 0.5 } });
-    }
+    // 湖水深等高線 — 廃止（2026-03-23 コメントアウト）
+    // const lakeUrl = buildLakeContourTileUrl(iv);
+    // if (lakeUrl && lakeContourDemSource) { ... }
   }
   // 磁北線
   if (chkMagneticNorth.checked && _lastMagneticNorthData.features.length > 0) {

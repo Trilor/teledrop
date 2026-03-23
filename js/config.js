@@ -16,11 +16,13 @@ export const QCHIZU_DEM_BASE  = 'https://mapdata.qchizu.xyz/03_dem/52_gsi/all_20
 export const QCHIZU_PROXY_BASE = 'https://teledrop-proxy.trilor.workers.dev/qchizu/03_dem/52_gsi/all_2026/1_01';
 export const DEM5A_BASE       = 'https://cyberjapandata.gsi.go.jp/xyz/dem5a_png'; // 基盤地図情報DEM5A {z}/{x}/{y}.png
 export const DEM1A_BASE       = 'https://cyberjapandata.gsi.go.jp/xyz/dem1a_png'; // 基盤地図情報DEM1A {z}/{x}/{y}.png
-export const LAKEDEPTH_BASE          = 'https://cyberjapandata.gsi.go.jp/xyz/lakedepth';          // 湖水深タイル {z}/{x}/{y}.png
-export const LAKEDEPTH_STANDARD_BASE = 'https://cyberjapandata.gsi.go.jp/xyz/lakedepth_standard'; // 基準水面標高タイル {z}/{x}/{y}.png
+// 湖水深タイルは廃止（2026-03-23 コメントアウト）
+// export const LAKEDEPTH_BASE          = 'https://cyberjapandata.gsi.go.jp/xyz/lakedepth';
+// export const LAKEDEPTH_STANDARD_BASE = 'https://cyberjapandata.gsi.go.jp/xyz/lakedepth_standard';
 export const LAND_DEM_BASE    = 'https://cyberjapandata.gsi.go.jp/xyz/dem_png'; // 基盤地図情報DEM10B（10mメッシュ・全国カバレッジ）{z}/{x}/{y}.png
 
-export const TERRAIN_URL = 'gsjdem://mapdata.qchizu.xyz/03_dem/52_gsi/all_2026/1_01/{z}/{x}/{y}.webp';
+// gsjdem:// ハンドラは URL から z/x/y を抽出するだけなので任意のパスで可
+export const TERRAIN_URL = 'gsjdem://terrain/{z}/{x}/{y}.png';
 
 // ★ OriLibre（オリエンテーリング風地図）
 //   isomizer と設定データはローカルコピーを使用（js/isomizer/ 以下）
