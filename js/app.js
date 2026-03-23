@@ -664,6 +664,8 @@ map.on('load', async () => {
     maxzoom: 15, // Q地図DEMタイルの提供上限(16)よりひとつ下。これ以上のズームはオーバーズームで補完
     attribution: '',
   });
+  // 色別標高図レイヤーは等高線レイヤーの下（beforeId）に挿入する。
+  // 等高線が色別標高図の上に重なって常に見えるようにするため。
   map.addLayer({
     id: 'color-relief-layer',
     type: 'raster',
@@ -673,7 +675,7 @@ map.on('load', async () => {
     // 常に visible を維持し opacity=0 で非表示制御する
     layout: { visibility: 'visible' },
     paint: { 'raster-opacity': 0, 'raster-fade-duration': 0, 'raster-opacity-transition': { duration: 0, delay: 0 } },
-  });
+  }, map.getLayer('contour-regular-dem1a') ? 'contour-regular-dem1a' : undefined);
 
   // CS立体図（ブラウザ生成・Q地図DEMから動的生成）
   map.addSource('cs-relief', {
