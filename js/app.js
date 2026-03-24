@@ -101,12 +101,14 @@ map.addControl(new maplibregl.AttributionControl({
     'を加工して作成',
 }), 'bottom-right');
 
-// 出典コントロールの高さを --attrib-h に常時反映し、縮尺が常に出典の上に来るようにする。
-// ResizeObserver で高さ変化（開閉・テキスト変化・折り返し）を都度追従する。
+// 出典パネルの開閉に応じて縮尺コントロールを移動（重なり防止）
+// MutationObserver: compact-show クラスの変化（開閉）を検知して .above-attrib を付与
+// ResizeObserver  : 出典の高さ変化（テキスト量・折り返し）を常時追従して --attrib-h を更新
 {
   requestAnimationFrame(() => {
     const attribEl = document.querySelector('.maplibregl-ctrl-attrib');
-    if (!attribEl) return;
+    const scaleEl  = document.getElementById('scale-ctrl-container');
+    if (!attribEl || !scaleEl) return;
 
     const updateHeight = () => {
       document.documentElement.style.setProperty(
@@ -114,7 +116,13 @@ map.addControl(new maplibregl.AttributionControl({
       );
     };
 
-    // 高さが変わるたびに（開閉・テキスト量変化・複数行折り返しを含む）更新
+    // 開閉クラスの変化に反応して .above-attrib を付与/除去
+    new MutationObserver(() => {
+      const open = attribEl.classList.contains('maplibregl-compact-show');
+      scaleEl.classList.toggle('above-attrib', open);
+    }).observe(attribEl, { attributes: true, attributeFilter: ['class'] });
+
+    // 出典の高さが変わるたびに --attrib-h を更新（開閉中・テキスト変化時どちらも追従）
     new ResizeObserver(updateHeight).observe(attribEl);
     updateHeight(); // 初期値を即適用
   });
