@@ -8544,7 +8544,7 @@ document.getElementById('import-decide-btn').addEventListener('click', () => {
   map.on('contextmenu', (e) => {
     if (pcSimActive) return; // PCシム中は無効
     ({ lng: _lng, lat: _lat } = e.lngLat);
-    const z = map.getZoom().toFixed(1);
+    const z = map.getZoom().toFixed(2);
     anchor.href = `https://www.google.com/maps/@${_lat.toFixed(6)},${_lng.toFixed(6)},${z}z`;
     copyBtn.textContent = 'この地点のリンクをコピー';
     // アイコンは SVG 要素なので textContent で消えてしまうため再挿入
