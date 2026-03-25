@@ -48,14 +48,21 @@ maplibregl.addProtocol('pmtiles', pmtilesProtocol.tile.bind(pmtilesProtocol));
 async function fetchTerrainDemBitmap(z, x, y, signal) {
   const dem10bUrl = `${LAND_DEM_BASE}/${z}/${x}/${y}.png`;         // DEM10B: 10mメッシュ・全国カバレッジ（maxzoom 14）
   const dem5aUrl  = `${DEM5A_BASE}/${z}/${x}/${y}.png`;             // DEM5A:  5mメッシュ・基盤地図情報（maxzoom 15）
-  // Q地図1m 提供停止中のためコメントアウト（復旧後に戻す）
-  // const qUrl   = `${QCHIZU_PROXY_BASE}/${z}/${x}/${y}.webp`;     // Q地図1m: CF Workers プロキシ経由（maxzoom 16）
+  const qUrl      = `${QCHIZU_PROXY_BASE}/${z}/${x}/${y}.webp`;     // Q地図1m: CF Workers プロキシ経由（maxzoom 16）
 
   // 全ソースを 256×256 に正規化して返す。
+  // Q地図は512×512 WebP のためリサイズが必要。
   // ★ imageSmoothingEnabled = false（最近傍補間）必須:
   //   バイリニア補間だと nodata(R=128,G=0,B=0) と有効データ(R≈0) の境界で
   //   中間値 R≈64 が生成され、NumPNG として約 42000m と解釈されスパイクになる。
   const TARGET = 256;
+
+  // Q地図1m 用タイムアウト付きシグナル（3秒）
+  // Q地図1mの提供が不安定な場合でも DEM5A/DEM10B で素早くテレインを返すため。
+  // AbortSignal.any は Chrome116+/Firefox115+ で使用可能。
+  const qSignal = (typeof AbortSignal.any === 'function')
+    ? AbortSignal.any([signal, AbortSignal.timeout(3000)])
+    : signal;
 
   async function toImageData(url, s = signal) {
     try {
@@ -71,12 +78,12 @@ async function fetchTerrainDemBitmap(z, x, y, signal) {
     } catch { return null; }
   }
 
-  const [dem10b, dem5a] = await Promise.all([
+  const [dem10b, dem5a, qData] = await Promise.all([
     toImageData(dem10bUrl),
     toImageData(dem5aUrl),
-    // toImageData(qUrl, qSignal), // Q地図1m 提供停止中のためコメントアウト
+    toImageData(qUrl, qSignal), // Q地図1mにタイムアウト付きシグナルを渡す
   ]);
-  if (!dem10b && !dem5a) return null;
+  if (!dem10b && !dem5a && !qData) return null;
 
   function isNodata(d, i) {
     return (d[i] === 128 && d[i + 1] === 0 && d[i + 2] === 0) || d[i + 3] !== 255;
@@ -107,14 +114,14 @@ async function fetchTerrainDemBitmap(z, x, y, signal) {
     }
   }
 
-  // 優先度 高: Q地図1m（CF Workers プロキシ経由）― 提供停止中のためコメントアウト
-  // if (qData) {
-  //   const q = qData.data;
-  //   for (let i = 0; i < o.length; i += 4) {
-  //     if (isNodata(q, i)) continue;
-  //     o[i] = q[i]; o[i + 1] = q[i + 1]; o[i + 2] = q[i + 2]; o[i + 3] = 255;
-  //   }
-  // }
+  // 優先度 高: Q地図1m（CF Workers プロキシ経由）
+  if (qData) {
+    const q = qData.data;
+    for (let i = 0; i < o.length; i += 4) {
+      if (isNodata(q, i)) continue;
+      o[i] = q[i]; o[i + 1] = q[i + 1]; o[i + 2] = q[i + 2]; o[i + 3] = 255;
+    }
+  }
 
   ctx.putImageData(out, 0, 0);
   return createImageBitmap(cv);
@@ -135,19 +142,22 @@ async function fetchTerrainDemBitmap(z, x, y, signal) {
 //          'land+dem5a'  → DEM10B + DEM5A（z11-12用）
 //          'dem5a'       → DEM5Aのみ
 async function fetchCompositeDemBitmap(z, x, y, signal, regionalDemBase = null, regionalDemExt = 'png', demMode = null) {
-  // Q地図1m 提供停止中のため useQ を強制 false にコメントアウト（復旧後に戻す）
-  // const useQ = demMode === null;
-  const useQ    = false;                                                              // Q地図1m 提供停止中
+  const useQ    = demMode === null; // Q地図: 全合成モードのみ使用
   const useS    = demMode === null || demMode === 'dem5a' || demMode === 'land+dem5a'; // DEM5A: 全合成 or 単独 or land+dem5a
   const useLand = demMode === null || demMode === 'land' || demMode === 'land+dem5a'; // DEM10B: 全合成 or 単独 or land+dem5a
   const sUrl    = useS    ? `${DEM5A_BASE}/${z}/${x}/${y}.png`         : null;
   const landUrl = useLand ? `${LAND_DEM_BASE}/${z}/${x}/${y}.png`      : null;
-  // const qUrl = useQ ? `${QCHIZU_PROXY_BASE}/${z}/${x}/${y}.webp` : null; // Q地図1m 提供停止中のためコメントアウト
-  const qUrl    = null;
+  const qUrl    = useQ    ? `${QCHIZU_PROXY_BASE}/${z}/${x}/${y}.webp` : null;
   // 湖水深タイルはコメントアウト（2026-03-23 廃止）
   // const lUrl  = `${LAKEDEPTH_BASE}/${z}/${x}/${y}.png`;
   // const lsUrl = `${LAKEDEPTH_STANDARD_BASE}/${z}/${x}/${y}.png`;
-  const rUrl    = (regionalDemBase) ? `${regionalDemBase}/${z}/${x}/${y}.${regionalDemExt}` : null;
+  const rUrl    = (useQ && regionalDemBase) ? `${regionalDemBase}/${z}/${x}/${y}.${regionalDemExt}` : null;
+
+  // Q地図1m 用タイムアウト付きシグナル（3秒）
+  // Q地図1mの提供が不安定な場合でも他ソースで素早くCS立体図を返すため。
+  const qSignal = useQ && (typeof AbortSignal.any === 'function')
+    ? AbortSignal.any([signal, AbortSignal.timeout(3000)])
+    : signal;
 
   async function toImageData(url, s = signal) {
     try {
@@ -162,12 +172,12 @@ async function fetchCompositeDemBitmap(z, x, y, signal, regionalDemBase = null, 
   }
 
   const [qData, sData, landData, rData] = await Promise.all([
-    qUrl     ? toImageData(qUrl)    : Promise.resolve(null), // Q地図1m 提供停止中のためコメントアウト済み
-    sUrl     ? toImageData(sUrl)    : Promise.resolve(null),
-    landUrl  ? toImageData(landUrl) : Promise.resolve(null),
+    qUrl     ? toImageData(qUrl, qSignal) : Promise.resolve(null), // Q地図1mにタイムアウト付きシグナルを渡す
+    sUrl     ? toImageData(sUrl)          : Promise.resolve(null),
+    landUrl  ? toImageData(landUrl)       : Promise.resolve(null),
     // 湖水深タイルはコメントアウト（2026-03-23 廃止）
     // toImageData(lUrl), toImageData(lsUrl),
-    rUrl     ? toImageData(rUrl)    : Promise.resolve(null),
+    rUrl     ? toImageData(rUrl)          : Promise.resolve(null),
   ]);
   if (!qData && !sData && !landData && !rData) return null;
 
@@ -176,7 +186,7 @@ async function fetchCompositeDemBitmap(z, x, y, signal, regionalDemBase = null, 
   }
 
   // 合成先を全 nodata で初期化し、低優先度から順に上書き
-  const { width, height: h } = (sData ?? landData ?? rData); // qData は停止中のため除外
+  const { width, height: h } = (qData ?? sData ?? landData ?? rData);
   const cv  = new OffscreenCanvas(width, h);
   const ctx = cv.getContext('2d');
   const out = ctx.createImageData(width, h);
@@ -204,14 +214,14 @@ async function fetchCompositeDemBitmap(z, x, y, signal, regionalDemBase = null, 
     }
   }
 
-  // 優先度 高: Q地図 DEM ― 提供停止中のためコメントアウト
-  // if (qData) {
-  //   const q = qData.data;
-  //   for (let i = 0; i < o.length; i += 4) {
-  //     if (isNodata(q, i)) continue;
-  //     o[i] = q[i]; o[i + 1] = q[i + 1]; o[i + 2] = q[i + 2]; o[i + 3] = 255;
-  //   }
-  // }
+  // 優先度 高: Q地図 DEM
+  if (qData) {
+    const q = qData.data;
+    for (let i = 0; i < o.length; i += 4) {
+      if (isNodata(q, i)) continue;
+      o[i] = q[i]; o[i + 1] = q[i + 1]; o[i + 2] = q[i + 2]; o[i + 3] = 255;
+    }
+  }
 
   // 優先度 最高: 地域DEM（0.5m）― csdem://地域層からのみ利用
   if (rData) {
