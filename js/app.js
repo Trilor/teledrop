@@ -5459,6 +5459,17 @@ document.querySelectorAll('.sidebar-nav-btn').forEach(btn => {
 });
 
 
+// パネル閉じるボタン（✕）
+document.querySelectorAll('.sidebar-close-btn').forEach(btn => {
+  btn.addEventListener('click', () => {
+    const sbPanel = document.getElementById('sidebar-panel');
+    sbPanel.classList.add('sb-hidden');
+    document.querySelectorAll('.sidebar-nav-btn').forEach(b => b.classList.remove('active'));
+    _sidebarOpen = false;
+    requestAnimationFrame(updateSidebarWidth);
+  });
+});
+
 // ---- 縮尺セレクト（現在の縮尺をリアルタイム表示 ＋ プリセット選択でズーム） ----
 // CSS仕様上 1 CSS inch = 96 CSS pixel（devicePixelRatio に依存しない定数）
 // MapLibre の getZoom() は CSS pixel 基準のため、物理DPIではなく CSS PPI を使う
@@ -8530,7 +8541,7 @@ document.getElementById('import-decide-btn').addEventListener('click', () => {
   map.on('contextmenu', (e) => {
     if (pcSimActive) return; // PCシム中は無効
     const { lng, lat } = e.lngLat;
-    const z = Math.round(map.getZoom());
+    const z = map.getZoom().toFixed(1);
     anchor.href = `https://www.google.com/maps/@${lat.toFixed(6)},${lng.toFixed(6)},${z}z`;
     menu.style.left = `${e.originalEvent.clientX}px`;
     menu.style.top  = `${e.originalEvent.clientY}px`;

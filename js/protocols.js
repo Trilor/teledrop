@@ -56,9 +56,17 @@ async function fetchTerrainDemBitmap(z, x, y, signal) {
   //   バイリニア補間だと nodata(R=128,G=0,B=0) と有効データ(R≈0) の境界で
   //   中間値 R≈64 が生成され、NumPNG として約 42000m と解釈されスパイクになる。
   const TARGET = 256;
-  async function toImageData(url) {
+
+  // Q地図1m 用タイムアウト付きシグナル（3秒）
+  // Q地図1mの提供が不安定な場合でも DEM5A/DEM10B で素早くテレインを返すため。
+  // AbortSignal.any は Chrome116+/Firefox115+ で使用可能。
+  const qSignal = (typeof AbortSignal.any === 'function')
+    ? AbortSignal.any([signal, AbortSignal.timeout(3000)])
+    : signal;
+
+  async function toImageData(url, s = signal) {
     try {
-      const r = await fetch(url, { signal });
+      const r = await fetch(url, { signal: s });
       if (!r.ok) return null;
       const bm = await createImageBitmap(await r.blob());
       const cv = new OffscreenCanvas(TARGET, TARGET);
@@ -73,7 +81,7 @@ async function fetchTerrainDemBitmap(z, x, y, signal) {
   const [dem10b, dem5a, qData] = await Promise.all([
     toImageData(dem10bUrl),
     toImageData(dem5aUrl),
-    toImageData(qUrl),
+    toImageData(qUrl, qSignal), // Q地図1mにタイムアウト付きシグナルを渡す
   ]);
   if (!dem10b && !dem5a && !qData) return null;
 
@@ -145,9 +153,15 @@ async function fetchCompositeDemBitmap(z, x, y, signal, regionalDemBase = null, 
   // const lsUrl = `${LAKEDEPTH_STANDARD_BASE}/${z}/${x}/${y}.png`;
   const rUrl    = (useQ && regionalDemBase) ? `${regionalDemBase}/${z}/${x}/${y}.${regionalDemExt}` : null;
 
-  async function toImageData(url) {
+  // Q地図1m 用タイムアウト付きシグナル（3秒）
+  // Q地図1mの提供が不安定な場合でも他ソースで素早くCS立体図を返すため。
+  const qSignal = useQ && (typeof AbortSignal.any === 'function')
+    ? AbortSignal.any([signal, AbortSignal.timeout(3000)])
+    : signal;
+
+  async function toImageData(url, s = signal) {
     try {
-      const r = await fetch(url, { signal });
+      const r = await fetch(url, { signal: s });
       if (!r.ok) return null;
       const bm = await createImageBitmap(await r.blob());
       const cv = new OffscreenCanvas(bm.width, bm.height);
@@ -158,12 +172,12 @@ async function fetchCompositeDemBitmap(z, x, y, signal, regionalDemBase = null, 
   }
 
   const [qData, sData, landData, rData] = await Promise.all([
-    qUrl     ? toImageData(qUrl)     : Promise.resolve(null),
-    sUrl     ? toImageData(sUrl)     : Promise.resolve(null),
-    landUrl  ? toImageData(landUrl)  : Promise.resolve(null),
+    qUrl     ? toImageData(qUrl, qSignal) : Promise.resolve(null), // Q地図1mにタイムアウト付きシグナルを渡す
+    sUrl     ? toImageData(sUrl)          : Promise.resolve(null),
+    landUrl  ? toImageData(landUrl)       : Promise.resolve(null),
     // 湖水深タイルはコメントアウト（2026-03-23 廃止）
     // toImageData(lUrl), toImageData(lsUrl),
-    rUrl     ? toImageData(rUrl)     : Promise.resolve(null),
+    rUrl     ? toImageData(rUrl)          : Promise.resolve(null),
   ]);
   if (!qData && !sData && !landData && !rData) return null;
 
