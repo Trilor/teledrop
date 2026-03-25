@@ -52,7 +52,7 @@ const map = new maplibregl.Map({
         tiles: [TERRAIN_URL],
         tileSize: 256,
         minzoom: 1,
-        maxzoom: 16, // Q地図1m の上限（z16タイルを z17+ でオーバーズーム）
+        maxzoom: 15, // DEM5A の上限（z15タイルを z16+ で MapLibre がオーバーズーム）
         encoding: 'terrarium',
         attribution: '',
       }
