@@ -87,6 +87,10 @@ const map = new maplibregl.Map({
     'AttributionControl.MapFeedback':     'マップのフィードバック',
     'LogoControl.Title':                  'MapLibre',
   },
+  // URL ハッシュに地図状態を自動保存・復元（#map=zoom/lat/lng/bearing/pitch 形式）
+  // 再読込時に同じ位置・向き・傾きで復元される。
+  // hash に文字列を渡すと "#<name>=..." 形式になる（OSM / MapLibre 標準）。
+  hash: 'map',
 });
 
 // 出典表示（customAttribution で固定表示、都道府県別CS出典は updateRegionalAttribution で追記）
@@ -8557,13 +8561,18 @@ document.getElementById('import-decide-btn').addEventListener('click', () => {
     e.originalEvent.stopPropagation();
   });
 
-  // 「この地点のリンクをコピー」: zoom/lat/lng/bearing/pitch を含む URL をクリップボードへ
+  // 「この地点のリンクをコピー」: 右クリック地点を中心にした URL をクリップボードへ
+  // MapLibre の hash:'map' と同じ形式 #map=zoom/lat/lng/bearing/pitch で生成する
   copyBtn.addEventListener('click', () => {
-    const z = map.getZoom().toFixed(2);
-    const b = map.getBearing().toFixed(1);
-    const p = map.getPitch().toFixed(1);
-    const hash = `#map=${z}/${_lat.toFixed(6)}/${_lng.toFixed(6)}/${b}/${p}`;
-    const url = window.location.origin + window.location.pathname + hash;
+    const z = Math.round(map.getZoom()    * 100) / 100;
+    const b = Math.ceil (map.getBearing() *  10) /  10;
+    const p = Math.ceil (map.getPitch()   *  10) /  10;
+    const lat4 = Math.ceil(_lat * 10000) / 10000;
+    const lng4 = Math.ceil(_lng * 10000) / 10000;
+    const parts = [z, lat4, lng4];
+    if (b || p) parts.push(b);
+    if (p)      parts.push(p);
+    const url = `${window.location.origin}${window.location.pathname}#map=${parts.join('/')}`;
     navigator.clipboard.writeText(url).then(() => {
       copyBtn.innerHTML = `<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="flex-shrink:0"><polyline points="20 6 9 17 4 12"/></svg>コピーしました`;
       setTimeout(() => { menu.style.display = 'none'; }, 800);
