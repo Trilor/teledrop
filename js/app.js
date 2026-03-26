@@ -1,5 +1,37 @@
 /* ================================================================
    app.js — アプリケーション本体（地図初期化・KMZ・GPX・UI）
+   ================================================================
+
+   【モジュール構成】
+     config.js       定数・URL・初期値
+     protocols.js    gsjdem:// / csdem:// / dem2relief:// プロトコル登録
+     contours.js     等高線・DEM レイヤー管理（本ファイルからインポート）
+
+   【本ファイルの内容（論理セクション）】
+     §1  Import
+     §2  マップ初期化・コントロール追加
+     §3  map.on('load') ハンドラ
+           ① ラスターベースマップ ソース/レイヤー
+           ② 等高線 DemSource 初期化
+           ③ isomizer（OriLibre ベクタースタイル）
+           ④ CS 立体図・色別標高図・磁北線ソース/レイヤー
+           ⑤ テレインマスタ自動読み込み（autoLoadTerrains）
+     §4  KMZ 読み込み・レイヤー管理（loadKmz / renderKmzList）
+     §5  JGW + 画像（worldfile 位置合わせ）
+     §6  フレーム / テレイン境界（GeoJSON・mapFrames・terrainMap）
+     §7  Miller Columns UI（地図インポートタブ）
+     §8  GPX 再生（loadGpx・gpxAnimationLoop・カメラ制御）
+     §9  UI イベントハンドラ（ファイル選択・D&D・スライダー等）
+     §10 出典（Attribution）動的管理
+     §11 ベースマップ切り替え（switchBasemap）
+     §12 CS 立体図・色別標高図・ベースマップカード
+     §13 等高線 UI イベント（間隔・DEMソース切り替え）
+     §14 3D ビル（PLATEAU LOD1/LOD2）
+     §15 PCシミュレーター（pcSim）
+     §16 地図インポートモーダル（画像 + 縮尺/回転）
+     §17 プレビューマップ生成
+     §18 その他 UI（カラーピッカー・右クリックメニュー）
+
    ================================================================ */
 
 import {
@@ -11,6 +43,14 @@ import {
   TERRAIN_EXAGGERATION, OMAP_INITIAL_OPACITY, CS_INITIAL_OPACITY,
   RASTER_BASEMAPS
 } from './config.js';
+
+import {
+  contourState,
+  contourLayerIds, DEM5A_CONTOUR_LAYER_IDS, DEM1A_CONTOUR_LAYER_IDS,
+  COLOR_CONTOUR_Q_IDS, COLOR_CONTOUR_DEM5A_IDS, COLOR_CONTOUR_DEM1A_IDS,
+  setAllContourVisibility, buildColorContourExpr, buildContourThresholds,
+  buildContourTileUrl, buildSeamlessContourTileUrl, buildDem1aContourTileUrl,
+} from './contours.js';
 
 
 // ベースマップ切替の状態管理
@@ -195,129 +235,7 @@ map.addControl(new _exp.MaplibreExportControl({
   map.on('load', ...) はスタイル・タイルの初期読み込みが完了したタイミングで発火します。
   ========================================================
 */
-// 等高線レイヤーIDリスト（isomizer完了後に収集）
-// Q地図1m 等高線レイヤーID（DEM5A・DEM1A と同じ固定定数方式）
-const contourLayerIds = ['contour-regular', 'contour-index'];
-const COLOR_CONTOUR_Q_IDS    = ['color-contour-regular', 'color-contour-index'];
-const COLOR_CONTOUR_DEM5A_IDS = ['color-contour-regular-dem5a', 'color-contour-index-dem5a'];
-const COLOR_CONTOUR_DEM1A_IDS = ['color-contour-regular-dem1a', 'color-contour-index-dem1a'];
-// 湖水深等高線レイヤーIDリスト（等高線トグルに連動）
-let seamlessContourLayerIds = [];
-// DEMソースモード: 'q1m'（Q地図1m）/ 'dem5a'（DEM5A 5m）/ 'dem1a'（地理院DEM1A 1m）
-let contourDemMode = 'q1m';
-// DEM5A・DEM1A 専用レイヤーID
-const DEM5A_CONTOUR_LAYER_IDS = ['contour-regular-dem5a', 'contour-index-dem5a'];
-const DEM1A_CONTOUR_LAYER_IDS = ['contour-regular-dem1a', 'contour-index-dem1a'];
-
-// 全等高線レイヤーに visibility を一括設定するヘルパー。
-// contourDemMode に従い Q地図 / DEM5A / DEM1A を排他表示する。
-// vis='none' のときは全レイヤー非表示（interval 切り替え時の一時的なフラッシュに使用）。
-function setAllContourVisibility(vis) {
-  const qVis     = (vis === 'visible' && contourDemMode === 'q1m')   ? 'visible' : 'none';
-  const dem5aVis = (vis === 'visible' && contourDemMode === 'dem5a') ? 'visible' : 'none';
-  const dem1aVis = (vis === 'visible' && contourDemMode === 'dem1a') ? 'visible' : 'none';
-  for (const id of contourLayerIds)         if (map.getLayer(id)) map.setLayoutProperty(id, 'visibility', qVis);
-  for (const id of DEM5A_CONTOUR_LAYER_IDS) if (map.getLayer(id)) map.setLayoutProperty(id, 'visibility', dem5aVis);
-  for (const id of DEM1A_CONTOUR_LAYER_IDS) if (map.getLayer(id)) map.setLayoutProperty(id, 'visibility', dem1aVis);
-  // 湖水深は DEM モードに関わらず等高線トグルに従う
-  for (const id of seamlessContourLayerIds) if (map.getLayer(id)) map.setLayoutProperty(id, 'visibility', vis);
-}
-
-// 色別等高線の line-color 式を生成（DEM2RELIEF_PALETTE に対応したMapLibre補間式）
-// min/max は色別標高図の crMin/crMax と共有する
-function buildColorContourExpr(min, max) {
-  const range = (max - min) || 1;
-  return ['interpolate', ['linear'], ['get', 'ele'],
-    min + 0.00 * range, '#0006FB',
-    min + 0.17 * range, '#0092FB',
-    min + 0.33 * range, '#00E7FB',
-    min + 0.50 * range, '#8AF708',
-    min + 0.67 * range, '#F2F90B',
-    min + 0.83 * range, '#F28A09',
-    min + 1.00 * range, '#F2480B',
-  ];
-}
-
-// 等高線間隔ごとのzoom threshold設定を生成
-// mlcontourの仕様: thresholds の値は [minor, major] の順（小さい間隔が先）
-//   level=0 → minor（主曲線）: intervalM ごとに1本
-//   level=1 → major（計曲線）: intervalM × 5 ごとに1本
-function buildContourThresholds(intervalM) {
-  // zoom 0〜15 の全レベルに thresholds を設定する（OriLibre ContourIntervalControl と同じアプローチ）
-  // 一部のzoomにしか設定しないと setTiles() 後もキャッシュが残り即時反映されない
-  //
-  // z0〜13 は getEffectiveContourInterval() の自動間隔に合わせた固定値を設定することで、
-  // 低ズームで細かい等高線タイルを生成する無駄を防ぐ。
-  // z14 以上はユーザー設定間隔（intervalM）を使用する。
-  const fixedByZoom = [
-  //  z0    z1    z2    z3    z4    z5    z6    z7    z8   z9   z10  z11  z12  z13
-    200,  200,  200,  200,  200,  200,  200,  200,  200, 100,   50,  25,  10,   5,
-  ];
-  const thresholds = {};
-  for (let z = 0; z < fixedByZoom.length; z++) {
-    const iv = fixedByZoom[z];
-    thresholds[z] = [iv, iv * 5];
-  }
-  for (let z = fixedByZoom.length; z <= 15; z++) {
-    thresholds[z] = [intervalM, intervalM * 5];
-  }
-  return thresholds;
-}
-
-// contour-source の tiles URL を生成（demSource は load 内で初期化）
-let contourDemSource = null;
-let seamlessContourDemSource = null; // DEM5A 5m 等高線ソース（Q地図と独立・排他切り替え）
-let dem1aContourDemSource = null;    // 地理院DEM1A 1m 等高線ソース
-
-function buildContourTileUrl(intervalM) {
-  if (!contourDemSource) return null;
-  return contourDemSource.contourProtocolUrl({
-    thresholds: buildContourThresholds(intervalM),
-    contourLayer: 'contours',
-    elevationKey: 'ele',
-    levelKey: 'level',
-    extent: 4096,
-    buffer: 1,
-  });
-}
-
-function buildSeamlessContourTileUrl(intervalM) {
-  if (!seamlessContourDemSource) return null;
-  return seamlessContourDemSource.contourProtocolUrl({
-    thresholds: buildContourThresholds(intervalM),
-    contourLayer: 'contours',
-    elevationKey: 'ele',
-    levelKey: 'level',
-    extent: 4096,
-    buffer: 1,
-  });
-}
-
-function buildDem1aContourTileUrl(intervalM) {
-  if (!dem1aContourDemSource) return null;
-  return dem1aContourDemSource.contourProtocolUrl({
-    thresholds: buildContourThresholds(intervalM),
-    contourLayer: 'contours',
-    elevationKey: 'ele',
-    levelKey: 'level',
-    extent: 4096,
-    buffer: 1,
-  });
-}
-
-/*
-  ========================================================
-  湖水深等高線関連コード — 廃止（2026-03-23 コメントアウト）
-  window.fetch オーバーライド・湖底標高合成・lakeContourDemSource
-  ========================================================
-*/
-// const LAKE_ELEV_PREFIX = 'https://lake-elevation.internal/tiles/';
-// const _origFetch = window.fetch.bind(window);
-// async function _nodataNumPngResponse() { ... }
-// async function synthesizeLakeElevationTile(url) { ... }
-// window.fetch = function(input, init) { ... };
-// let lakeContourDemSource = null;
-// function buildLakeContourTileUrl(intervalM) { ... }
+// contourState・buildContourTileUrl 系・setAllContourVisibility は contours.js からインポート済み
 
 map.on('load', async () => {
 
@@ -356,7 +274,7 @@ map.on('load', async () => {
   // Q地図 1m 等高線ソース
   // Cloudflare Worker プロキシ経由で CORS を解決し、worker: true（バックグラウンドスレッド）で安定動作させる
   try {
-    contourDemSource = new mlcontour.DemSource({
+    contourState.q1mSource = new mlcontour.DemSource({
       url: `${QCHIZU_PROXY_BASE}/{z}/{x}/{y}.webp`,
       encoding: 'numpng',
       minzoom: 0,
@@ -365,7 +283,7 @@ map.on('load', async () => {
       cacheSize: 100,
       timeoutMs: 30_000,
     });
-    contourDemSource.setupMaplibre(maplibregl);
+    contourState.q1mSource.setupMaplibre(maplibregl);
     map.addSource('contour-source', {
       type: 'vector',
       tiles: [buildContourTileUrl(userContourInterval)],
@@ -377,16 +295,10 @@ map.on('load', async () => {
     console.warn('Q地図 DemSource の初期化に失敗:', e);
   }
 
-  // 湖水深等高線 — 廃止（2026-03-23 コメントアウト）
-  // try {
-  //   lakeContourDemSource = new mlcontour.DemSource({ url: `${LAKE_ELEV_PREFIX}{z}/{x}/{y}.png`, ... });
-  //   lakeContourDemSource.setupMaplibre(maplibregl);
-  //   map.addSource('contour-source-lake', { ... });
-  // } catch (e) { ... }
 
   // DEM5A 5m 等高線ソース（Q地図と完全独立・標高タイルのある範囲で全域描画）
   try {
-    seamlessContourDemSource = new mlcontour.DemSource({
+    contourState.dem5aSource = new mlcontour.DemSource({
       url: `${DEM5A_BASE}/{z}/{x}/{y}.png`,
       encoding: 'numpng',
       minzoom: 0,
@@ -395,7 +307,7 @@ map.on('load', async () => {
       cacheSize: 100,
       timeoutMs: 30_000,
     });
-    seamlessContourDemSource.setupMaplibre(maplibregl);
+    contourState.dem5aSource.setupMaplibre(maplibregl);
     map.addSource('contour-source-dem5a', {
       type: 'vector',
       tiles: [buildSeamlessContourTileUrl(userContourInterval)],
@@ -409,7 +321,7 @@ map.on('load', async () => {
 
   // 地理院 DEM1A 1m 等高線ソース（DEM5Aと同設定・maxzoomのみ17）
   try {
-    dem1aContourDemSource = new mlcontour.DemSource({
+    contourState.dem1aSource = new mlcontour.DemSource({
       url: `${DEM1A_BASE}/{z}/{x}/{y}.png`,
       encoding: 'numpng',
       minzoom: 0,
@@ -418,7 +330,7 @@ map.on('load', async () => {
       cacheSize: 100,
       timeoutMs: 30_000,
     });
-    dem1aContourDemSource.setupMaplibre(maplibregl);
+    contourState.dem1aSource.setupMaplibre(maplibregl);
     map.addSource('contour-source-dem1a', {
       type: 'vector',
       tiles: [buildDem1aContourTileUrl(userContourInterval)],
@@ -606,11 +518,8 @@ map.on('load', async () => {
       }, firstQchizuId);
     }
 
-    // ② 湖水深等高線 — 廃止（2026-03-23 コメントアウト）
-    // if (map.getSource('contour-source-lake')) { ... }
-
-    // seamlessContourLayerIds は湖水深廃止により空配列
-    seamlessContourLayerIds = [];
+    // contourState.seamlessLayerIds は湖水深廃止により空配列
+    contourState.seamlessLayerIds = [];
 
     // OriLibre の水域フィルレイヤーが等高線の上に配置されるため最上位へ移動。
     // 移動順: DEM1A < DEM5A < Q地図 の順（Q地図が最終的に一番上）。
@@ -622,7 +531,7 @@ map.on('load', async () => {
   }
 
   // 色別等高線レイヤー（オーバーレイ「色別等高線」選択時に表示）
-  // 各 DEM ソースに対応した 3 セットを追加し、contourDemMode に応じて排他表示する
+  // 各 DEM ソースに対応した 3 セットを追加し、contourState.demMode に応じて排他表示する
   {
     const colorExpr = buildColorContourExpr(crMin, crMax);
     const addColorContourPair = (suffix, sourceId) => {
@@ -4106,20 +4015,20 @@ function updateCsVisibility() {
   const crCtrls = document.getElementById('color-relief-controls');
   if (crCtrls) crCtrls.style.display = (currentOverlay === 'color-relief') ? '' : 'none';
 
-  // 色別等高線の表示制御（contourDemMode に応じて排他表示）
+  // 色別等高線の表示制御（contourState.demMode に応じて排他表示）
   const showColorContour = overlay === 'color-contour';
   const ccBaseVis = showColorContour ? 'visible' : 'none';
   COLOR_CONTOUR_Q_IDS.forEach(id => {
     if (map.getLayer(id)) map.setLayoutProperty(id, 'visibility',
-      (ccBaseVis === 'visible' && contourDemMode === 'q1m') ? 'visible' : 'none');
+      (ccBaseVis === 'visible' && contourState.demMode === 'q1m') ? 'visible' : 'none');
   });
   COLOR_CONTOUR_DEM5A_IDS.forEach(id => {
     if (map.getLayer(id)) map.setLayoutProperty(id, 'visibility',
-      (ccBaseVis === 'visible' && contourDemMode === 'dem5a') ? 'visible' : 'none');
+      (ccBaseVis === 'visible' && contourState.demMode === 'dem5a') ? 'visible' : 'none');
   });
   COLOR_CONTOUR_DEM1A_IDS.forEach(id => {
     if (map.getLayer(id)) map.setLayoutProperty(id, 'visibility',
-      (ccBaseVis === 'visible' && contourDemMode === 'dem1a') ? 'visible' : 'none');
+      (ccBaseVis === 'visible' && contourState.demMode === 'dem1a') ? 'visible' : 'none');
   });
 
   // CS立体図: color-relief 選択時は非表示
@@ -4684,7 +4593,7 @@ function applyContourInterval(intervalM) {
   if (hasDem1a)  { map.getSource('contour-source-dem1a').setTiles([]); map.getSource('contour-source-dem1a').setTiles([newUrlDem1a]); }
   // if (hasLake)   map.getSource('contour-source-lake').setTiles([newUrlLake]);
   // 初期 visibility:none で追加されるため、ここで visible に設定する（フリック防止のため none は経由しない）
-  if (chkContour.checked) setAllContourVisibility('visible');
+  if (chkContour.checked) setAllContourVisibility(map, 'visible');
   // マップがアイドル状態でもレンダーループを確実に起動してタイル再描画を促す
   map.triggerRepaint();
   lastAppliedContourInterval = intervalM;
@@ -4700,7 +4609,7 @@ function updateContourAutoInterval() {
   if (z <= 7) {
     // 既に非表示済みなら setLayoutProperty の重複呼び出しを省略
     if (!contourHiddenByLowZoom) {
-      setAllContourVisibility('none');
+      setAllContourVisibility(map, 'none');
       contourHiddenByLowZoom = true;
     }
     if (optContourCurrent) {
@@ -4750,9 +4659,9 @@ selContour.addEventListener('change', () => {
 // ---- 等高線 DEMソース切り替え ----
 const selContourDem = document.getElementById('sel-contour-dem');
 selContourDem.addEventListener('change', () => {
-  contourDemMode = selContourDem.value; // 'q1m' / 'dem5a' / 'dem1a'
+  contourState.demMode = selContourDem.value; // 'q1m' / 'dem5a' / 'dem1a'
   if (chkContour.checked) {
-    setAllContourVisibility('visible');
+    setAllContourVisibility(map, 'visible');
   }
   // 色別等高線オーバーレイ選択中の場合はソース切り替えに追従
   if (currentOverlay === 'color-contour') updateCsVisibility();
@@ -7452,10 +7361,10 @@ const _PREVIEW_RASTER_STYLE = {
 // OriLibre の場合は oriLibreCachedStyle に既に含まれているため不要。
 function _addPreviewContourAndNorth(m) {
   // 等高線
-  if (chkContour.checked && contourDemSource) {
+  if (chkContour.checked && contourState.q1mSource) {
     const iv  = getEffectiveContourInterval();
-    const url = contourDemMode === 'dem5a' ? buildSeamlessContourTileUrl(iv)
-              : contourDemMode === 'dem1a' ? buildDem1aContourTileUrl(iv)
+    const url = contourState.demMode === 'dem5a' ? buildSeamlessContourTileUrl(iv)
+              : contourState.demMode === 'dem1a' ? buildDem1aContourTileUrl(iv)
               : buildContourTileUrl(iv);
     if (url) {
       m.addSource('prev-contour', { type: 'vector', tiles: [url], maxzoom: 14, attribution: '' });
@@ -7466,9 +7375,6 @@ function _addPreviewContourAndNorth(m) {
         filter: ['==', ['get', 'level'], 1],
         paint: { 'line-color': '#c86400', 'line-width': 1.79, 'line-opacity': 1.0 } });
     }
-    // 湖水深等高線 — 廃止（2026-03-23 コメントアウト）
-    // const lakeUrl = buildLakeContourTileUrl(iv);
-    // if (lakeUrl && lakeContourDemSource) { ... }
   }
   // 磁北線
   if (chkMagneticNorth.checked && _lastMagneticNorthData.features.length > 0) {
