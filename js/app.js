@@ -41,6 +41,7 @@ import {
   REGIONAL_CS_LAYERS,
   INITIAL_CENTER, INITIAL_ZOOM, INITIAL_PITCH, INITIAL_BEARING,
   TERRAIN_EXAGGERATION, OMAP_INITIAL_OPACITY, CS_INITIAL_OPACITY,
+  EASE_DURATION, FIT_BOUNDS_PAD, FIT_BOUNDS_PAD_SIDEBAR, SIDEBAR_DEFAULT_WIDTH,
   RASTER_BASEMAPS
 } from './config.js';
 
@@ -712,7 +713,7 @@ map.on('load', async () => {
   _globeBgEl = document.getElementById('map');
   _updateGlobeBg = () => {
     if (!_globeBgEl) return;
-    const highZoomColor = simActive ? '#dbeff9' : '#fff';
+    const highZoomColor = mobileSimState.active ? '#dbeff9' : '#fff';
     _globeBgEl.style.backgroundColor = map.getZoom() < 7 ? '#000' : highZoomColor;
   };
   map.on('zoom', _updateGlobeBg);
@@ -758,39 +759,28 @@ function escHtml(str) {
 /* ========================================================
     GPX リプレイ機能：状態管理変数
     ======================================================== */
-
-// GPXのトラックポイント配列（{lng, lat, relTime}の形式）
-let gpxTrackPoints = [];
-// アニメーション開始からの経過時間（ミリ秒）: 0 〜 totalDuration
-let gpxTotalDuration = 0;
-// 現在の再生位置（ミリ秒）
-let gpxCurrentTime = 0;
-// 再生中かどうか
-let gpxIsPlaying = false;
-// requestAnimationFrameのID（キャンセルに使用）
-let gpxAnimFrameId = null;
-// 前フレームのタイムスタンプ（差分計算用）
-let gpxLastTimestamp = null;
-// 視点モード: '2d'＝俯瞰（上空固定） / '3d'＝PCシム追尾カメラ
-let gpxViewMode = '2d';
-// 3D 追尾カメラ独自パラメータ（PC シムとは独立）
-let gpxChasePitch  = 60;   // ピッチ（deg）
-let gpxCamDistM    = 50;   // カメラ距離（m）
-let gpxBearingOffset = 0;  // 進行方向からの bearing オフセット（deg）
+const gpxState = {
+  trackPoints:     [],       // GPXのトラックポイント配列（{lng, lat, relTime}の形式）
+  totalDuration:   0,        // 総再生時間（ミリ秒）
+  currentTime:     0,        // 現在の再生位置（ミリ秒）
+  isPlaying:       false,    // 再生中かどうか
+  animFrameId:     null,     // requestAnimationFrameのID（キャンセルに使用）
+  lastTimestamp:   null,     // 前フレームのタイムスタンプ（差分計算用）
+  viewMode:        '2d',     // 視点モード: '2d'＝俯瞰 / '3d'＝追尾カメラ
+  chasePitch:      60,       // 3D追尾カメラ ピッチ（deg）
+  camDistM:        50,       // 3D追尾カメラ距離（m）
+  bearingOffset:   0,        // 進行方向からの bearing オフセット（deg）
+  chaseKeys: {               // 矢印キー押下状態（3D モード専用）
+    ArrowLeft: false, ArrowRight: false, ArrowUp: false, ArrowDown: false,
+  },
+  cachedTerrainH:  0,        // 地形高度キャッシュ（queryTerrainElevation が null のときに維持）
+  lastBearing:     0,        // 前フレームの進行方向（端点などbearing=0の補完用）
+  smoothedBearing: 0,        // bearing ローパスフィルタ値（カクカク防止）
+  smoothedZoom:    15,       // zoom ローパスフィルタ値
+};
 const GPX_CAM_DIST_MIN = 1;
 const GPX_CAM_DIST_MAX = 500;
-// 矢印キー押下状態（3D モード専用）
-const gpxChaseKeys = {
-  ArrowLeft: false, ArrowRight: false, ArrowUp: false, ArrowDown: false,
-};
-// 追尾カメラ用の地形高度キャッシュ（queryTerrainElevation が null のときに維持）
-let _gpxCachedTerrainH = 0;
-// 前フレームの進行方向（端点など bearing=0 になる箇所の補完用）
-let _lastGpxBearing = 0;
-// bearing / zoom のローパスフィルタ値（カクカク防止）
-let _smoothedGpxBearing = 0;
-let _smoothedGpxZoom    = 15;
-// bearing 平滑化の時定数（秒）。大きいほど滑らかで遅延が増す
+// bearing / zoom 平滑化の時定数（秒）。大きいほど滑らかで遅延が増す
 const GPX_BEARING_TC = 0.35;
 const GPX_ZOOM_TC    = 0.15;
 
@@ -1026,17 +1016,17 @@ async function loadKmz(file) {
     const bboxNorth = Math.max(...allLats);
     // サイドバー（左約 300px）を考慮した非対称 padding を指定する。
     // padding.left を大きくすることでパネル右の可視エリアにKMZが収まる。
-    const panelWidth = document.getElementById('sidebar')?.offsetWidth ?? 300;
+    const panelWidth = document.getElementById('sidebar')?.offsetWidth ?? SIDEBAR_DEFAULT_WIDTH;
 
     map.fitBounds([[bboxWest, bboxSouth], [bboxEast, bboxNorth]],
       {
         padding: {
-          top: 60, bottom: 60, left: panelWidth + 30, right: 60
+          top: FIT_BOUNDS_PAD, bottom: FIT_BOUNDS_PAD, left: panelWidth + FIT_BOUNDS_PAD_SIDEBAR, right: FIT_BOUNDS_PAD
         }
 
         ,
         pitch: INITIAL_PITCH,
-        duration: 600,
+        duration: EASE_DURATION,
         maxZoom: 19, // 過度なズームインを防ぎKMZ全体を表示
       });
     // fitBounds後も画像が最上層になるよう moveLayer
@@ -1207,11 +1197,11 @@ async function loadImageWithJgw(imageFile, jgwText, crsValue) {
   renderKmzList();
 
   // ⑦ 追加した画像の範囲にカメラをフィットさせる
-  const panelWidth = document.getElementById('sidebar')?.offsetWidth ?? 300;
+  const panelWidth = document.getElementById('sidebar')?.offsetWidth ?? SIDEBAR_DEFAULT_WIDTH;
   map.fitBounds(
     [[Math.min(...lngs), Math.min(...lats)], [Math.max(...lngs), Math.max(...lats)]],
-    { padding: { top: 60, bottom: 60, left: panelWidth + 30, right: 60 },
-      pitch: INITIAL_PITCH, duration: 600, maxZoom: 19 }
+    { padding: { top: FIT_BOUNDS_PAD, bottom: FIT_BOUNDS_PAD, left: panelWidth + FIT_BOUNDS_PAD_SIDEBAR, right: FIT_BOUNDS_PAD },
+      pitch: INITIAL_PITCH, duration: EASE_DURATION, maxZoom: 19 }
   );
   console.log(`画像+JGW 読み込み完了: ${imageFile.name}`, { crsValue, coordinates });
 }
@@ -1665,7 +1655,7 @@ function selectMillerTerrain(terrainId) {
     const lats  = coords.map(c => c[1]);
     const centerLng = (Math.min(...lngs) + Math.max(...lngs)) / 2;
     const centerLat = (Math.min(...lats) + Math.max(...lats)) / 2;
-    map.easeTo({ center: [centerLng, centerLat], duration: 600 });
+    map.easeTo({ center: [centerLng, centerLat], duration: EASE_DURATION });
   }
 }
 
@@ -2055,7 +2045,7 @@ function buildFrameRowEl(frame, index) {
     const lats  = frame.coordinates.map(c => c[1]);
     map.fitBounds(
       [[Math.min(...lngs), Math.min(...lats)], [Math.max(...lngs), Math.max(...lats)]],
-      { padding: 60, duration: 600 }
+      { padding: FIT_BOUNDS_PAD, duration: EASE_DURATION }
     );
   });
 
@@ -2148,7 +2138,7 @@ function _makeLayerCtrlRow(initialVisible, initialPct, onToggle, onOpacity) {
 
   // トグルスイッチ
   const toggleLabel = document.createElement('label');
-  toggleLabel.className = 'toggle-switch toggle-sm';
+  toggleLabel.className = 'toggle-switch';
   const toggleInput = document.createElement('input');
   toggleInput.type = 'checkbox';
   toggleInput.checked = initialVisible;
@@ -2186,13 +2176,7 @@ function renderOtherMapsTree() {
   if (!otherEl) return;
   otherEl.innerHTML = '';
 
-  if (kmzLayers.length === 0) {
-    const hint = document.createElement('div');
-    hint.className = 'tree-child-drop-hint';
-    hint.textContent = '🖼 枠がない地図をドロップ、または ＋ で追加';
-    otherEl.appendChild(hint);
-    return;
-  }
+  if (kmzLayers.length === 0) return;
 
   kmzLayers.forEach(entry => {
     const shortName = entry.name.replace(/\.(jpg|jpeg|png|kmz)$/i, '');
@@ -2210,10 +2194,10 @@ function renderOtherMapsTree() {
     childEl.appendChild(nameSpan);
     childEl.addEventListener('click', () => {
       if (entry.bbox) {
-        const pw = document.getElementById('sidebar')?.offsetWidth ?? 300;
+        const pw = document.getElementById('sidebar')?.offsetWidth ?? SIDEBAR_DEFAULT_WIDTH;
         map.fitBounds(
           [[entry.bbox.west, entry.bbox.south], [entry.bbox.east, entry.bbox.north]],
-          { padding: { top: 60, bottom: 60, left: pw + 30, right: 60 }, duration: 600 }
+          { padding: { top: FIT_BOUNDS_PAD, bottom: FIT_BOUNDS_PAD, left: pw + FIT_BOUNDS_PAD_SIDEBAR, right: FIT_BOUNDS_PAD }, duration: EASE_DURATION }
         );
       }
     });
@@ -2254,7 +2238,10 @@ function buildFrameEntryEl(frame) {
   const header = document.createElement('div');
   header.className = 'frame-entry-header';
   header.innerHTML = `
-    <input type="checkbox" class="frame-vis-chk" ${hasImages ? 'checked' : ''} title="画像レイヤーの表示/非表示" />
+    <label class="toggle-switch" title="画像レイヤーの表示/非表示">
+      <input type="checkbox" class="frame-vis-chk" ${hasImages ? 'checked' : ''} />
+      <span class="toggle-slider"></span>
+    </label>
     <span class="frame-status-dot ${hasImages ? 'has-image' : ''}"></span>
     <span class="frame-event-name" title="${escHtml(p.event_name ?? '')}">${escHtml(p.event_name ?? '（名称なし）')}</span>
     <button class="frame-img-pick-btn" title="画像を割り当て" onclick="openFrameImgPicker('${frame.id}')">📷</button>
@@ -2272,7 +2259,7 @@ function buildFrameEntryEl(frame) {
         ).join('')}
       </select>
       <div class="opacity-row">
-        <input type="range" id="fslider-${frame.id}" min="0" max="100" step="5" value="${pct}" />
+        <input type="range" class="ui-slider" id="fslider-${frame.id}" min="0" max="100" step="5" value="${pct}" />
         <span class="opacity-val" id="fval-${frame.id}">${pct}%</span>
       </div>`;
     div.appendChild(ctrl);
@@ -2284,11 +2271,11 @@ function buildFrameEntryEl(frame) {
     // スライダー
     const sliderEl = ctrl.querySelector(`#fslider-${frame.id}`);
     const valEl    = ctrl.querySelector(`#fval-${frame.id}`);
-    updateSliderGradient(sliderEl, '#2563eb');
+    updateSliderGradient(sliderEl);
     sliderEl.addEventListener('input', () => {
       frame.opacity = parseInt(sliderEl.value) / 100;
       valEl.textContent = sliderEl.value + '%';
-      updateSliderGradient(sliderEl, '#2563eb');
+      updateSliderGradient(sliderEl);
       if (frame.layerId && map.getLayer(frame.layerId)) {
         map.setPaintProperty(frame.layerId, 'raster-opacity', toRasterOpacity(frame.opacity));
       }
@@ -2308,7 +2295,7 @@ function buildFrameEntryEl(frame) {
     const lats  = frame.coordinates.map(c => c[1]);
     map.fitBounds(
       [[Math.min(...lngs), Math.min(...lats)], [Math.max(...lngs), Math.max(...lats)]],
-      { padding: 60, duration: 600 }
+      { padding: FIT_BOUNDS_PAD, duration: EASE_DURATION }
     );
   });
 
@@ -2350,13 +2337,13 @@ async function addImagesToFrame(frameId, files) {
 
   // 最初に読み込んだ時だけ地図をフレームにフィットさせる
   if (frame.images.length <= files.length) {
-    const panelWidth = document.getElementById('sidebar')?.offsetWidth ?? 300;
+    const panelWidth = document.getElementById('sidebar')?.offsetWidth ?? SIDEBAR_DEFAULT_WIDTH;
     const lngs = frame.coordinates.map(c => c[0]);
     const lats  = frame.coordinates.map(c => c[1]);
     map.fitBounds(
       [[Math.min(...lngs), Math.min(...lats)], [Math.max(...lngs), Math.max(...lats)]],
-      { padding: { top: 60, bottom: 60, left: panelWidth + 30, right: 60 },
-        pitch: INITIAL_PITCH, duration: 600, maxZoom: 19 }
+      { padding: { top: FIT_BOUNDS_PAD, bottom: FIT_BOUNDS_PAD, left: panelWidth + FIT_BOUNDS_PAD_SIDEBAR, right: FIT_BOUNDS_PAD },
+        pitch: INITIAL_PITCH, duration: EASE_DURATION, maxZoom: 19 }
     );
   }
 }
@@ -2506,12 +2493,15 @@ function renderKmzList() {
 
     rowEl.innerHTML = `
       <div class="layer-label-row">
-        <input type="checkbox" id="chk-kmz-${entry.id}" ${entry.visible ? 'checked' : ''} />
+        <label class="toggle-switch">
+          <input type="checkbox" id="chk-kmz-${entry.id}" ${entry.visible ? 'checked' : ''} />
+          <span class="toggle-slider"></span>
+        </label>
         <label class="layer-name${entry.visible ? '' : ' disabled'}" for="chk-kmz-${entry.id}" title="${entry.name}">${shortName}</label>
         <button class="kmz-del-btn" title="削除" onclick="removeKmzLayer(${entry.id})">✕</button>
       </div>
       <div class="opacity-row">
-        <input type="range" id="slider-kmz-${entry.id}" min="0" max="100" step="5" value="${pct}" ${entry.visible ? '' : 'disabled'} />
+        <input type="range" class="ui-slider" id="slider-kmz-${entry.id}" min="0" max="100" step="5" value="${pct}" ${entry.visible ? '' : 'disabled'} />
         <span class="opacity-val" id="val-kmz-${entry.id}">${pct}%</span>
       </div>`;
     listEl.appendChild(rowEl);
@@ -2532,12 +2522,12 @@ function renderKmzList() {
     // スライダー：透明度
     const sliderEl = rowEl.querySelector(`#slider-kmz-${entry.id}`);
     const valEl = rowEl.querySelector(`#val-kmz-${entry.id}`);
-    updateSliderGradient(sliderEl, '#2563eb');
+    updateSliderGradient(sliderEl);
 
     sliderEl.addEventListener('input', () => {
       entry.opacity = parseInt(sliderEl.value) / 100;
       valEl.textContent = sliderEl.value + '%';
-      updateSliderGradient(sliderEl, '#2563eb');
+      updateSliderGradient(sliderEl);
 
       if (entry.visible && map.getLayer(entry.layerId)) {
         map.setPaintProperty(entry.layerId, 'raster-opacity', toRasterOpacity(entry.opacity));
@@ -2608,11 +2598,11 @@ function renderSimReadmapList() {
     item.querySelector('.sim-map-fly-btn').addEventListener('click', (e) => {
       e.stopPropagation();
       if (entry.bbox) {
-        const panelWidth = document.getElementById('sidebar')?.offsetWidth ?? 300;
+        const panelWidth = document.getElementById('sidebar')?.offsetWidth ?? SIDEBAR_DEFAULT_WIDTH;
         map.fitBounds(
           [[entry.bbox.west, entry.bbox.south], [entry.bbox.east, entry.bbox.north]],
-          { padding: { top: 60, bottom: 60, left: panelWidth + 30, right: 60 },
-            pitch: INITIAL_PITCH, duration: 600 }
+          { padding: { top: FIT_BOUNDS_PAD, bottom: FIT_BOUNDS_PAD, left: panelWidth + FIT_BOUNDS_PAD_SIDEBAR, right: FIT_BOUNDS_PAD },
+            pitch: INITIAL_PITCH, duration: EASE_DURATION }
         );
       }
     });
@@ -2657,16 +2647,15 @@ function updateSeekBarGradient() {
   const bar = document.getElementById('seek-bar');
   const max = parseFloat(bar.max) || 1;
   const pct = (parseFloat(bar.value) / max) * 100;
-  bar.style.background =
-    `linear-gradient(to right, #2563eb ${pct}%, #d0d0d0 ${pct}%)`;
+  bar.style.setProperty('--pct', pct + '%');
 }
 
 /* ========================================================
     時間表示パネルを更新する（現在時間 / 総時間）
     ======================================================== */
 function updateTimeDisplay() {
-  document.getElementById('time-current').textContent = formatMMSS(gpxCurrentTime);
-  document.getElementById('time-total').textContent = formatMMSS(gpxTotalDuration);
+  document.getElementById('time-current').textContent = formatMMSS(gpxState.currentTime);
+  document.getElementById('time-total').textContent = formatMMSS(gpxState.totalDuration);
 }
 
 /* ========================================================
@@ -2736,32 +2725,32 @@ async function loadGpx(file) {
     points.forEach(p => { p.relTime = (p.time ?? 0) - t0; });
 
     // アニメーション管理変数を初期化する
-    gpxTrackPoints = points;
-    gpxTotalDuration = points[points.length - 1].relTime;
-    gpxCurrentTime = 0;
-    gpxIsPlaying = false;
-    gpxLastTimestamp = null;
+    gpxState.trackPoints = points;
+    gpxState.totalDuration = points[points.length - 1].relTime;
+    gpxState.currentTime = 0;
+    gpxState.isPlaying = false;
+    gpxState.lastTimestamp = null;
     // 追尾カメラ用キャッシュ・オフセットをリセット
-    _gpxCachedTerrainH = map.queryTerrainElevation(
+    gpxState.cachedTerrainH = map.queryTerrainElevation(
       { lng: points[0].lng, lat: points[0].lat }, { exaggerated: false }
     ) ?? 0;
-    _lastGpxBearing  = 0;
-    gpxBearingOffset = 0;
+    gpxState.lastBearing  = 0;
+    gpxState.bearingOffset = 0;
     // ローパスフィルタ値を先頭セグメントの bearing でスナップ初期化
     if (points.length >= 2) {
-      _smoothedGpxBearing = turf.bearing(
+      gpxState.smoothedBearing = turf.bearing(
         turf.point([points[0].lng, points[0].lat]),
         turf.point([points[1].lng, points[1].lat])
       );
     } else {
-      _smoothedGpxBearing = 0;
+      gpxState.smoothedBearing = 0;
     }
-    _smoothedGpxZoom = 15;
+    gpxState.smoothedZoom = 15;
 
     // 再生中ならキャンセルする
-    if (gpxAnimFrameId) {
-      cancelAnimationFrame(gpxAnimFrameId);
-      gpxAnimFrameId = null;
+    if (gpxState.animFrameId) {
+      cancelAnimationFrame(gpxState.animFrameId);
+      gpxState.animFrameId = null;
     }
 
     // ---- 既存のGPXレイヤーを削除して新規追加 ----
@@ -2844,7 +2833,7 @@ async function loadGpx(file) {
     // ---- シークバーと時間表示を初期化する ----
     const seekBar = document.getElementById('seek-bar');
     seekBar.min = 0;
-    seekBar.max = gpxTotalDuration;
+    seekBar.max = gpxState.totalDuration;
     seekBar.value = 0;
     updateSeekBarGradient();
     updateTimeDisplay();
@@ -2859,17 +2848,17 @@ async function loadGpx(file) {
     const gpxStatusEl = document.getElementById('gpx-status');
     gpxStatusEl.style.display = 'block';
     gpxStatusEl.textContent =
-      `✓ ${file.name}（${points.length}pts・${formatMMSS(gpxTotalDuration)}）`;
+      `✓ ${file.name}（${points.length}pts・${formatMMSS(gpxState.totalDuration)}）`;
 
     // 地図をGPXトラック全体が見えるようにズームする
     const lngs = points.map(p => p.lng);
     const lats = points.map(p => p.lat);
     map.fitBounds(
       [[Math.min(...lngs), Math.min(...lats)], [Math.max(...lngs), Math.max(...lats)]],
-      { padding: 80, duration: 600 }
+      { padding: 80, duration: EASE_DURATION }
     );
 
-    console.log(`GPX読み込み完了: ${file.name}、${points.length}ポイント、総時間 ${formatMMSS(gpxTotalDuration)}`);
+    console.log(`GPX読み込み完了: ${file.name}、${points.length}ポイント、総時間 ${formatMMSS(gpxState.totalDuration)}`);
 
   } catch (err) {
     console.error('GPX読み込みエラー:', err);
@@ -2897,11 +2886,11 @@ function updateGpxMarker(pos) {
 
 /* ========================================================
     currentTime の位置をGPXトラックポイント間で線形補間して返す
-    引数 t : 現在の相対時間（ミリ秒、0 〜 gpxTotalDuration）
+    引数 t : 現在の相対時間（ミリ秒、0 〜 gpxState.totalDuration）
     返値 : { lng, lat, bearing } または null（ポイント不足時）
 
     【処理の流れ】
-    1. gpxTrackPoints 配列を先頭から順番に走査する
+    1. gpxState.trackPoints 配列を先頭から順番に走査する
     2. t が p0.relTime 以上かつ p1.relTime 以下のセグメントを特定する
     3. セグメント内での進行割合（ratio）を計算する
       ratio = (t - p0.relTime) / (p1.relTime - p0.relTime)
@@ -2909,18 +2898,18 @@ function updateGpxMarker(pos) {
     5. Turf.js で p0→p1 の方位角（bearing）を計算して返す
     ======================================================== */
 function interpolateGpxPosition(t) {
-  if (gpxTrackPoints.length < 2) return null;
+  if (gpxState.trackPoints.length < 2) return null;
 
   // 配列の末尾を超えた場合は最後のポイントを返す
-  if (t >= gpxTotalDuration) {
-    const last = gpxTrackPoints[gpxTrackPoints.length - 1];
+  if (t >= gpxState.totalDuration) {
+    const last = gpxState.trackPoints[gpxState.trackPoints.length - 1];
     return { lng: last.lng, lat: last.lat, bearing: 0 };
   }
 
   // t が含まれるセグメントを線形探索する
-  for (let i = 0; i < gpxTrackPoints.length - 1; i++) {
-    const p0 = gpxTrackPoints[i];
-    const p1 = gpxTrackPoints[i + 1];
+  for (let i = 0; i < gpxState.trackPoints.length - 1; i++) {
+    const p0 = gpxState.trackPoints[i];
+    const p1 = gpxState.trackPoints[i + 1];
 
     // t がこのセグメント（p0〜p1）の範囲内かどうかを確認する
     if (t >= p0.relTime && t <= p1.relTime) {
@@ -2949,7 +2938,7 @@ function interpolateGpxPosition(t) {
   }
 
   // 該当セグメントが見つからない場合は先頭ポイントを返す
-  const first = gpxTrackPoints[0];
+  const first = gpxState.trackPoints[0];
   return { lng: first.lng, lat: first.lat, bearing: 0 };
 }
 
@@ -2965,7 +2954,7 @@ function interpolateGpxPosition(t) {
     両モードとも Center は現在地座標に追従する
     ======================================================== */
 function updateCamera(pos, elapsed) {
-  if (gpxViewMode === '3d') {
+  if (gpxState.viewMode === '3d') {
     // 3D 追尾視点：setCameraFromPlayer() と同じロジックで GPX 位置を追尾
     updateCameraChase(pos, elapsed);
   } else {
@@ -2983,26 +2972,26 @@ function updateCamera(pos, elapsed) {
 /* ========================================================
     GPX 追尾カメラ（PC シムと同じ画角・設定）
     setCameraFromPlayer() と同じロジックを GPX 位置で実行する。
-    pcCamDistM・pcPitch を共有することで PC シムの設定値がそのまま反映される。
+    pcSimState.camDistM・pcSimState.pitch を共有することで PC シムの設定値がそのまま反映される。
     ======================================================== */
 function updateCameraChase(pos, elapsed) {
   // ── bearing のローパスフィルタ（カクカク防止） ──────────────────────
   // GPS 記録間隔が粗いと bearing がセグメント境界で突変するため、
   // 指数平滑化で滑らかに追従させる。時定数 GPX_BEARING_TC 秒。
-  // ユーザーの矢印キーによる gpxBearingOffset は平滑化後に加算するため
+  // ユーザーの矢印キーによる gpxState.bearingOffset は平滑化後に加算するため
   // レスポンスを損なわない。
   const dt = Math.max(0, elapsed ?? 16) / 1000; // 実経過時間（秒）
   const bearingAlpha = 1 - Math.exp(-dt / GPX_BEARING_TC);
   // 角度の最短経路で差分を求めて wraparound を回避する
-  const bearingDelta = ((pos.bearing - _smoothedGpxBearing + 540) % 360) - 180;
-  _smoothedGpxBearing = (_smoothedGpxBearing + bearingDelta * bearingAlpha + 360) % 360;
+  const bearingDelta = ((pos.bearing - gpxState.smoothedBearing + 540) % 360) - 180;
+  gpxState.smoothedBearing = (gpxState.smoothedBearing + bearingDelta * bearingAlpha + 360) % 360;
 
   // 地形標高取得（タイル未読み込み時はキャッシュ維持）
   const rawH = map.queryTerrainElevation(
     { lng: pos.lng, lat: pos.lat }, { exaggerated: false }
   );
-  if (rawH !== null) _gpxCachedTerrainH += (rawH - _gpxCachedTerrainH) * 0.25;
-  const h = _gpxCachedTerrainH;
+  if (rawH !== null) gpxState.cachedTerrainH += (rawH - gpxState.cachedTerrainH) * 0.25;
+  const h = gpxState.cachedTerrainH;
 
   const H       = map.getCanvas().height || 600;
   const fov_rad = 0.6435;
@@ -3010,13 +2999,13 @@ function updateCameraChase(pos, elapsed) {
   const lat_rad = pos.lat * Math.PI / 180;
 
   // GPX 独自のピッチ・カメラ距離を使用（PC シムとは独立）
-  const pitchDeg = Math.max(0, Math.min(map.getMaxPitch(), gpxChasePitch));
+  const pitchDeg = Math.max(0, Math.min(map.getMaxPitch(), gpxState.chasePitch));
   const pitchRad = pitchDeg * Math.PI / 180;
   // 平滑化済み進行方向 + ユーザーオフセット
-  const camBearing = (_smoothedGpxBearing + gpxBearingOffset + 360) % 360;
+  const camBearing = (gpxState.smoothedBearing + gpxState.bearingOffset + 360) % 360;
 
   // 後方地点の地形高度を取得してカメラのめり込みを防止
-  const backDistKm = gpxCamDistM * Math.sin(pitchRad) / 1000;
+  const backDistKm = gpxState.camDistM * Math.sin(pitchRad) / 1000;
   const backPt = turf.destination(
     [pos.lng, pos.lat], backDistKm, (camBearing + 180) % 360
   );
@@ -3029,15 +3018,15 @@ function updateCameraChase(pos, elapsed) {
   const zoomAlpha = 1 - Math.exp(-dt / GPX_ZOOM_TC);
   const targetZoom = Math.max(12, Math.min(map.getMaxZoom(), Math.log2(
     H * 2 * Math.PI * R * Math.cos(lat_rad) /
-    (1024 * Math.tan(fov_rad / 2) * Math.max(0.3, gpxCamDistM * Math.cos(pitchRad)))
+    (1024 * Math.tan(fov_rad / 2) * Math.max(0.3, gpxState.camDistM * Math.cos(pitchRad)))
   )));
-  _smoothedGpxZoom += (targetZoom - _smoothedGpxZoom) * zoomAlpha;
+  gpxState.smoothedZoom += (targetZoom - gpxState.smoothedZoom) * zoomAlpha;
 
   map.jumpTo({
     center:  [pos.lng, pos.lat],
     bearing: camBearing,
     pitch:   pitchDeg,
-    zoom:    _smoothedGpxZoom,
+    zoom:    gpxState.smoothedZoom,
   });
 }
 
@@ -3055,18 +3044,18 @@ function updateCameraChase(pos, elapsed) {
     ======================================================== */
 function gpxAnimationLoop(timestamp) {
   // 前フレームとの実経過時間を計算する（ミリ秒）
-  const elapsed = gpxLastTimestamp !== null ? timestamp - gpxLastTimestamp : 0;
-  gpxLastTimestamp = timestamp;
+  const elapsed = gpxState.lastTimestamp !== null ? timestamp - gpxState.lastTimestamp : 0;
+  gpxState.lastTimestamp = timestamp;
 
   // ── 3D モード: 矢印キーによる視点調整（毎フレーム滑らかに更新） ──
-  if (gpxViewMode === '3d') {
+  if (gpxState.viewMode === '3d') {
     const dt = Math.max(0, elapsed) / 1000; // 秒
     const BEARING_RATE = 90; // deg/s
     const PITCH_RATE   = 60; // deg/s
-    if (gpxChaseKeys.ArrowLeft)  gpxBearingOffset = (gpxBearingOffset - BEARING_RATE * dt + 360) % 360;
-    if (gpxChaseKeys.ArrowRight) gpxBearingOffset = (gpxBearingOffset + BEARING_RATE * dt) % 360;
-    if (gpxChaseKeys.ArrowUp)    gpxChasePitch = Math.min(85, gpxChasePitch + PITCH_RATE * dt);
-    if (gpxChaseKeys.ArrowDown)  gpxChasePitch = Math.max(0,  gpxChasePitch - PITCH_RATE * dt);
+    if (gpxState.chaseKeys.ArrowLeft)  gpxState.bearingOffset = (gpxState.bearingOffset - BEARING_RATE * dt + 360) % 360;
+    if (gpxState.chaseKeys.ArrowRight) gpxState.bearingOffset = (gpxState.bearingOffset + BEARING_RATE * dt) % 360;
+    if (gpxState.chaseKeys.ArrowUp)    gpxState.chasePitch = Math.min(85, gpxState.chasePitch + PITCH_RATE * dt);
+    if (gpxState.chaseKeys.ArrowDown)  gpxState.chasePitch = Math.max(0,  gpxState.chasePitch - PITCH_RATE * dt);
   }
 
   // 再生速度セレクトの値を読み取る（10x, 30x, 60x, 120x）
@@ -3074,36 +3063,36 @@ function gpxAnimationLoop(timestamp) {
 
   // シミュレーション時間を speed 倍で進める
   // elapsed=33ms（約30fps）+ speed=30 → 990ms/frame 進む（約1分/秒の速度）
-  gpxCurrentTime += elapsed * speed;
+  gpxState.currentTime += elapsed * speed;
 
   // 終端に達したら停止する
-  if (gpxCurrentTime >= gpxTotalDuration) {
-    gpxCurrentTime = gpxTotalDuration;
-    gpxIsPlaying = false;
+  if (gpxState.currentTime >= gpxState.totalDuration) {
+    gpxState.currentTime = gpxState.totalDuration;
+    gpxState.isPlaying = false;
     document.getElementById('play-pause-btn').textContent = '▶';
   }
 
   // シークバーの値と表示を更新する
   const seekBar = document.getElementById('seek-bar');
-  seekBar.value = gpxCurrentTime;
+  seekBar.value = gpxState.currentTime;
   updateSeekBarGradient();
   updateTimeDisplay();
 
   // 現在時間に対応する地図上の座標を補間して求める
-  const pos = interpolateGpxPosition(gpxCurrentTime);
+  const pos = interpolateGpxPosition(gpxState.currentTime);
 
   if (pos) {
     // 進行方向をキャッシュ（端点で bearing=0 になる箇所の補完）
-    if (pos.bearing !== 0) _lastGpxBearing = pos.bearing;
-    else pos.bearing = _lastGpxBearing;
+    if (pos.bearing !== 0) gpxState.lastBearing = pos.bearing;
+    else pos.bearing = gpxState.lastBearing;
     // 現在地マーカーと視点カメラを更新する（elapsed を平滑化に使用）
     updateGpxMarker(pos);
     updateCamera(pos, elapsed);
   }
 
   // まだ再生中であれば次のフレームをリクエストする
-  if (gpxIsPlaying) {
-    gpxAnimFrameId = requestAnimationFrame(gpxAnimationLoop);
+  if (gpxState.isPlaying) {
+    gpxState.animFrameId = requestAnimationFrame(gpxAnimationLoop);
   }
 }
 
@@ -3111,23 +3100,23 @@ function gpxAnimationLoop(timestamp) {
     再生 / 一時停止の切り替え
     ======================================================== */
 function toggleGpxPlayPause() {
-  if (gpxTrackPoints.length === 0) return;
+  if (gpxState.trackPoints.length === 0) return;
 
-  gpxIsPlaying = !gpxIsPlaying;
-  document.getElementById('play-pause-btn').textContent = gpxIsPlaying ? '⏸' : '▶';
+  gpxState.isPlaying = !gpxState.isPlaying;
+  document.getElementById('play-pause-btn').textContent = gpxState.isPlaying ? '⏸' : '▶';
 
-  if (gpxIsPlaying) {
+  if (gpxState.isPlaying) {
     // 終端まで再生済みの場合は先頭から再生し直す
-    if (gpxCurrentTime >= gpxTotalDuration) gpxCurrentTime = 0;
-    gpxLastTimestamp = null;
-    gpxAnimFrameId = requestAnimationFrame(gpxAnimationLoop);
+    if (gpxState.currentTime >= gpxState.totalDuration) gpxState.currentTime = 0;
+    gpxState.lastTimestamp = null;
+    gpxState.animFrameId = requestAnimationFrame(gpxAnimationLoop);
   } else {
     // 一時停止：アニメーションフレームをキャンセルする
-    if (gpxAnimFrameId) {
-      cancelAnimationFrame(gpxAnimFrameId);
-      gpxAnimFrameId = null;
+    if (gpxState.animFrameId) {
+      cancelAnimationFrame(gpxState.animFrameId);
+      gpxState.animFrameId = null;
     }
-    gpxLastTimestamp = null;
+    gpxState.lastTimestamp = null;
   }
 }
 
@@ -3135,21 +3124,21 @@ function toggleGpxPlayPause() {
     視点モードを切り替える（1人称 ↔ 3人称）
     ======================================================== */
 function toggleGpx3dMode() {
-  gpxViewMode = (gpxViewMode === '2d') ? '3d' : '2d';
+  gpxState.viewMode = (gpxState.viewMode === '2d') ? '3d' : '2d';
   const btn = document.getElementById('gpx-3d-btn');
   const panel = document.getElementById('timeline-panel');
-  if (gpxViewMode === '3d') {
+  if (gpxState.viewMode === '3d') {
     btn.textContent = '3D';
     btn.classList.add('active');
     panel.classList.add('gpx-3d');
     // 3D に切り替えたとき bearing オフセットをリセット
-    gpxBearingOffset = 0;
+    gpxState.bearingOffset = 0;
   } else {
     btn.textContent = '2D';
     btn.classList.remove('active');
     panel.classList.remove('gpx-3d');
     // 2D 復帰時はすべての矢印キーをリセット
-    Object.keys(gpxChaseKeys).forEach(k => { gpxChaseKeys[k] = false; });
+    Object.keys(gpxState.chaseKeys).forEach(k => { gpxState.chaseKeys[k] = false; });
   }
 }
 
@@ -3299,9 +3288,9 @@ function searchPlace() {
 
     el.addEventListener('click', () => {
       if (t.bbox) {
-        const panelWidth = document.getElementById('sidebar')?.offsetWidth ?? 300;
+        const panelWidth = document.getElementById('sidebar')?.offsetWidth ?? SIDEBAR_DEFAULT_WIDTH;
         map.fitBounds([[t.bbox.west, t.bbox.south], [t.bbox.east, t.bbox.north]], {
-          padding: { top: 60, bottom: 60, left: panelWidth + 30, right: 60 },
+          padding: { top: FIT_BOUNDS_PAD, bottom: FIT_BOUNDS_PAD, left: panelWidth + FIT_BOUNDS_PAD_SIDEBAR, right: FIT_BOUNDS_PAD },
           duration: 800,
         });
       }
@@ -3451,14 +3440,14 @@ document.getElementById('play-pause-btn').addEventListener('click', toggleGpxPla
 // ---- シークバー（スクラブ）----
 document.getElementById('seek-bar').addEventListener('input', (e) => {
   // スクラブ中は一時停止したままマーカーとカメラだけ更新する
-  gpxCurrentTime = parseInt(e.target.value, 10);
+  gpxState.currentTime = parseInt(e.target.value, 10);
   updateSeekBarGradient();
   updateTimeDisplay();
 
-  const pos = interpolateGpxPosition(gpxCurrentTime);
+  const pos = interpolateGpxPosition(gpxState.currentTime);
   if (pos) {
     // シーク時は bearing をスナップ初期化して遅延なく即時追従させる
-    _smoothedGpxBearing = pos.bearing;
+    gpxState.smoothedBearing = pos.bearing;
     updateGpxMarker(pos);
     updateCamera(pos, 16);
   }
@@ -3663,13 +3652,9 @@ document.addEventListener('drop', async (e) => {
 
 // ---- スライダーのグラデーション更新ヘルパー ----
 // color: スライダーのアクセントカラー（デフォルト：グリーン系）
-function updateSliderGradient(input, color) {
+function updateSliderGradient(input) {
   const pct = ((input.value - input.min) / (input.max - input.min)) * 100;
   input.style.setProperty('--pct', pct + '%');
-
-  if (color) {
-    input.style.background = `linear-gradient(to right, ${color} ${pct}%, #d0d0d0 ${pct}%)`;
-  }
 }
 
 // ユーザーが手動で設定した磁北線間隔（m）。zoom > 10 のときに使用する。
@@ -4339,11 +4324,11 @@ document.getElementById('cr-autofit-btn')?.addEventListener('click', autoFitColo
 
 // ---- CS立体図 透明度スライダー（全国・地域別共通） ----
 const sliderCs = document.getElementById('slider-cs');
-updateSliderGradient(sliderCs, '#6a8fa0');
+updateSliderGradient(sliderCs);
 
 sliderCs.addEventListener('input', () => {
   const v = parseFloat(sliderCs.value);
-  updateSliderGradient(sliderCs, '#6a8fa0');
+  updateSliderGradient(sliderCs);
   if (map.getLayer('cs-relief-layer')) {
     map.setPaintProperty('cs-relief-layer', 'raster-opacity', v);
   }
@@ -4500,7 +4485,7 @@ document.getElementById('chk-building').addEventListener('change', updateBuildin
 const chkExaggeration = document.getElementById('chk-exaggeration');
 const sliderExaggeration = document.getElementById('slider-exaggeration');
 const valExaggeration = document.getElementById('val-exaggeration');
-updateSliderGradient(sliderExaggeration, '#6a8fa0');
+updateSliderGradient(sliderExaggeration);
 
 // チェックOFF → setTerrain(null) で地形を完全に平坦化（傾けても立体にならない）
 // チェックON  → setTerrain でスライダー値の誇張率を復元
@@ -4509,7 +4494,7 @@ chkExaggeration.addEventListener('change', () => {
   sliderExaggeration.disabled = !isOn;
   document.querySelector('label[for="chk-exaggeration"]').classList.toggle('disabled', !isOn);
   valExaggeration.textContent = parseFloat(sliderExaggeration.value).toFixed(1) + '×';
-  updateSliderGradient(sliderExaggeration, '#6a8fa0');
+  updateSliderGradient(sliderExaggeration);
   if (isOn) {
     map.setTerrain({ source: 'terrain-dem', exaggeration: parseFloat(sliderExaggeration.value) });
   } else {
@@ -4535,7 +4520,7 @@ sliderExaggeration.addEventListener('input', () => {
   }
   sliderExaggeration.value = String(v);
   valExaggeration.textContent = v.toFixed(1) + '×';
-  updateSliderGradient(sliderExaggeration, '#6a8fa0');
+  updateSliderGradient(sliderExaggeration);
   map.setTerrain({ source: 'terrain-dem', exaggeration: v });
 });
 
@@ -5403,7 +5388,7 @@ function zoomToScale(targetScale) {
   const center = map.getCenter();
   const targetGroundRes = targetScale * 0.0254 / SCREEN_DPI;
   const zoom = Math.log2(156543.03392 * Math.cos(center.lat * Math.PI / 180) / targetGroundRes);
-  map.easeTo({ zoom, duration: 600 });
+  map.easeTo({ zoom, duration: EASE_DURATION });
 }
 
 const selScale = document.getElementById('sel-scale');
@@ -5433,12 +5418,12 @@ map.once('idle', () => { updateSidebarWidth(); });
 
 // スライダーの初期値をUIに反映（値を設定してからグラデーションを更新する）
 sliderCs.value = CS_INITIAL_OPACITY;
-updateSliderGradient(sliderCs, '#6a8fa0'); // 値変更後に再計算
+updateSliderGradient(sliderCs); // 値変更後に再計算
 
 
 sliderExaggeration.value = TERRAIN_EXAGGERATION;
 valExaggeration.textContent = TERRAIN_EXAGGERATION.toFixed(1) + '×';
-updateSliderGradient(sliderExaggeration, '#6a8fa0'); // 値変更後に再計算
+updateSliderGradient(sliderExaggeration); // 値変更後に再計算
 
 
 /* ================================================================
@@ -5459,19 +5444,21 @@ const SIM_MINIMAP_ZOOM  = 16;
 const SIM_FLOOR_CLEARANCE_M = 4; // 地形上の最低クリアランス（メートル）
 
 // ---- 状態変数 ----
-let simActive    = false;
-let simMiniMap   = null; // 第2 MapLibre インスタンス（ミニマップ）
-let simJoystick  = null; // nipplejs インスタンス
-let simJoyData   = { force: 0, angle: 0 }; // force: 0〜1, angle: radians
-let simAnimFrame = null; // requestAnimationFrame ID
-// 地形フロア用
-let simTargetZoom = SIM_ZOOM; // ユーザーが希望するズームレベル（スライダー/キーで更新）
+const mobileSimState = {
+  active:     false,                  // シム実行中か
+  miniMap:    null,                   // 第2 MapLibre インスタンス（ミニマップ）
+  joystick:   null,                   // nipplejs インスタンス
+  joyData:    { force: 0, angle: 0 }, // ジョイスティック入力（force: 0〜1, angle: radians）
+  animFrame:  null,                   // requestAnimationFrame ID
+  targetZoom: SIM_ZOOM,               // ユーザーが希望するズームレベル（スライダー/キーで更新）
+  posMarker:  null,                   // maplibregl.Marker インスタンス（現在地表示）
+};
 
 /* ----------------------------------------------------------------
    toggleSimMode: トグルボタンの onClick
    ---------------------------------------------------------------- */
 function toggleSimMode() {
-  if (simActive) stopSimMode();
+  if (mobileSimState.active) stopSimMode();
   else           startSimMode();
 }
 
@@ -5479,8 +5466,8 @@ function toggleSimMode() {
    startSimMode: シミュレーターを起動する
    ---------------------------------------------------------------- */
 function startSimMode() {
-  simActive = true;
-  simTargetZoom = SIM_ZOOM;
+  mobileSimState.active = true;
+  mobileSimState.targetZoom = SIM_ZOOM;
   if (_updateGlobeBg) _updateGlobeBg();
 
   // ① 通常の地図操作を全て無効化
@@ -5508,6 +5495,7 @@ function startSimMode() {
   const zSlider = document.getElementById('sim-zoom-slider');
   zSlider.value = SIM_ZOOM;
   document.getElementById('sim-zoom-val').textContent = SIM_ZOOM;
+  updateSliderGradient(zSlider);
 
   // ⑤ ミニマップを初期化（easeTo完了後に生成して描画崩れを防ぐ）
   setTimeout(initSimMinimap, 850);
@@ -5529,18 +5517,18 @@ function startSimMode() {
    stopSimMode: シミュレーターを終了する
    ---------------------------------------------------------------- */
 function stopSimMode() {
-  simActive = false;
+  mobileSimState.active = false;
   if (_updateGlobeBg) _updateGlobeBg();
 
   // ループ停止
-  if (simAnimFrame) { cancelAnimationFrame(simAnimFrame); simAnimFrame = null; }
+  if (mobileSimState.animFrame) { cancelAnimationFrame(mobileSimState.animFrame); mobileSimState.animFrame = null; }
 
   // ジョイスティック破棄
-  if (simJoystick) { simJoystick.destroy(); simJoystick = null; }
-  simJoyData = { force: 0, angle: 0 };
+  if (mobileSimState.joystick) { mobileSimState.joystick.destroy(); mobileSimState.joystick = null; }
+  mobileSimState.joyData = { force: 0, angle: 0 };
 
   // ミニマップ破棄
-  if (simMiniMap) { simMiniMap.remove(); simMiniMap = null; }
+  if (mobileSimState.miniMap) { mobileSimState.miniMap.remove(); mobileSimState.miniMap = null; }
 
   // UIを元に戻す
   document.getElementById('sidebar').style.display = '';
@@ -5564,7 +5552,7 @@ function stopSimMode() {
   removeSimPosMarker();
 
   // ピッチを戻す
-  map.easeTo({ pitch: INITIAL_PITCH, duration: 600 });
+  map.easeTo({ pitch: INITIAL_PITCH, duration: EASE_DURATION });
 }
 
 /* ----------------------------------------------------------------
@@ -5573,9 +5561,9 @@ function stopSimMode() {
    KMZ: 現在ロード済みのレイヤーを全て複製して追加
    ---------------------------------------------------------------- */
 function initSimMinimap() {
-  if (simMiniMap) return;
+  if (mobileSimState.miniMap) return;
 
-  simMiniMap = new maplibregl.Map({
+  mobileSimState.miniMap = new maplibregl.Map({
     container: 'sim-minimap-map',
     style: {
       version: 8,
@@ -5598,7 +5586,7 @@ function initSimMinimap() {
     attributionControl: false,
   });
 
-  simMiniMap.on('load', () => {
+  mobileSimState.miniMap.on('load', () => {
     // KMZ画像レイヤーを全て複製してミニマップに追加
     syncKmzToMinimap();
   });
@@ -5609,15 +5597,15 @@ function initSimMinimap() {
    ミニマップのスタイルロード後か、新規KMZ追加時に呼ぶ
    ---------------------------------------------------------------- */
 function syncKmzToMinimap() {
-  if (!simMiniMap || !simMiniMap.isStyleLoaded()) return;
+  if (!mobileSimState.miniMap || !mobileSimState.miniMap.isStyleLoaded()) return;
   kmzLayers.forEach(entry => {
     // 既に追加済みならスキップ
-    if (simMiniMap.getSource(entry.sourceId)) return;
+    if (mobileSimState.miniMap.getSource(entry.sourceId)) return;
     // メインマップのソーススペックを取得（url + coordinates を含む）
     const spec = map.getStyle()?.sources?.[entry.sourceId];
     if (!spec) return;
-    simMiniMap.addSource(entry.sourceId, spec);
-    simMiniMap.addLayer({
+    mobileSimState.miniMap.addSource(entry.sourceId, spec);
+    mobileSimState.miniMap.addLayer({
       id:      entry.layerId + '-mini',
       type:    'raster',
       source:  entry.sourceId,
@@ -5630,10 +5618,10 @@ function syncKmzToMinimap() {
    initSimJoystick: nipplejs 仮想ジョイスティックを生成する
    ---------------------------------------------------------------- */
 function initSimJoystick() {
-  if (simJoystick) { simJoystick.destroy(); simJoystick = null; }
-  simJoyData = { force: 0, angle: 0 };
+  if (mobileSimState.joystick) { mobileSimState.joystick.destroy(); mobileSimState.joystick = null; }
+  mobileSimState.joyData = { force: 0, angle: 0 };
 
-  simJoystick = nipplejs.create({
+  mobileSimState.joystick = nipplejs.create({
     zone:     document.getElementById('sim-joystick-zone'),
     mode:     'static',
     position: { left: '70px', top: '70px' },
@@ -5641,13 +5629,13 @@ function initSimJoystick() {
     size:     120,
   });
 
-  simJoystick.on('move', (evt, data) => {
-    simJoyData.force = Math.min(data.force, 1.0);
+  mobileSimState.joystick.on('move', (evt, data) => {
+    mobileSimState.joyData.force = Math.min(data.force, 1.0);
     // angle.radian: 0=右, π/2=上, π=左, 3π/2=下
-    simJoyData.angle = data.angle.radian;
+    mobileSimState.joyData.angle = data.angle.radian;
   });
 
-  simJoystick.on('end', () => { simJoyData.force = 0; });
+  mobileSimState.joystick.on('end', () => { mobileSimState.joyData.force = 0; });
 }
 
 /* ----------------------------------------------------------------
@@ -5694,19 +5682,19 @@ function initSimLookZone() {
    ② ミニマップの center 同期 + CSS rotate でヘディングアップ回転
    ---------------------------------------------------------------- */
 function simLoop() {
-  if (!simActive) return;
+  if (!mobileSimState.active) return;
 
   // ── 移動 ──────────────────────────────────────────────────────
-  if (simJoyData.force > 0.05) {
+  if (mobileSimState.joyData.force > 0.05) {
     const bearing    = map.getBearing();
     // nipplejs angle: 0=右/East, 90=上/North, 180=左/West, 270=下/South
     // MapLibre bearing: 0=North, 90=East → 変換: moveAngle = bearing + (90 - joystickDeg)
-    const joystickDeg = simJoyData.angle * (180 / Math.PI);
+    const joystickDeg = mobileSimState.joyData.angle * (180 / Math.PI);
     const moveAngleDeg = bearing + (90 - joystickDeg);
 
     // 速度: 最大 SIM_MAX_SPEED_MPS、力の割合で比例スケール
     // 距離 = 速度[m/s] × (1/60)[s] ÷ 1000 → [km]（60fps仮定）
-    const distKm = (SIM_MAX_SPEED_MPS * simJoyData.force) / 60 / 1000;
+    const distKm = (SIM_MAX_SPEED_MPS * mobileSimState.joyData.force) / 60 / 1000;
 
     const c    = map.getCenter();
     const dest = turf.destination([c.lng, c.lat], distKm, moveAngleDeg);
@@ -5714,8 +5702,8 @@ function simLoop() {
   }
 
   // ── ミニマップ同期 ──────────────────────────────────────────────
-  if (simMiniMap) {
-    simMiniMap.setCenter(map.getCenter());
+  if (mobileSimState.miniMap) {
+    mobileSimState.miniMap.setCenter(map.getCenter());
     // bearing の逆回転で常に進行方向が上（ヘディングアップ）
     const b = map.getBearing();
     document.getElementById('sim-minimap-inner').style.transform =
@@ -5728,7 +5716,7 @@ function simLoop() {
   // ── 3D現在位置マーカー更新 ──
   updateSimPosMarker();
 
-  simAnimFrame = requestAnimationFrame(simLoop);
+  mobileSimState.animFrame = requestAnimationFrame(simLoop);
 }
 
 /* ----------------------------------------------------------------
@@ -5738,12 +5726,12 @@ function simLoop() {
    @param {[number,number]} pointB - [lng, lat] 区間終点
    ---------------------------------------------------------------- */
 function focusMinimapOnSegment(pointA, pointB) {
-  if (!simMiniMap) return;
+  if (!mobileSimState.miniMap) return;
   const bounds = [
     [Math.min(pointA[0], pointB[0]), Math.min(pointA[1], pointB[1])],
     [Math.max(pointA[0], pointB[0]), Math.max(pointA[1], pointB[1])],
   ];
-  simMiniMap.fitBounds(bounds, { padding: 30, duration: 400 });
+  mobileSimState.miniMap.fitBounds(bounds, { padding: 30, duration: 400 });
 }
 
 // ---- トグルボタンのイベント ----
@@ -5753,10 +5741,8 @@ document.getElementById('sim-toggle-btn')?.addEventListener('click', toggleSimMo
 /* ================================================================
    3D 現在位置マーカー（シム中に map.getCenter() を赤点で表示）
    ================================================================ */
-let simPosMarker = null; // maplibregl.Marker インスタンス
-
 function addSimPosMarker() {
-  if (simPosMarker) return;
+  if (mobileSimState.posMarker) return;
   const el = document.createElement('div');
   el.style.cssText = `
     width: 22px; height: 22px; border-radius: 50%;
@@ -5765,19 +5751,19 @@ function addSimPosMarker() {
     box-shadow: 0 0 8px rgba(0,0,0,0.55);
     pointer-events: none;
   `;
-  simPosMarker = new maplibregl.Marker({ element: el, anchor: 'center' })
+  mobileSimState.posMarker = new maplibregl.Marker({ element: el, anchor: 'center' })
     .setLngLat(map.getCenter())
     .addTo(map);
 }
 
 function removeSimPosMarker() {
-  if (simPosMarker) { simPosMarker.remove(); simPosMarker = null; }
+  if (mobileSimState.posMarker) { mobileSimState.posMarker.remove(); mobileSimState.posMarker = null; }
 }
 
 function updateSimPosMarker(lng, lat) {
-  if (!simPosMarker) return;
-  if (lng !== undefined) simPosMarker.setLngLat({ lng, lat });
-  else simPosMarker.setLngLat(map.getCenter()); // モバイルシム用
+  if (!mobileSimState.posMarker) return;
+  if (lng !== undefined) mobileSimState.posMarker.setLngLat({ lng, lat });
+  else mobileSimState.posMarker.setLngLat(map.getCenter()); // モバイルシム用
 }
 
 // 読図マップ 現在位置ドット のオン/オフ
@@ -5795,31 +5781,29 @@ document.getElementById('chk-readmap-dot').addEventListener('change', e => {
    ================================================================ */
 
 // ---- 状態変数 ----
-let _simStartLng = null, _simStartLat = null; // クリック待ちで記録した開始座標
-let _simPickingActive = false;               // クリック待ちモード中か
-
-let pcSimActive    = false;
-let pcSimAnimFrame = null;
-let pcSimLastTime  = null;
-let pcSimReadMap   = null;  // 読図用 MapLibre インスタンス
-let pcSimReadOpen  = false; // 読図マップ表示中か
-
-// ---- フォローカメラ用パラメータ ----
-let pcPlayerLng  = null;  // プレイヤーの経度
-let pcPlayerLat  = null;  // プレイヤーの緯度
-let pcBearing    = 0;     // カメラの向き（deg, 北=0）
-let pcPitch      = SIM_PITCH; // カメラのピッチ（deg, 0=真下 ～ 85=水平）
-let pcCamDistM   = 50;    // カメラ ↔ プレイヤー間の距離（m）
+const pcSimState = {
+  active:          false,      // PCシム実行中か
+  animFrame:       null,       // requestAnimationFrame ID
+  lastTime:        null,       // 前フレームのタイムスタンプ
+  readMap:         null,       // 読図用 MapLibre インスタンス
+  readOpen:        false,      // 読図マップ表示中か
+  playerLng:       null,       // プレイヤーの経度
+  playerLat:       null,       // プレイヤーの緯度
+  bearing:         0,          // カメラの向き（deg, 北=0）
+  pitch:           SIM_PITCH,  // カメラのピッチ（deg, 0=真下 〜 85=水平）
+  camDistM:        50,         // カメラ ↔ プレイヤー間の距離（m）
+  smoothedSlopeAdj: 0,         // 地形傾斜による自動ピッチ補正（deg、ローパスフィルタ済み）
+  cachedTerrainH:  0,          // queryTerrainElevation が null のときに使うキャッシュ値
+  startLng:        null,       // クリック待ちで記録した開始座標（経度）
+  startLat:        null,       // クリック待ちで記録した開始座標（緯度）
+  pickingActive:   false,      // クリック待ちモード中か
+  keys: {                      // キー押下状態（Pointer Lock 有無に関わらず追跡）
+    KeyW: false, KeyA: false, KeyS: false, KeyD: false,
+    ArrowUp: false, ArrowDown: false, ArrowLeft: false, ArrowRight: false,
+  },
+};
 const PC_CAM_DIST_MIN = 1;
 const PC_CAM_DIST_MAX = 500;
-let smoothedSlopeAdj  = 0;  // 地形傾斜による自動ピッチ補正（deg、ローパスフィルタ済み）
-let _cachedTerrainH   = 0;  // queryTerrainElevation が null のときに使うキャッシュ値
-
-// キー押下状態（Pointer Lock 有無に関わらず追跡）
-const pcSimKeys = {
-  KeyW: false, KeyA: false, KeyS: false, KeyD: false,
-  ArrowUp: false, ArrowDown: false, ArrowLeft: false, ArrowRight: false,
-};
 
 // ---- 速度スライダー ----
 const pcSimSpeedSlider = document.getElementById('pc-sim-speed');
@@ -5827,10 +5811,10 @@ const pcSimSpeedValEl  = document.getElementById('pc-sim-speed-val');
 
 pcSimSpeedSlider.addEventListener('input', () => {
   pcSimSpeedValEl.textContent = pcSimSpeedSlider.value + 'km/h';
-  updateSliderGradient(pcSimSpeedSlider, '#1a6aab');
+  updateSliderGradient(pcSimSpeedSlider);
 });
 // 初期グラデーション反映
-updateSliderGradient(pcSimSpeedSlider, '#1a6aab');
+updateSliderGradient(pcSimSpeedSlider);
 
 function getPcSimSpeedKmh() {
   return parseFloat(pcSimSpeedSlider.value) || 50;
@@ -5858,9 +5842,9 @@ async function startPcSim() {
    ---------------------------------------------------------------- */
 document.addEventListener('pointerlockchange', () => {
   if (document.pointerLockElement === document.getElementById('map')) {
-    if (!pcSimActive) onPcSimLocked();
+    if (!pcSimState.active) onPcSimLocked();
   } else {
-    if (pcSimActive) stopPcSim();
+    if (pcSimState.active) stopPcSim();
   }
 });
 document.addEventListener('pointerlockerror', (e) => {
@@ -5871,7 +5855,7 @@ document.addEventListener('pointerlockerror', (e) => {
    onPcSimLocked: Pointer Lock 成功後の初期化処理
    ---------------------------------------------------------------- */
 function onPcSimLocked() {
-  pcSimActive = true;
+  pcSimState.active = true;
 
   // ① 地図操作を全て無効化
   map.dragPan.disable();
@@ -5882,16 +5866,16 @@ function onPcSimLocked() {
   map.keyboard.disable();
 
   // ② プレイヤー位置・カメラパラメータを初期化（クリック位置優先、なければ地図中心）
-  const c    = (_simStartLng != null) ? { lng: _simStartLng, lat: _simStartLat } : map.getCenter();
-  _simStartLng = null; _simStartLat = null;
-  pcPlayerLng = c.lng;
-  pcPlayerLat = c.lat;
-  pcBearing   = map.getBearing();
-  pcPitch     = PC_SIM_PITCH;
-  pcCamDistM  = 100;
+  const c    = (pcSimState.startLng != null) ? { lng: pcSimState.startLng, lat: pcSimState.startLat } : map.getCenter();
+  pcSimState.startLng = null; pcSimState.startLat = null;
+  pcSimState.playerLng = c.lng;
+  pcSimState.playerLat = c.lat;
+  pcSimState.bearing   = map.getBearing();
+  pcSimState.pitch     = PC_SIM_PITCH;
+  pcSimState.camDistM  = 100;
 
   // キャッシュ・ズームスムージングを現在値で初期化
-  _cachedTerrainH  = map.queryTerrainElevation({ lng: pcPlayerLng, lat: pcPlayerLat }, { exaggerated: false }) ?? 0;
+  pcSimState.cachedTerrainH  = map.queryTerrainElevation({ lng: pcSimState.playerLng, lat: pcSimState.playerLat }, { exaggerated: false }) ?? 0;
 
   // ③ カメラをプレイヤー視点へ即配置
   setCameraFromPlayer();
@@ -5930,27 +5914,27 @@ function onPcSimLocked() {
   document.addEventListener('contextmenu',  onPcSimContextMenu);
 
   // ⑥ ループ開始
-  pcSimLastTime  = null;
-  pcSimAnimFrame = requestAnimationFrame(pcSimLoop);
+  pcSimState.lastTime  = null;
+  pcSimState.animFrame = requestAnimationFrame(pcSimLoop);
 }
 
 /* ----------------------------------------------------------------
    stopPcSim: モード終了 & 全リソースを解放
    ---------------------------------------------------------------- */
 function stopPcSim() {
-  pcSimActive = false;
+  pcSimState.active = false;
 
-  if (pcSimAnimFrame) { cancelAnimationFrame(pcSimAnimFrame); pcSimAnimFrame = null; }
+  if (pcSimState.animFrame) { cancelAnimationFrame(pcSimState.animFrame); pcSimState.animFrame = null; }
 
   // 読図マップを閉じて破棄
   closePcReadMap();
-  if (pcSimReadMap) { pcSimReadMap.remove(); pcSimReadMap = null; }
+  if (pcSimState.readMap) { pcSimState.readMap.remove(); pcSimState.readMap = null; }
 
   removeSimPosMarker();
 
   // キー状態・補正値リセット
-  Object.keys(pcSimKeys).forEach(k => { pcSimKeys[k] = false; });
-  smoothedSlopeAdj = 0;
+  Object.keys(pcSimState.keys).forEach(k => { pcSimState.keys[k] = false; });
+  pcSimState.smoothedSlopeAdj = 0;
 
   // UI 復元
   document.getElementById('sidebar').style.display = '';
@@ -5982,7 +5966,7 @@ function stopPcSim() {
   map.doubleClickZoom.enable();
   map.touchZoomRotate.enable();
   map.keyboard.enable();
-  map.easeTo({ pitch: INITIAL_PITCH, duration: 600 });
+  map.easeTo({ pitch: INITIAL_PITCH, duration: EASE_DURATION });
 
   // イベントリスナー解除
   document.removeEventListener('mousemove',   onPcSimMouseMove);
@@ -6008,59 +5992,59 @@ const SIM_LOOKAHEAD_KM   = 0.03; // center 前方ルックアヘッド距離（3
    setCameraFromPlayer: PCシム用フォローカメラ
    center = プレイヤー位置（MapLibre は terrain 有効時に center 座標の地形面を
    自動的に画面中央へ投影するため、前方シフトは不要）。
-   cameraAlt = h + pcCamDistM * cos(pitch) で zoom を計算。
+   cameraAlt = h + pcSimState.camDistM * cos(pitch) で zoom を計算。
    ---------------------------------------------------------------- */
 function setCameraFromPlayer() {
-  if (pcPlayerLng === null) return;
+  if (pcSimState.playerLng === null) return;
 
   // 地形標高取得 — null（タイル未読み込み）の場合はキャッシュ維持。
   // 急降下時にカメラが後方地形にめり込まないよう、高さをスムージング更新する。
   const rawH = map.queryTerrainElevation(
-    { lng: pcPlayerLng, lat: pcPlayerLat }, { exaggerated: false }
+    { lng: pcSimState.playerLng, lat: pcSimState.playerLat }, { exaggerated: false }
   );
-  if (rawH !== null) _cachedTerrainH += (rawH - _cachedTerrainH) * 0.25;
-  const h = _cachedTerrainH;
+  if (rawH !== null) pcSimState.cachedTerrainH += (rawH - pcSimState.cachedTerrainH) * 0.25;
+  const h = pcSimState.cachedTerrainH;
 
   const H       = map.getCanvas().height || 600;
   const fov_rad = 0.6435;
   const R       = 6371008.8;
-  const lat_rad = pcPlayerLat * Math.PI / 180;
+  const lat_rad = pcSimState.playerLat * Math.PI / 180;
 
-  let effectivePitch = Math.max(0, Math.min(map.getMaxPitch(), pcPitch + smoothedSlopeAdj));
+  let effectivePitch = Math.max(0, Math.min(map.getMaxPitch(), pcSimState.pitch + pcSimState.smoothedSlopeAdj));
   const pitchRad = effectivePitch * Math.PI / 180;
 
   // カメラの後方地上点の地形高度を取得し、カメラが後方地形にめり込まないよう保証する。
   // （pitch=80°では水平98m後方・垂直17mにカメラが位置するため、後方が上り坂だと地形貫通しやすい）
-  const backDistKm = pcCamDistM * Math.sin(pitchRad) / 1000;
-  const backPt = turf.destination([pcPlayerLng, pcPlayerLat], backDistKm, (pcBearing + 180) % 360);
+  const backDistKm = pcSimState.camDistM * Math.sin(pitchRad) / 1000;
+  const backPt = turf.destination([pcSimState.playerLng, pcSimState.playerLat], backDistKm, (pcSimState.bearing + 180) % 360);
   const backH = map.queryTerrainElevation(
     { lng: backPt.geometry.coordinates[0], lat: backPt.geometry.coordinates[1] },
     { exaggerated: false }
   ) ?? h;
 
   const cameraAlt = Math.max(
-    h + Math.max(0.3, pcCamDistM * Math.cos(pitchRad)),
-    backH + Math.max(1, Math.min(8, pcCamDistM * 0.3)) // 後方地形マージンをカメラ距離に比例させる
+    h + Math.max(0.3, pcSimState.camDistM * Math.cos(pitchRad)),
+    backH + Math.max(1, Math.min(8, pcSimState.camDistM * 0.3)) // 後方地形マージンをカメラ距離に比例させる
   );
 
-  // zoom 計算は地形面からのカメラ相対高度（pcCamDistM * cos(pitch)）を基準にする。
+  // zoom 計算は地形面からのカメラ相対高度（pcSimState.camDistM * cos(pitch)）を基準にする。
   // cameraAlt（絶対標高）を使うと山岳地では数十mになり高ズームに届かなくなるため。
-  const relativeAlt = Math.max(0.3, pcCamDistM * Math.cos(pitchRad));
+  const relativeAlt = Math.max(0.3, pcSimState.camDistM * Math.cos(pitchRad));
   const targetZoom = Math.max(12, Math.min(map.getMaxZoom(), Math.log2(
     H * 2 * Math.PI * R * Math.cos(lat_rad) /
     (1024 * Math.tan(fov_rad / 2) * relativeAlt)
   )));
 
   map.jumpTo({
-    center:  [pcPlayerLng, pcPlayerLat],
-    bearing: pcBearing,
+    center:  [pcSimState.playerLng, pcSimState.playerLat],
+    bearing: pcSimState.bearing,
     pitch:   effectivePitch,
     zoom:    targetZoom
   });
 }
 
 function enforceTerrainFloor() {
-  if (pcSimActive) return; // PCシムは setCameraFromPlayer で制御
+  if (pcSimState.active) return; // PCシムは setCameraFromPlayer で制御
   if (!map.getTerrain()) return;
 
   const center  = map.getCenter();
@@ -6106,7 +6090,7 @@ function enforceTerrainFloor() {
   // alt(z) = cameraZ * 2^(currentZoom − z)  →  floorZoom = currentZoom − log2(floorAltMerc / cameraZ)
   const currentZoom   = map.getZoom();
   const floorZoom     = currentZoom - Math.log2(floorAltMerc / cameraZ);
-  const effectiveZoom = Math.min(simTargetZoom, floorZoom);
+  const effectiveZoom = Math.min(mobileSimState.targetZoom, floorZoom);
 
   const diff = effectiveZoom - currentZoom;
   if (Math.abs(diff) < 0.005) return;
@@ -6123,33 +6107,33 @@ function enforceTerrainFloor() {
    ③ 読図マップ open 中はセンターと回転を更新
    ---------------------------------------------------------------- */
 function pcSimLoop(timestamp) {
-  if (!pcSimActive) return;
+  if (!pcSimState.active) return;
 
   // --- deltaTime（秒）を計算 ---
-  const dt = pcSimLastTime ? Math.min((timestamp - pcSimLastTime) / 1000, 0.1) : 0.016;
-  pcSimLastTime = timestamp;
+  const dt = pcSimState.lastTime ? Math.min((timestamp - pcSimState.lastTime) / 1000, 0.1) : 0.016;
+  pcSimState.lastTime = timestamp;
 
-  // ── WASD 移動（pcPlayerLng/Lat を直接更新） ──────────────────────
-  const fwd   = (pcSimKeys.KeyW ? 1 : 0) - (pcSimKeys.KeyS ? 1 : 0);
-  const right = (pcSimKeys.KeyD ? 1 : 0) - (pcSimKeys.KeyA ? 1 : 0);
+  // ── WASD 移動（pcSimState.playerLng/Lat を直接更新） ──────────────────────
+  const fwd   = (pcSimState.keys.KeyW ? 1 : 0) - (pcSimState.keys.KeyS ? 1 : 0);
+  const right = (pcSimState.keys.KeyD ? 1 : 0) - (pcSimState.keys.KeyA ? 1 : 0);
 
   if (fwd !== 0 || right !== 0) {
     const len        = Math.sqrt(fwd * fwd + right * right);
     const distKm     = (getPcSimSpeedKmh() / 3600) * dt;
-    const moveBearing = pcBearing + Math.atan2(right / len, fwd / len) * (180 / Math.PI);
-    const dest = turf.destination([pcPlayerLng, pcPlayerLat], distKm, moveBearing);
-    pcPlayerLng = dest.geometry.coordinates[0];
-    pcPlayerLat = dest.geometry.coordinates[1];
+    const moveBearing = pcSimState.bearing + Math.atan2(right / len, fwd / len) * (180 / Math.PI);
+    const dest = turf.destination([pcSimState.playerLng, pcSimState.playerLat], distKm, moveBearing);
+    pcSimState.playerLng = dest.geometry.coordinates[0];
+    pcSimState.playerLat = dest.geometry.coordinates[1];
   }
 
-  // ── 矢印キー視点（pcBearing / pcPitch を更新） ───────────────────
+  // ── 矢印キー視点（pcSimState.bearing / pcSimState.pitch を更新） ───────────────────
   const ARROW_BEARING_RATE = 90;  // deg/s
   const ARROW_PITCH_RATE   = 60;  // deg/s
 
-  if (pcSimKeys.ArrowLeft)  pcBearing = (pcBearing - ARROW_BEARING_RATE * dt + 360) % 360;
-  if (pcSimKeys.ArrowRight) pcBearing = (pcBearing + ARROW_BEARING_RATE * dt) % 360;
-  if (pcSimKeys.ArrowUp)    pcPitch   = Math.min(85, pcPitch + ARROW_PITCH_RATE * dt);
-  if (pcSimKeys.ArrowDown)  pcPitch   = Math.max(0,  pcPitch - ARROW_PITCH_RATE * dt);
+  if (pcSimState.keys.ArrowLeft)  pcSimState.bearing = (pcSimState.bearing - ARROW_BEARING_RATE * dt + 360) % 360;
+  if (pcSimState.keys.ArrowRight) pcSimState.bearing = (pcSimState.bearing + ARROW_BEARING_RATE * dt) % 360;
+  if (pcSimState.keys.ArrowUp)    pcSimState.pitch   = Math.min(85, pcSimState.pitch + ARROW_PITCH_RATE * dt);
+  if (pcSimState.keys.ArrowDown)  pcSimState.pitch   = Math.max(0,  pcSimState.pitch - ARROW_PITCH_RATE * dt);
 
   // ── 地形傾斜による自動ピッチ補正 ─────────────────────────────────
   // 進行方向 25m 先との高度差からスロープ角を推定し、
@@ -6161,9 +6145,9 @@ function pcSimLoop(timestamp) {
     const SMOOTH_TC        = 1.4;  // 平滑化時定数（秒）
 
     const elevNow = map.queryTerrainElevation(
-      { lng: pcPlayerLng, lat: pcPlayerLat }, { exaggerated: false }
+      { lng: pcSimState.playerLng, lat: pcSimState.playerLat }, { exaggerated: false }
     ) ?? 0;
-    const fwdPt = turf.destination([pcPlayerLng, pcPlayerLat], SLOPE_SAMPLE_KM, pcBearing);
+    const fwdPt = turf.destination([pcSimState.playerLng, pcSimState.playerLat], SLOPE_SAMPLE_KM, pcSimState.bearing);
     const elevFwd = map.queryTerrainElevation(
       { lng: fwdPt.geometry.coordinates[0], lat: fwdPt.geometry.coordinates[1] },
       { exaggerated: false }
@@ -6174,50 +6158,50 @@ function pcSimLoop(timestamp) {
     const targetAdj = Math.max(-MAX_SLOPE_ADJ, Math.min(MAX_SLOPE_ADJ, slopeDeg * SLOPE_INFLUENCE));
 
     // ローパスフィルタ（急激な補正を抑制）
-    smoothedSlopeAdj += (targetAdj - smoothedSlopeAdj) * Math.min(dt / SMOOTH_TC, 1);
+    pcSimState.smoothedSlopeAdj += (targetAdj - pcSimState.smoothedSlopeAdj) * Math.min(dt / SMOOTH_TC, 1);
   }
 
   // ── カメラを配置（プレイヤーを常に画面中央に） ───────────────────
   setCameraFromPlayer();
 
   // ── 読図マップ同期 ──────────────────────────────────────────────
-  if (pcSimReadOpen && pcSimReadMap) {
-    pcSimReadMap.setCenter([pcPlayerLng, pcPlayerLat]);
+  if (pcSimState.readOpen && pcSimState.readMap) {
+    pcSimState.readMap.setCenter([pcSimState.playerLng, pcSimState.playerLat]);
     document.getElementById('pc-sim-readmap-inner').style.transform =
-      `rotate(${-pcBearing}deg)`;
+      `rotate(${-pcSimState.bearing}deg)`;
   }
 
-  updateSimPosMarker(pcPlayerLng, pcPlayerLat);
+  updateSimPosMarker(pcSimState.playerLng, pcSimState.playerLat);
 
-  pcSimAnimFrame = requestAnimationFrame(pcSimLoop);
+  pcSimState.animFrame = requestAnimationFrame(pcSimLoop);
 }
 
 /* ----------------------------------------------------------------
    マウスイベントハンドラ
    ---------------------------------------------------------------- */
 function onPcSimMouseMove(e) {
-  if (!pcSimActive || !document.pointerLockElement) return;
+  if (!pcSimState.active || !document.pointerLockElement) return;
 
   const MOUSE_BEARING_SENS = 0.15; // deg/px
   const MOUSE_PITCH_SENS   = 0.10; // deg/px
 
-  pcBearing = (pcBearing + e.movementX * MOUSE_BEARING_SENS + 360) % 360;
+  pcSimState.bearing = (pcSimState.bearing + e.movementX * MOUSE_BEARING_SENS + 360) % 360;
   // movementY < 0（マウス上移動）→ pitch 増加（より水平視点）
-  pcPitch = Math.max(0, Math.min(85, pcPitch - e.movementY * MOUSE_PITCH_SENS));
+  pcSimState.pitch = Math.max(0, Math.min(85, pcSimState.pitch - e.movementY * MOUSE_PITCH_SENS));
 }
 
 function onPcSimMouseDown(e) {
-  if (!pcSimActive) return;
+  if (!pcSimState.active) return;
   if (e.button === 2) openPcReadMap(); // 右クリック → 読図
 }
 
 function onPcSimMouseUp(e) {
-  if (!pcSimActive) return;
+  if (!pcSimState.active) return;
   if (e.button === 2) closePcReadMap();
 }
 
 function onPcSimContextMenu(e) {
-  if (pcSimActive) e.preventDefault(); // 右クリックメニューを抑止
+  if (pcSimState.active) e.preventDefault(); // 右クリックメニューを抑止
 }
 
 /* ----------------------------------------------------------------
@@ -6226,43 +6210,43 @@ function onPcSimContextMenu(e) {
    ---------------------------------------------------------------- */
 document.addEventListener('keydown', (e) => {
   // PC シムのキー操作
-  if (e.code in pcSimKeys) {
-    pcSimKeys[e.code] = true;
-    if (pcSimActive) e.preventDefault();
+  if (e.code in pcSimState.keys) {
+    pcSimState.keys[e.code] = true;
+    if (pcSimState.active) e.preventDefault();
   }
-  if (pcSimActive && e.code === 'Space') {
+  if (pcSimState.active && e.code === 'Space') {
     e.preventDefault();
     openPcReadMap();
   }
   // I/O キー：カメラ距離（PCシム中 or GPX 3D中）
-  if ((pcSimActive || gpxViewMode === '3d') && (e.code === 'KeyI' || e.code === 'KeyO')) {
+  if ((pcSimState.active || gpxState.viewMode === '3d') && (e.code === 'KeyI' || e.code === 'KeyO')) {
     e.preventDefault();
-    if (pcSimActive) {
-      if (e.code === 'KeyI') pcCamDistM = Math.max(PC_CAM_DIST_MIN, pcCamDistM * 0.7);
-      else                   pcCamDistM = Math.min(PC_CAM_DIST_MAX, pcCamDistM * 1.4);
+    if (pcSimState.active) {
+      if (e.code === 'KeyI') pcSimState.camDistM = Math.max(PC_CAM_DIST_MIN, pcSimState.camDistM * 0.7);
+      else                   pcSimState.camDistM = Math.min(PC_CAM_DIST_MAX, pcSimState.camDistM * 1.4);
     } else {
-      if (e.code === 'KeyI') gpxCamDistM = Math.max(GPX_CAM_DIST_MIN, gpxCamDistM * 0.7);
-      else                   gpxCamDistM = Math.min(GPX_CAM_DIST_MAX, gpxCamDistM * 1.4);
+      if (e.code === 'KeyI') gpxState.camDistM = Math.max(GPX_CAM_DIST_MIN, gpxState.camDistM * 0.7);
+      else                   gpxState.camDistM = Math.min(GPX_CAM_DIST_MAX, gpxState.camDistM * 1.4);
     }
   }
   // GPX 3D モードの矢印キー（PC シム非アクティブ時のみ）
-  if (gpxViewMode === '3d' && !pcSimActive && e.code in gpxChaseKeys) {
-    gpxChaseKeys[e.code] = true;
+  if (gpxState.viewMode === '3d' && !pcSimState.active && e.code in gpxState.chaseKeys) {
+    gpxState.chaseKeys[e.code] = true;
     e.preventDefault();
   }
   // W/S キー：GPX 再生中に時間を進める/戻す（2D/3D 両モード対応、PCシム非アクティブ時）
-  if (!pcSimActive && gpxTrackPoints.length > 0 && (e.code === 'KeyW' || e.code === 'KeyS')) {
+  if (!pcSimState.active && gpxState.trackPoints.length > 0 && (e.code === 'KeyW' || e.code === 'KeyS')) {
     e.preventDefault();
     const SEEK_STEP = 5000; // 5秒
-    if (e.code === 'KeyW') gpxCurrentTime = Math.min(gpxTotalDuration, gpxCurrentTime + SEEK_STEP);
-    else                   gpxCurrentTime = Math.max(0, gpxCurrentTime - SEEK_STEP);
+    if (e.code === 'KeyW') gpxState.currentTime = Math.min(gpxState.totalDuration, gpxState.currentTime + SEEK_STEP);
+    else                   gpxState.currentTime = Math.max(0, gpxState.currentTime - SEEK_STEP);
     const seekBar = document.getElementById('seek-bar');
-    seekBar.value = gpxCurrentTime;
+    seekBar.value = gpxState.currentTime;
     updateSeekBarGradient();
     updateTimeDisplay();
-    const pos = interpolateGpxPosition(gpxCurrentTime);
+    const pos = interpolateGpxPosition(gpxState.currentTime);
     if (pos) {
-      _smoothedGpxBearing = pos.bearing; // W/S シーク時もスナップ
+      gpxState.smoothedBearing = pos.bearing; // W/S シーク時もスナップ
       updateGpxMarker(pos);
       updateCamera(pos, 16);
     }
@@ -6272,15 +6256,16 @@ document.addEventListener('keydown', (e) => {
 // モバイルシム：ズームスライダー操作
 document.getElementById('sim-zoom-slider').addEventListener('input', function () {
   const z = parseFloat(this.value);
-  simTargetZoom = z;
+  mobileSimState.targetZoom = z;
   map.setZoom(z);
   document.getElementById('sim-zoom-val').textContent = z.toFixed(1);
+  updateSliderGradient(this);
 });
 
 document.addEventListener('keyup', (e) => {
-  if (e.code in pcSimKeys) pcSimKeys[e.code] = false;
-  if (e.code in gpxChaseKeys) gpxChaseKeys[e.code] = false;
-  if (pcSimActive && e.code === 'Space') closePcReadMap();
+  if (e.code in pcSimState.keys) pcSimState.keys[e.code] = false;
+  if (e.code in gpxState.chaseKeys) gpxState.chaseKeys[e.code] = false;
+  if (pcSimState.active && e.code === 'Space') closePcReadMap();
 });
 
 /* ----------------------------------------------------------------
@@ -6322,30 +6307,30 @@ function getReadmapBaseStyle(bgKey) {
 let _lastMagneticNorthData = { type: 'FeatureCollection', features: [] };
 
 function syncReadmapOriLibre() {
-  if (!pcSimReadMap || !pcSimReadMap.isStyleLoaded()) return;
+  if (!pcSimState.readMap || !pcSimState.readMap.isStyleLoaded()) return;
   if (document.getElementById('sel-readmap-bg').value !== 'orilibre') return;
 
   // ── 等高線: tile URL と visibility を同期 ──────────────────────
-  if (pcSimReadMap.getSource('contour-source') && lastAppliedContourInterval) {
+  if (pcSimState.readMap.getSource('contour-source') && lastAppliedContourInterval) {
     const newUrl = buildContourTileUrl(lastAppliedContourInterval);
-    if (newUrl) pcSimReadMap.getSource('contour-source').setTiles([newUrl]);
+    if (newUrl) pcSimState.readMap.getSource('contour-source').setTiles([newUrl]);
   }
   const contourVis = chkContour.checked ? 'visible' : 'none';
   for (const id of contourLayerIds) {
-    if (!pcSimReadMap.getLayer(id)) continue;
+    if (!pcSimState.readMap.getLayer(id)) continue;
     // symbol レイヤー（数値ラベル）は常に非表示
-    const vis = pcSimReadMap.getLayer(id).type === 'symbol' ? 'none' : contourVis;
-    pcSimReadMap.setLayoutProperty(id, 'visibility', vis);
+    const vis = pcSimState.readMap.getLayer(id).type === 'symbol' ? 'none' : contourVis;
+    pcSimState.readMap.setLayoutProperty(id, 'visibility', vis);
   }
 
   // ── 磁北線: ソース・レイヤーを初回追加してから GeoJSON を同期 ──
   const magnVis = chkMagneticNorth.checked ? 'visible' : 'none';
-  if (!pcSimReadMap.getSource('magnetic-north')) {
-    pcSimReadMap.addSource('magnetic-north', {
+  if (!pcSimState.readMap.getSource('magnetic-north')) {
+    pcSimState.readMap.addSource('magnetic-north', {
       type: 'geojson',
       data: _lastMagneticNorthData,
     });
-    pcSimReadMap.addLayer({
+    pcSimState.readMap.addLayer({
       id: 'magnetic-north-layer',
       type: 'line',
       source: 'magnetic-north',
@@ -6357,9 +6342,9 @@ function syncReadmapOriLibre() {
       },
     });
   } else {
-    pcSimReadMap.getSource('magnetic-north').setData(_lastMagneticNorthData);
-    if (pcSimReadMap.getLayer('magnetic-north-layer')) {
-      pcSimReadMap.setLayoutProperty('magnetic-north-layer', 'visibility', magnVis);
+    pcSimState.readMap.getSource('magnetic-north').setData(_lastMagneticNorthData);
+    if (pcSimState.readMap.getLayer('magnetic-north-layer')) {
+      pcSimState.readMap.setLayoutProperty('magnetic-north-layer', 'visibility', magnVis);
     }
   }
 }
@@ -6369,15 +6354,15 @@ function syncReadmapOriLibre() {
    選択中の読図地図設定を反映したベースで初期化する。
    ---------------------------------------------------------------- */
 function initPcReadMap() {
-  if (pcSimReadMap) return;
+  if (pcSimState.readMap) return;
 
   // 選択中の読図地図背景を取得
   const bgKey = document.getElementById('sel-readmap-bg').value;
 
-  pcSimReadMap = new maplibregl.Map({
+  pcSimState.readMap = new maplibregl.Map({
     container: 'pc-sim-readmap-map',
     style:       getReadmapBaseStyle(bgKey),
-    center:      [pcPlayerLng ?? map.getCenter().lng, pcPlayerLat ?? map.getCenter().lat],
+    center:      [pcSimState.playerLng ?? map.getCenter().lng, pcSimState.playerLat ?? map.getCenter().lat],
     zoom:        16,
     bearing:     0,
     pitch:       0,
@@ -6385,12 +6370,12 @@ function initPcReadMap() {
     attributionControl: false,
   });
 
-  pcSimReadMap.on('load', () => {
+  pcSimState.readMap.on('load', () => {
     syncKmzToPcReadMap(bgKey);
     syncReadmapOriLibre();
     // ロード完了後に rotation・resize を適用（遅延初期化の場合に必要）
-    document.getElementById('pc-sim-readmap-inner').style.transform = `rotate(${-pcBearing}deg)`;
-    pcSimReadMap.resize();
+    document.getElementById('pc-sim-readmap-inner').style.transform = `rotate(${-pcSimState.bearing}deg)`;
+    pcSimState.readMap.resize();
   });
 }
 
@@ -6399,7 +6384,7 @@ function initPcReadMap() {
    bgKey が 'kmz-{id}' の場合は対象 KMZ のみ表示、それ以外は全 KMZ を重ねる。
    ---------------------------------------------------------------- */
 function syncKmzToPcReadMap(bgKey) {
-  if (!pcSimReadMap || !pcSimReadMap.isStyleLoaded()) return;
+  if (!pcSimState.readMap || !pcSimState.readMap.isStyleLoaded()) return;
   // bgKey が省略された場合は現在の選択値を参照
   bgKey = bgKey ?? document.getElementById('sel-readmap-bg').value;
 
@@ -6408,11 +6393,11 @@ function syncKmzToPcReadMap(bgKey) {
   const selectedKmzId = isKmzMode ? parseInt(bgKey.slice(4)) : -1;
 
   kmzLayers.forEach(entry => {
-    if (pcSimReadMap.getSource(entry.sourceId)) return;
+    if (pcSimState.readMap.getSource(entry.sourceId)) return;
     const spec = map.getStyle()?.sources?.[entry.sourceId];
     if (!spec) return;
-    pcSimReadMap.addSource(entry.sourceId, spec);
-    pcSimReadMap.addLayer({
+    pcSimState.readMap.addSource(entry.sourceId, spec);
+    pcSimState.readMap.addLayer({
       id:     entry.layerId + '-pcread',
       type:   'raster',
       source: entry.sourceId,
@@ -6467,33 +6452,33 @@ function updateReadmapBgKmzOptions() {
    openPcReadMap / closePcReadMap: 読図マップの表示・非表示
    ---------------------------------------------------------------- */
 function openPcReadMap() {
-  if (pcSimReadOpen) return;
-  pcSimReadOpen = true;
+  if (pcSimState.readOpen) return;
+  pcSimState.readOpen = true;
 
   const overlay = document.getElementById('pc-sim-readmap-overlay');
   overlay.classList.add('visible');
 
-  if (!pcSimReadMap) {
+  if (!pcSimState.readMap) {
     // 初回: オーバーレイが visible になってから初期化（WebGL コンテキストを正常サイズで生成）
     initPcReadMap();
     return;
   }
 
-  pcSimReadMap.setCenter([pcPlayerLng ?? map.getCenter().lng, pcPlayerLat ?? map.getCenter().lat]);
-  document.getElementById('pc-sim-readmap-inner').style.transform = `rotate(${-pcBearing}deg)`;
-  pcSimReadMap.resize();
+  pcSimState.readMap.setCenter([pcSimState.playerLng ?? map.getCenter().lng, pcSimState.playerLat ?? map.getCenter().lat]);
+  document.getElementById('pc-sim-readmap-inner').style.transform = `rotate(${-pcSimState.bearing}deg)`;
+  pcSimState.readMap.resize();
 }
 
 function closePcReadMap() {
-  if (!pcSimReadOpen) return;
-  pcSimReadOpen = false;
+  if (!pcSimState.readOpen) return;
+  pcSimState.readOpen = false;
   document.getElementById('pc-sim-readmap-overlay').classList.remove('visible');
 }
 
 // ---- 開始位置クリック待ちモード ----
 function enterSimStartPicking() {
-  if (_simPickingActive || pcSimActive) return;
-  _simPickingActive = true;
+  if (pcSimState.pickingActive || pcSimState.active) return;
+  pcSimState.pickingActive = true;
   document.getElementById('sim-start-cursor').style.display = 'block';
   document.getElementById('sim-start-hint-overlay').style.display = 'block';
   document.addEventListener('mousemove', _onSimPickMouseMove);
@@ -6502,8 +6487,8 @@ function enterSimStartPicking() {
 }
 
 function exitSimStartPicking() {
-  if (!_simPickingActive) return;
-  _simPickingActive = false;
+  if (!pcSimState.pickingActive) return;
+  pcSimState.pickingActive = false;
   document.getElementById('sim-start-cursor').style.display = 'none';
   document.getElementById('sim-start-hint-overlay').style.display = 'none';
   document.removeEventListener('mousemove', _onSimPickMouseMove);
@@ -6520,8 +6505,8 @@ function _onSimPickMouseMove(e) {
 function _onSimPickClick(e) {
   const rect  = document.getElementById('map').getBoundingClientRect();
   const lngLat = map.unproject([e.clientX - rect.left, e.clientY - rect.top]);
-  _simStartLng = lngLat.lng;
-  _simStartLat = lngLat.lat;
+  pcSimState.startLng = lngLat.lng;
+  pcSimState.startLat = lngLat.lat;
   exitSimStartPicking();
   startPcSim();
 }
@@ -6532,7 +6517,7 @@ function _onSimPickKeydown(e) {
 
 // ---- PCシムボタンのイベント ----
 document.getElementById('pc-sim-toggle-btn').addEventListener('click', () => {
-  if (pcSimActive) stopPcSim();
+  if (pcSimState.active) stopPcSim();
   else enterSimStartPicking();
 });
 
@@ -6540,10 +6525,10 @@ document.getElementById('pc-sim-toggle-btn').addEventListener('click', () => {
 // ---- 読図地図セレクト変更 ----
 // PC シム起動中に変更した場合は読図マップを即座に再構築する。
 document.getElementById('sel-readmap-bg').addEventListener('change', () => {
-  if (pcSimReadMap && pcSimActive) {
+  if (pcSimState.readMap && pcSimState.active) {
     closePcReadMap();
-    pcSimReadMap.remove();
-    pcSimReadMap = null;
+    pcSimState.readMap.remove();
+    pcSimState.readMap = null;
     // 次回 openPcReadMap() 時に新設定で再初期化
   }
 });
@@ -6614,81 +6599,72 @@ async function openImportModalFromKmz(file) {
   }
 }
 
-let _previewMap      = null;  // プレビュー用 MapLibre インスタンス
-let _importImgFile   = null;  // インポート中の画像 File
-let _importImgUrl    = null;  // 対応する ObjectURL
-let _importImgAspect = null;  // 元画像の縦横比（width / height）
-let _importCoords    = null;  // 現在の4隅座標 [[lng,lat]*4] TL→TR→BR→BL
-// let _importCornerMarkers = []; // 微調整モードの4隅マーカー（廃止：拡大縮小モードに統合）
-// let _fineTuneActive  = false; // 微調整モード中か（廃止）
-let _scaleCornerMarkers = []; // 拡大縮小モードの4隅マーカー
-let _importCenter    = null;  // 中心マーカー位置 {lng, lat}（マーカードラッグで更新）
-let _importBaseCoords = null; // KMZモード：ドラッグ前の基準4隅座標（回転前）
-
-// Undo/Redo 履歴
-let _importHistory = []; // undo スタック
-let _importFuture  = []; // redo スタック
-
-// RAF（アニメーションフレーム）スロットル用（ドラッグ高速化）
-let _importDragRafId = null;
-
-// 磁気偏角キャッシュ（ドラッグ中に毎回計算しないよう dragend で更新）
-let _cachedImportDecl = 0;
-
-// スケール補正
-let _importScaleVal        = 100;  // 現在のスケール倍率（パーセント）
-let _importBaseScaleCoords = null; // スケール100%時の4隅座標（平行移動・回転と連動して更新）
-
-// Hitboxドラッグ（平行移動）用
-let _isDraggingImage          = false;
-let _dragStartLngLat          = null;
-let _dragStartCoords          = null;
-let _dragStartCenter          = null;
-let _dragStartBaseScaleCoords = null; // 平行移動開始時の _importBaseScaleCoords
-let _dragStartFixedPoints      = null; // 平行移動開始時の固定点配列
-let _dragStartPendingFixedPoint = null; // 平行移動開始時の仮固定点
-let _importFixedPoints         = [];   // 固定点配列 [{lng, lat}]（最大2）
-let _importFixedPointMarkers   = [];   // 固定点DOM要素配列
-let _importFixedPointOverlay   = null; // 固定点描画オーバーレイ
-let _importPendingFixedPoint   = null; // 追加中の仮固定点 {lng, lat}
-let _isSettingFixedPoint       = false; // 固定点選択待ち（クリックで仮固定点を作る）
-let _isPlacingFixedPoint       = false; // 仮固定点を画像と一緒にドラッグして位置合わせ中
-
-// ヒットボックス + 回転ハンドル初期化フラグ
-let _imgInteractionInited = false;
-let _imgEventsAdded       = false;
-let _fixedPointOverlayEventsAdded = false;
-
-
-// 背景切替: setStyle を使わず visibility 操作のみで行うため
-// OriLibre 初期化時のレイヤー一覧を保存（{id, vis} 形式）
-let _previewOriLibreLayers = [];
+const importState = {
+  // プレビューマップ・画像情報
+  previewMap:       null,   // プレビュー用 MapLibre インスタンス
+  imgFile:          null,   // インポート中の画像 File
+  imgUrl:           null,   // 対応する ObjectURL
+  imgAspect:        null,   // 元画像の縦横比（width / height）
+  coords:           null,   // 現在の4隅座標 [[lng,lat]*4] TL→TR→BR→BL
+  center:           null,   // 中心マーカー位置 {lng, lat}
+  baseCoords:       null,   // KMZモード：ドラッグ前の基準4隅座標（回転前）
+  scaleCornerMarkers: [],   // 拡大縮小モードの4隅マーカー
+  oriLibreLayers:   [],     // OriLibre 初期化時のレイヤー一覧 ({id, vis} 形式)
+  // Undo/Redo
+  history:          [],     // undo スタック
+  future:           [],     // redo スタック
+  // スケール補正
+  scaleVal:         100,    // 現在のスケール倍率（パーセント）
+  baseScaleCoords:  null,   // スケール100%時の4隅座標（平行移動・回転と連動して更新）
+  // ドラッグ（平行移動）
+  isDragging:           false,
+  dragStartLngLat:      null,
+  dragStartCoords:      null,
+  dragStartCenter:      null,
+  dragStartBaseScaleCoords: null,   // 平行移動開始時の baseScaleCoords
+  dragStartFixedPoints:     null,   // 平行移動開始時の固定点配列
+  dragStartPendingFixedPoint: null, // 平行移動開始時の仮固定点
+  dragRafId:        null,   // RAF スロットル用 ID
+  // 固定点
+  fixedPoints:              [],     // 固定点配列 [{lng, lat}]（最大2）
+  fixedPointMarkers:        [],     // 固定点DOM要素配列
+  fixedPointOverlay:        null,   // 固定点描画オーバーレイ
+  pendingFixedPoint:        null,   // 追加中の仮固定点 {lng, lat}
+  isSettingFixedPoint:      false,  // 固定点選択待ち（クリックで仮固定点を作る）
+  isPlacingFixedPoint:      false,  // 仮固定点を画像と一緒にドラッグして位置合わせ中
+  fixedPointOverlayEventsAdded: false,
+  // 初期化フラグ
+  interactionInited: false,
+  eventsAdded:       false,
+  // 磁気偏角キャッシュ（ドラッグ中に毎回計算しないよう dragend で更新）
+  cachedDecl:       0,
+};
 
 function _ensureFixedPointOverlay() {
-  if (!_previewMap) return;
-  const container = _previewMap.getContainer();
-  if (!_importFixedPointOverlay || !_importFixedPointOverlay.isConnected) {
+  if (!importState.previewMap) return;
+  const container = importState.previewMap.getContainer();
+  if (!importState.fixedPointOverlay || !importState.fixedPointOverlay.isConnected) {
     const el = document.createElement('div');
     el.id = '_import-fixed-point-overlay';
     el.style.cssText = 'position:absolute;inset:0;pointer-events:none;z-index:6;';
     container.appendChild(el);
-    _importFixedPointOverlay = el;
+    importState.fixedPointOverlay = el;
   }
-  if (!_fixedPointOverlayEventsAdded) {
-    _fixedPointOverlayEventsAdded = true;
+  if (!importState.fixedPointOverlayEventsAdded) {
+    importState.fixedPointOverlayEventsAdded = true;
     const onReproject = () => _positionFixedPointDom();
-    _previewMap.on('move', onReproject);
-    _previewMap.on('resize', onReproject);
+    importState.previewMap.on('move', onReproject);
+    importState.previewMap.on('resize', onReproject);
   }
 }
 
 function _positionFixedPointDom() {
-  if (!_previewMap || !_importFixedPointOverlay) return;
-  _importFixedPointMarkers.forEach((el) => {
+  if (!importState.previewMap || !importState.fixedPointOverlay) return;
+  importState.fixedPointMarkers.forEach((el) => {
     const lng = parseFloat(el.dataset.lng || 'NaN');
     const lat = parseFloat(el.dataset.lat || 'NaN');
     if (!Number.isFinite(lng) || !Number.isFinite(lat)) return;
-    const p = _previewMap.project([lng, lat]);
+    const p = importState.previewMap.project([lng, lat]);
     el.style.left = `${p.x}px`;
     el.style.top = `${p.y}px`;
   });
@@ -6696,10 +6672,10 @@ function _positionFixedPointDom() {
 
 function _renderFixedPointMarkers() {
   _ensureFixedPointOverlay();
-  _importFixedPointMarkers.forEach(m => m.remove());
-  _importFixedPointMarkers = [];
-  if (!_previewMap || !_importFixedPointOverlay) return;
-  _importFixedPoints.forEach((pt, i) => {
+  importState.fixedPointMarkers.forEach(m => m.remove());
+  importState.fixedPointMarkers = [];
+  if (!importState.previewMap || !importState.fixedPointOverlay) return;
+  importState.fixedPoints.forEach((pt, i) => {
     const el = document.createElement('div');
     // pointer-events:auto でホバー・ドラッグを有効化
     el.style.cssText =
@@ -6723,10 +6699,10 @@ function _renderFixedPointMarkers() {
       el.style.cursor = 'grabbing';
       const idx = i; // クロージャで添字を保持
       const onMove = (e) => {
-        if (!_previewMap) return;
-        const rect   = _previewMap.getContainer().getBoundingClientRect();
-        const lngLat = _previewMap.unproject([e.clientX - rect.left, e.clientY - rect.top]);
-        _importFixedPoints[idx] = { lng: lngLat.lng, lat: lngLat.lat };
+        if (!importState.previewMap) return;
+        const rect   = importState.previewMap.getContainer().getBoundingClientRect();
+        const lngLat = importState.previewMap.unproject([e.clientX - rect.left, e.clientY - rect.top]);
+        importState.fixedPoints[idx] = { lng: lngLat.lng, lat: lngLat.lat };
         el.dataset.lng = String(lngLat.lng);
         el.dataset.lat = String(lngLat.lat);
         _positionFixedPointDom();
@@ -6743,18 +6719,18 @@ function _renderFixedPointMarkers() {
       document.addEventListener('mouseup',   onUp);
     });
 
-    _importFixedPointOverlay.appendChild(el);
-    _importFixedPointMarkers.push(el);
+    importState.fixedPointOverlay.appendChild(el);
+    importState.fixedPointMarkers.push(el);
   });
-  if (_importPendingFixedPoint) {
+  if (importState.pendingFixedPoint) {
     const el = document.createElement('div');
     el.style.cssText =
       'width:14px;height:14px;background:#e54848;border:2px dashed #fff;' +
       'border-radius:50%;box-shadow:0 1px 4px rgba(0,0,0,0.6);opacity:0.9;position:absolute;transform:translate(-50%,-50%);';
-    el.dataset.lng = String(_importPendingFixedPoint.lng);
-    el.dataset.lat = String(_importPendingFixedPoint.lat);
-    _importFixedPointOverlay.appendChild(el);
-    _importFixedPointMarkers.push(el);
+    el.dataset.lng = String(importState.pendingFixedPoint.lng);
+    el.dataset.lat = String(importState.pendingFixedPoint.lat);
+    importState.fixedPointOverlay.appendChild(el);
+    importState.fixedPointMarkers.push(el);
   }
   _positionFixedPointDom();
 }
@@ -6762,72 +6738,72 @@ function _renderFixedPointMarkers() {
 function _updateFixedPointStatus() {
   const st = document.getElementById('import-fixed-point-status');
   const ct = document.getElementById('import-fixed-point-count');
-  if (ct) ct.textContent = `${_importFixedPoints.length} / 2`;
+  if (ct) ct.textContent = `${importState.fixedPoints.length} / 2`;
   if (!st) return;
-  if (_isPlacingFixedPoint) {
+  if (importState.isPlacingFixedPoint) {
     st.textContent = '位置合わせ中: 画像をドラッグして離すと固定点を確定';
-  } else if (_isSettingFixedPoint) {
-    st.textContent = `点選択中: ${_importFixedPoints.length + 1}点目を地図上でクリック`;
-  } else if (_importFixedPoints.length > 0) {
-    st.textContent = `固定点設定済み: ${_importFixedPoints.length}点（通常平行移動は無効）`;
+  } else if (importState.isSettingFixedPoint) {
+    st.textContent = `点選択中: ${importState.fixedPoints.length + 1}点目を地図上でクリック`;
+  } else if (importState.fixedPoints.length > 0) {
+    st.textContent = `固定点設定済み: ${importState.fixedPoints.length}点（通常平行移動は無効）`;
   } else {
     st.textContent = '待機中';
   }
   const setBtn = document.getElementById('import-fixed-point-set');
   const commitBtn = document.getElementById('import-fixed-point-commit');
   if (setBtn) {
-    setBtn.classList.toggle('active', _isSettingFixedPoint || _isPlacingFixedPoint);
-    setBtn.disabled = _importFixedPoints.length >= 2;
+    setBtn.classList.toggle('active', importState.isSettingFixedPoint || importState.isPlacingFixedPoint);
+    setBtn.disabled = importState.fixedPoints.length >= 2;
   }
   if (commitBtn) {
-    commitBtn.disabled = !_importPendingFixedPoint;
+    commitBtn.disabled = !importState.pendingFixedPoint;
   }
 }
 
 function _setFixedPointSettingMode(on) {
-  _isSettingFixedPoint = !!on && _importFixedPoints.length < 2;
-  if (!_isSettingFixedPoint) _isPlacingFixedPoint = false;
+  importState.isSettingFixedPoint = !!on && importState.fixedPoints.length < 2;
+  if (!importState.isSettingFixedPoint) importState.isPlacingFixedPoint = false;
   _renderFixedPointMarkers();
-  if (_previewMap) {
-    _previewMap.getCanvas().style.cursor = _isSettingFixedPoint ? 'crosshair' : '';
+  if (importState.previewMap) {
+    importState.previewMap.getCanvas().style.cursor = importState.isSettingFixedPoint ? 'crosshair' : '';
   }
   _updateFixedPointStatus();
 }
 
 function _setPendingFixedPoint(lng, lat) {
-  _importPendingFixedPoint = { lng, lat };
-  _isSettingFixedPoint = false;
-  _isPlacingFixedPoint = true;
+  importState.pendingFixedPoint = { lng, lat };
+  importState.isSettingFixedPoint = false;
+  importState.isPlacingFixedPoint = true;
   _renderFixedPointMarkers();
   _updateFixedPointStatus();
 }
 
 function _commitPendingFixedPoint() {
-  if (!_importPendingFixedPoint || _importFixedPoints.length >= 2) return;
-  _importFixedPoints.push({ ..._importPendingFixedPoint });
-  _importPendingFixedPoint = null;
-  _isPlacingFixedPoint = false;
-  _isSettingFixedPoint = false;
+  if (!importState.pendingFixedPoint || importState.fixedPoints.length >= 2) return;
+  importState.fixedPoints.push({ ...importState.pendingFixedPoint });
+  importState.pendingFixedPoint = null;
+  importState.isPlacingFixedPoint = false;
+  importState.isSettingFixedPoint = false;
   _updateBaseScaleCoords();
   _renderFixedPointMarkers();
   _updateFixedPointStatus();
 }
 
 function _clearImportFixedPoints() {
-  _importFixedPoints = [];
-  _importPendingFixedPoint = null;
-  _isSettingFixedPoint = false;
-  _isPlacingFixedPoint = false;
+  importState.fixedPoints = [];
+  importState.pendingFixedPoint = null;
+  importState.isSettingFixedPoint = false;
+  importState.isPlacingFixedPoint = false;
   _renderFixedPointMarkers();
   _updateFixedPointStatus();
 }
 
 function _getImportTransformOrigin() {
-  if (_importFixedPoints.length > 0) {
-    const sum = _importFixedPoints.reduce((acc, pt) => ({ lng: acc.lng + pt.lng, lat: acc.lat + pt.lat }), { lng: 0, lat: 0 });
-    return [sum.lng / _importFixedPoints.length, sum.lat / _importFixedPoints.length];
+  if (importState.fixedPoints.length > 0) {
+    const sum = importState.fixedPoints.reduce((acc, pt) => ({ lng: acc.lng + pt.lng, lat: acc.lat + pt.lat }), { lng: 0, lat: 0 });
+    return [sum.lng / importState.fixedPoints.length, sum.lat / importState.fixedPoints.length];
   }
-  if (_importCenter) return [_importCenter.lng, _importCenter.lat];
+  if (importState.center) return [importState.center.lng, importState.center.lat];
   return null;
 }
 
@@ -6838,10 +6814,10 @@ function _rotateCoordsAroundPivot(coords, angleDeg, pivot) {
 }
 
 function _recalcImportCenterFromCoords() {
-  if (!_importCoords) return;
-  _importCenter = {
-    lng: _importCoords.reduce((s, c) => s + c[0], 0) / 4,
-    lat: _importCoords.reduce((s, c) => s + c[1], 0) / 4,
+  if (!importState.coords) return;
+  importState.center = {
+    lng: importState.coords.reduce((s, c) => s + c[0], 0) / 4,
+    lat: importState.coords.reduce((s, c) => s + c[1], 0) / 4,
   };
 }
 
@@ -6882,23 +6858,23 @@ function _transformCoordsByPivotMove(startCoords, pivot, startMovePoint, current
 }
 
 function _applyPendingFixedPointPlacement(currentLngLat) {
-  if (!_isPlacingFixedPoint || !_dragStartCoords || !_dragStartLngLat || !currentLngLat) return;
-  const dx = currentLngLat.lng - _dragStartLngLat.lng;
-  const dy = currentLngLat.lat - _dragStartLngLat.lat;
-  const hasPivot = (_dragStartFixedPoints || []).length >= 1;
-  if (hasPivot && _dragStartPendingFixedPoint) {
-    const pivot = [_dragStartFixedPoints[0].lng, _dragStartFixedPoints[0].lat];
-    const startMove = [_dragStartPendingFixedPoint.lng, _dragStartPendingFixedPoint.lat];
+  if (!importState.isPlacingFixedPoint || !importState.dragStartCoords || !importState.dragStartLngLat || !currentLngLat) return;
+  const dx = currentLngLat.lng - importState.dragStartLngLat.lng;
+  const dy = currentLngLat.lat - importState.dragStartLngLat.lat;
+  const hasPivot = (importState.dragStartFixedPoints || []).length >= 1;
+  if (hasPivot && importState.dragStartPendingFixedPoint) {
+    const pivot = [importState.dragStartFixedPoints[0].lng, importState.dragStartFixedPoints[0].lat];
+    const startMove = [importState.dragStartPendingFixedPoint.lng, importState.dragStartPendingFixedPoint.lat];
     const currentMove = [currentLngLat.lng, currentLngLat.lat];
-    _importCoords = _transformCoordsByPivotMove(_dragStartCoords, pivot, startMove, currentMove);
+    importState.coords = _transformCoordsByPivotMove(importState.dragStartCoords, pivot, startMove, currentMove);
     _recalcImportCenterFromCoords();
-    _importFixedPoints = _dragStartFixedPoints.map(pt => ({ ...pt }));
-    _importPendingFixedPoint = { lng: currentLngLat.lng, lat: currentLngLat.lat };
-  } else if (_dragStartPendingFixedPoint) {
-    _importCoords = _dragStartCoords.map(c => [c[0] + dx, c[1] + dy]);
-    if (_dragStartBaseScaleCoords)
-      _importBaseScaleCoords = _dragStartBaseScaleCoords.map(c => [c[0] + dx, c[1] + dy]);
-    _importPendingFixedPoint = { lng: _dragStartPendingFixedPoint.lng + dx, lat: _dragStartPendingFixedPoint.lat + dy };
+    importState.fixedPoints = importState.dragStartFixedPoints.map(pt => ({ ...pt }));
+    importState.pendingFixedPoint = { lng: currentLngLat.lng, lat: currentLngLat.lat };
+  } else if (importState.dragStartPendingFixedPoint) {
+    importState.coords = importState.dragStartCoords.map(c => [c[0] + dx, c[1] + dy]);
+    if (importState.dragStartBaseScaleCoords)
+      importState.baseScaleCoords = importState.dragStartBaseScaleCoords.map(c => [c[0] + dx, c[1] + dy]);
+    importState.pendingFixedPoint = { lng: importState.dragStartPendingFixedPoint.lng + dx, lat: importState.dragStartPendingFixedPoint.lat + dy };
   }
   _updateBaseScaleCoords();
   _renderFixedPointMarkers();
@@ -6913,14 +6889,14 @@ function _calcImportSizeMm() {
 
   let effWmm = paperWmm;
   let effHmm = paperHmm;
-  if (_importImgAspect && _importImgAspect > 0) {
+  if (importState.imgAspect && importState.imgAspect > 0) {
     const paperAspect = paperWmm / paperHmm;
-    if (_importImgAspect > paperAspect) {
+    if (importState.imgAspect > paperAspect) {
       effWmm = paperWmm;
-      effHmm = effWmm / _importImgAspect;
+      effHmm = effWmm / importState.imgAspect;
     } else {
       effHmm = paperHmm;
-      effWmm = effHmm * _importImgAspect;
+      effWmm = effHmm * importState.imgAspect;
     }
   }
   return {
@@ -6971,33 +6947,33 @@ function _importCalcCorners(lng, lat, widthM, heightM, decl) {
 // 既存ソースがある場合は updateImage + triggerRepaint でドラッグ中のリアルタイム表示を実現。
 // 初回のみ addSource + addLayer で生成する。
 function _replaceImageSource() {
-  if (!_previewMap || !_importImgUrl || !_importCoords) return;
-  const src = _previewMap.getSource('_import-img');
+  if (!importState.previewMap || !importState.imgUrl || !importState.coords) return;
+  const src = importState.previewMap.getSource('_import-img');
   if (src) {
     // ドラッグ中の高速パス:
     // 画像URL再設定を伴う updateImage は高コストになりやすいため、
     // 利用可能なら setCoordinates で座標のみ更新する。
     if (typeof src.setCoordinates === 'function') {
-      src.setCoordinates(_importCoords);
+      src.setCoordinates(importState.coords);
     } else {
-      src.updateImage({ url: _importImgUrl, coordinates: _importCoords });
+      src.updateImage({ url: importState.imgUrl, coordinates: importState.coords });
     }
-    _previewMap.triggerRepaint();
+    importState.previewMap.triggerRepaint();
   } else {
     // 初回: ソース・レイヤーを追加（透明度スライダーの現在値を反映）
     const initOpacity = (parseInt(document.getElementById('import-opacity')?.value ?? '70', 10)) / 100;
-    _previewMap.addSource('_import-img', { type: 'image', url: _importImgUrl, coordinates: _importCoords });
-    _previewMap.addLayer({ id: '_import-layer', type: 'raster', source: '_import-img', paint: { 'raster-opacity': initOpacity } });
+    importState.previewMap.addSource('_import-img', { type: 'image', url: importState.imgUrl, coordinates: importState.coords });
+    importState.previewMap.addLayer({ id: '_import-layer', type: 'raster', source: '_import-img', paint: { 'raster-opacity': initOpacity } });
   }
   // ヒットボックスの初期化 & 更新（ドラッグ中はスキップして軽量化）
   _initImgInteraction();
-  if (!_isDraggingImage) {
+  if (!importState.isDragging) {
     _updateHitbox();
     enterScaleMode();
   }
   // 常時有効の4隅マーカーを同期
-  if (_scaleCornerMarkers.length === 4) {
-    _scaleCornerMarkers.forEach((m, i) => m.setLngLat(_importCoords[i]));
+  if (importState.scaleCornerMarkers.length === 4) {
+    importState.scaleCornerMarkers.forEach((m, i) => m.setLngLat(importState.coords[i]));
   }
 }
 
@@ -7005,9 +6981,9 @@ function _replaceImageSource() {
 // leading-edge: 既に RAF がキューに入っていれば追加しない。
 // これにより「マウス移動の最初のイベントで即時更新」が保証され、trailing-edge より遅延が少ない。
 function _replaceImageSourceRaf() {
-  if (_importDragRafId) return; // 既にキュー済み
-  _importDragRafId = requestAnimationFrame(() => {
-    _importDragRafId = null;
+  if (importState.dragRafId) return; // 既にキュー済み
+  importState.dragRafId = requestAnimationFrame(() => {
+    importState.dragRafId = null;
     _replaceImageSource();
   });
 }
@@ -7016,48 +6992,48 @@ function _replaceImageSourceRaf() {
    ヒットボックス（透明ポリゴン）＆ アンテナ型回転ハンドル ヘルパー群
    ======================================================================= */
 
-// ---- _importCoords から GeoJSON ポリゴンを生成 ----
+// ---- importState.coords から GeoJSON ポリゴンを生成 ----
 function _importCoordsToPolygon() {
-  if (!_importCoords) return { type: 'FeatureCollection', features: [] };
+  if (!importState.coords) return { type: 'FeatureCollection', features: [] };
   return {
     type: 'Feature',
-    geometry: { type: 'Polygon', coordinates: [[..._importCoords, _importCoords[0]]] }
+    geometry: { type: 'Polygon', coordinates: [[...importState.coords, importState.coords[0]]] }
   };
 }
 
-// ---- スケール UI を現在の _importScaleVal に同期 ----
+// ---- スケール UI を現在の importState.scaleVal に同期 ----
 function _syncScaleUI() {
   const el    = document.getElementById('import-scale-adj');
   const valEl = document.getElementById('import-scale-adj-val');
-  if (el)    el.value = Math.min(110, Math.max(90, _importScaleVal));
-  if (valEl) valEl.textContent = _importScaleVal.toFixed(1) + '%';
-  if (el) updateSliderGradient(el, '#2563eb');
+  if (el)    el.value = Math.min(110, Math.max(90, importState.scaleVal));
+  if (valEl) valEl.textContent = importState.scaleVal.toFixed(1) + '%';
+  if (el) updateSliderGradient(el);
 }
 
-// ---- _importBaseScaleCoords × _importScaleVal → _importCoords を再計算（Turf.js） ----
+// ---- importState.baseScaleCoords × importState.scaleVal → importState.coords を再計算（Turf.js） ----
 function _applyImportScale() {
-  if (!_importBaseScaleCoords) return;
+  if (!importState.baseScaleCoords) return;
   const origin = _getImportTransformOrigin();
   if (!origin) return;
-  const poly   = turf.polygon([[..._importBaseScaleCoords, _importBaseScaleCoords[0]]]);
-  const scaled = turf.transformScale(poly, _importScaleVal / 100, { origin });
-  _importCoords = scaled.geometry.coordinates[0].slice(0, 4);
+  const poly   = turf.polygon([[...importState.baseScaleCoords, importState.baseScaleCoords[0]]]);
+  const scaled = turf.transformScale(poly, importState.scaleVal / 100, { origin });
+  importState.coords = scaled.geometry.coordinates[0].slice(0, 4);
 }
 
-// ---- _importCoords の逆スケールで _importBaseScaleCoords を再構築 ----
+// ---- importState.coords の逆スケールで importState.baseScaleCoords を再構築 ----
 // （4隅ドラッグ後など、coords 側が先に確定したときに呼ぶ）
 function _updateBaseScaleCoords() {
-  if (!_importCoords || _importScaleVal <= 0) return;
+  if (!importState.coords || importState.scaleVal <= 0) return;
   const origin = _getImportTransformOrigin();
   if (!origin) return;
-  const poly   = turf.polygon([[..._importCoords, _importCoords[0]]]);
-  const base   = turf.transformScale(poly, 100 / _importScaleVal, { origin });
-  _importBaseScaleCoords = base.geometry.coordinates[0].slice(0, 4);
+  const poly   = turf.polygon([[...importState.coords, importState.coords[0]]]);
+  const base   = turf.transformScale(poly, 100 / importState.scaleVal, { origin });
+  importState.baseScaleCoords = base.geometry.coordinates[0].slice(0, 4);
 }
 
-// ---- 現在の _importScaleVal を座標へ反映（画像/KMZ 両モード） ----
+// ---- 現在の importState.scaleVal を座標へ反映（画像/KMZ 両モード） ----
 function _updateImportScale() {
-  if (_importBaseCoords) {
+  if (importState.baseCoords) {
     _applyKmzTransform();
   } else {
     _applyImportScale();
@@ -7067,24 +7043,24 @@ function _updateImportScale() {
 
 // ---- ヒットボックスポリゴンソースを最新座標で更新 ----
 function _updateHitbox() {
-  if (!_previewMap || !_importCoords) return;
-  const src = _previewMap.getSource('_import-hitbox');
+  if (!importState.previewMap || !importState.coords) return;
+  const src = importState.previewMap.getSource('_import-hitbox');
   if (src) src.setData(_importCoordsToPolygon());
 }
 
 
 // ---- 画像モード専用：キャッシュした偏角で回転のみ再計算し現在スケールを適用 ----
 function _updateImportRotation() {
-  if (!_importCenter || !_importImgUrl || !_previewMap) return;
+  if (!importState.center || !importState.imgUrl || !importState.previewMap) return;
   const [wM, hM] = _importCalcSizeM();
   const rotOffset = parseFloat(document.getElementById('import-rotation')?.value ?? '0');
   // 回転0°（磁北補正のみ）のベースから、指定の回転補正を適用
-  const origin = _getImportTransformOrigin() ?? [_importCenter.lng, _importCenter.lat];
-  const baseNoRot = _importCalcCorners(_importCenter.lng, _importCenter.lat, wM, hM, _cachedImportDecl);
-  _importBaseScaleCoords = Math.abs(rotOffset) < 1e-9
+  const origin = _getImportTransformOrigin() ?? [importState.center.lng, importState.center.lat];
+  const baseNoRot = _importCalcCorners(importState.center.lng, importState.center.lat, wM, hM, importState.cachedDecl);
+  importState.baseScaleCoords = Math.abs(rotOffset) < 1e-9
     ? baseNoRot
     : _rotateCoordsAroundPivot(baseNoRot, rotOffset, origin);
-  // 現在のスケール倍率を適用して _importCoords を確定
+  // 現在のスケール倍率を適用して importState.coords を確定
   _applyImportScale();
   _replaceImageSource();
 }
@@ -7092,121 +7068,121 @@ function _updateImportRotation() {
 
 // ---- ヒットボックス + ドラッグ平行移動 を初期化（冪等） ----
 function _initImgInteraction() {
-  if (!_previewMap || !_importCoords) return;
+  if (!importState.previewMap || !importState.coords) return;
 
   // --- ヒットボックスのソース・レイヤー（なければ追加） ---
-  if (!_previewMap.getSource('_import-hitbox')) {
-    _previewMap.addSource('_import-hitbox', { type: 'geojson', data: _importCoordsToPolygon() });
-    _previewMap.addLayer({
+  if (!importState.previewMap.getSource('_import-hitbox')) {
+    importState.previewMap.addSource('_import-hitbox', { type: 'geojson', data: _importCoordsToPolygon() });
+    importState.previewMap.addLayer({
       id: '_import-hitbox-layer', type: 'fill', source: '_import-hitbox',
       // fill-opacity: 0 だとクリックを拾えない場合があるため極小値を使用
       paint: { 'fill-color': '#000000', 'fill-opacity': 0.001 }
     });
-    _imgInteractionInited = true;
+    importState.interactionInited = true;
   }
 
   // --- イベントリスナーは一度だけ追加 ---
-  if (!_imgEventsAdded) {
-    _imgEventsAdded = true;
+  if (!importState.eventsAdded) {
+    importState.eventsAdded = true;
 
     // カーソル制御
-    _previewMap.on('mouseenter', '_import-hitbox-layer', () => {
-      if (!_isDraggingImage) {
-        _previewMap.getCanvas().style.cursor = (_isSettingFixedPoint || _isPlacingFixedPoint) ? 'crosshair' : 'move';
+    importState.previewMap.on('mouseenter', '_import-hitbox-layer', () => {
+      if (!importState.isDragging) {
+        importState.previewMap.getCanvas().style.cursor = (importState.isSettingFixedPoint || importState.isPlacingFixedPoint) ? 'crosshair' : 'move';
       }
     });
-    _previewMap.on('mouseleave', '_import-hitbox-layer', () => {
-      if (!_isDraggingImage) _previewMap.getCanvas().style.cursor = '';
+    importState.previewMap.on('mouseleave', '_import-hitbox-layer', () => {
+      if (!importState.isDragging) importState.previewMap.getCanvas().style.cursor = '';
     });
 
     // mousedown → ドラッグ開始（hitboxレイヤー上）
-    _previewMap.on('mousedown', '_import-hitbox-layer', (e) => {
+    importState.previewMap.on('mousedown', '_import-hitbox-layer', (e) => {
       // 固定点追加モード中は、クリック保持ですぐドラッグ位置合わせに入る
-      if (_isSettingFixedPoint && _importFixedPoints.length < 2) {
+      if (importState.isSettingFixedPoint && importState.fixedPoints.length < 2) {
         e.preventDefault();
         _importSaveState();
         _setPendingFixedPoint(e.lngLat.lng, e.lngLat.lat);
-        _isDraggingImage = true;
-        _dragStartLngLat = { lng: e.lngLat.lng, lat: e.lngLat.lat };
-        _dragStartCoords = _importCoords.map(c => [...c]);
-        _dragStartCenter = _importCenter ? { ..._importCenter } : null;
-        _dragStartBaseScaleCoords = _importBaseScaleCoords ? _importBaseScaleCoords.map(c => [...c]) : null;
-        _dragStartFixedPoints = _importFixedPoints.map(pt => ({ ...pt }));
-        _dragStartPendingFixedPoint = _importPendingFixedPoint ? { ..._importPendingFixedPoint } : null;
-        _previewMap.dragPan.disable();
-        _previewMap.getCanvas().style.cursor = 'crosshair';
+        importState.isDragging = true;
+        importState.dragStartLngLat = { lng: e.lngLat.lng, lat: e.lngLat.lat };
+        importState.dragStartCoords = importState.coords.map(c => [...c]);
+        importState.dragStartCenter = importState.center ? { ...importState.center } : null;
+        importState.dragStartBaseScaleCoords = importState.baseScaleCoords ? importState.baseScaleCoords.map(c => [...c]) : null;
+        importState.dragStartFixedPoints = importState.fixedPoints.map(pt => ({ ...pt }));
+        importState.dragStartPendingFixedPoint = importState.pendingFixedPoint ? { ...importState.pendingFixedPoint } : null;
+        importState.previewMap.dragPan.disable();
+        importState.previewMap.getCanvas().style.cursor = 'crosshair';
         return;
       }
-      if (((_importFixedPoints.length > 0) || _isSettingFixedPoint) && !_isPlacingFixedPoint) return; // 固定点設定済み時は通常移動を無効化
+      if (((importState.fixedPoints.length > 0) || importState.isSettingFixedPoint) && !importState.isPlacingFixedPoint) return; // 固定点設定済み時は通常移動を無効化
       e.preventDefault();
       _importSaveState();
-      _isDraggingImage = true;
-      _dragStartLngLat          = { lng: e.lngLat.lng, lat: e.lngLat.lat };
-      _dragStartCoords          = _importCoords.map(c => [...c]);
-      _dragStartCenter          = _importCenter          ? { ..._importCenter }          : null;
-      _dragStartBaseScaleCoords = _importBaseScaleCoords ? _importBaseScaleCoords.map(c => [...c]) : null;
-      _dragStartFixedPoints = _importFixedPoints.map(pt => ({ ...pt }));
-      _dragStartPendingFixedPoint = _importPendingFixedPoint ? { ..._importPendingFixedPoint } : null;
-      _previewMap.dragPan.disable();
-      _previewMap.getCanvas().style.cursor = _isPlacingFixedPoint ? 'crosshair' : 'grabbing';
+      importState.isDragging = true;
+      importState.dragStartLngLat          = { lng: e.lngLat.lng, lat: e.lngLat.lat };
+      importState.dragStartCoords          = importState.coords.map(c => [...c]);
+      importState.dragStartCenter          = importState.center          ? { ...importState.center }          : null;
+      importState.dragStartBaseScaleCoords = importState.baseScaleCoords ? importState.baseScaleCoords.map(c => [...c]) : null;
+      importState.dragStartFixedPoints = importState.fixedPoints.map(pt => ({ ...pt }));
+      importState.dragStartPendingFixedPoint = importState.pendingFixedPoint ? { ...importState.pendingFixedPoint } : null;
+      importState.previewMap.dragPan.disable();
+      importState.previewMap.getCanvas().style.cursor = importState.isPlacingFixedPoint ? 'crosshair' : 'grabbing';
     });
 
     // mousemove → ドラッグ中に座標をリアルタイム更新
-    _previewMap.on('mousemove', (e) => {
-      if (!_isDraggingImage) return;
-      const dx = e.lngLat.lng - _dragStartLngLat.lng;
-      const dy = e.lngLat.lat - _dragStartLngLat.lat;
-      _importCenter = _dragStartCenter
-        ? { lng: _dragStartCenter.lng + dx, lat: _dragStartCenter.lat + dy }
+    importState.previewMap.on('mousemove', (e) => {
+      if (!importState.isDragging) return;
+      const dx = e.lngLat.lng - importState.dragStartLngLat.lng;
+      const dy = e.lngLat.lat - importState.dragStartLngLat.lat;
+      importState.center = importState.dragStartCenter
+        ? { lng: importState.dragStartCenter.lng + dx, lat: importState.dragStartCenter.lat + dy }
         : null;
-      if (_importBaseCoords) {
-        // KMZモード: _importCenter を更新して _applyKmzTransform（RAF）
-        if (_isPlacingFixedPoint) {
+      if (importState.baseCoords) {
+        // KMZモード: importState.center を更新して _applyKmzTransform（RAF）
+        if (importState.isPlacingFixedPoint) {
           _applyPendingFixedPointPlacement(e.lngLat);
         }
-        if (_isPlacingFixedPoint) {
+        if (importState.isPlacingFixedPoint) {
           _replaceImageSourceRaf();
         } else {
-          if (_importDragRafId) cancelAnimationFrame(_importDragRafId);
-          _importDragRafId = requestAnimationFrame(() => {
-            _importDragRafId = null;
+          if (importState.dragRafId) cancelAnimationFrame(importState.dragRafId);
+          importState.dragRafId = requestAnimationFrame(() => {
+            importState.dragRafId = null;
             _applyKmzTransform();
           });
         }
       } else {
         // 画像モード: 全隅・ベース座標を直接平行移動 → RAFで再描画
-        if (_isPlacingFixedPoint) {
+        if (importState.isPlacingFixedPoint) {
           _applyPendingFixedPointPlacement(e.lngLat);
         } else {
-          _importCoords = _dragStartCoords.map(c => [c[0] + dx, c[1] + dy]);
-          if (_dragStartBaseScaleCoords)
-            _importBaseScaleCoords = _dragStartBaseScaleCoords.map(c => [c[0] + dx, c[1] + dy]);
+          importState.coords = importState.dragStartCoords.map(c => [c[0] + dx, c[1] + dy]);
+          if (importState.dragStartBaseScaleCoords)
+            importState.baseScaleCoords = importState.dragStartBaseScaleCoords.map(c => [c[0] + dx, c[1] + dy]);
         }
         _replaceImageSourceRaf();
       }
     });
 
     // mouseup → ドラッグ終了
-    _previewMap.on('mouseup', () => {
-      if (!_isDraggingImage) return;
-      _isDraggingImage = false;
-      _previewMap.dragPan.enable();
-      _previewMap.getCanvas().style.cursor = '';
+    importState.previewMap.on('mouseup', () => {
+      if (!importState.isDragging) return;
+      importState.isDragging = false;
+      importState.previewMap.dragPan.enable();
+      importState.previewMap.getCanvas().style.cursor = '';
       // ドラッグ終了後: ヒットボックスを正確な位置に更新
       _updateHitbox();
       // ドラッグ終了後に磁気偏角キャッシュを更新
-      if (_importCenter) {
-        try { _cachedImportDecl = geomag.field(_importCenter.lat, _importCenter.lng).declination ?? 0; } catch (e) {}
+      if (importState.center) {
+        try { importState.cachedDecl = geomag.field(importState.center.lat, importState.center.lng).declination ?? 0; } catch (e) {}
       }
-      if (_isPlacingFixedPoint && _importPendingFixedPoint) {
+      if (importState.isPlacingFixedPoint && importState.pendingFixedPoint) {
         _commitPendingFixedPoint();
       }
     });
 
     // 固定点設定モード: 次のクリック位置を仮固定点にする
-    _previewMap.on('click', (e) => {
-      if (!_isSettingFixedPoint) return;
-      if (_importFixedPoints.length >= 2) return;
+    importState.previewMap.on('click', (e) => {
+      if (!importState.isSettingFixedPoint) return;
+      if (importState.fixedPoints.length >= 2) return;
       _importSaveState();
       _setPendingFixedPoint(e.lngLat.lng, e.lngLat.lat);
       _updateFixedPointStatus();
@@ -7218,74 +7194,74 @@ function _initImgInteraction() {
 
 // ---- Undo/Redo：現在の座標・中心・回転値を履歴に保存 ----
 function _importSaveState() {
-  if (!_importCoords) return;
-  _importHistory.push({
-    coords : _importCoords.map(c => [...c]),
-    center : _importCenter ? { ..._importCenter } : null,
+  if (!importState.coords) return;
+  importState.history.push({
+    coords : importState.coords.map(c => [...c]),
+    center : importState.center ? { ...importState.center } : null,
     rotation: document.getElementById('import-rotation')?.value ?? '0',
-    scaleVal: _importScaleVal,
-    baseScaleCoords: _importBaseScaleCoords ? _importBaseScaleCoords.map(c => [...c]) : null,
-    fixedPoints: _importFixedPoints.map(pt => ({ ...pt })),
+    scaleVal: importState.scaleVal,
+    baseScaleCoords: importState.baseScaleCoords ? importState.baseScaleCoords.map(c => [...c]) : null,
+    fixedPoints: importState.fixedPoints.map(pt => ({ ...pt })),
   });
-  _importFuture = []; // 新操作でredo履歴をクリア
+  importState.future = []; // 新操作でredo履歴をクリア
 }
 
 // ---- Undo：一つ前の状態を復元 ----
 function _importUndo() {
-  if (_importHistory.length === 0) return;
+  if (importState.history.length === 0) return;
   // 現在の状態をredo用に保存
-  if (_importCoords) {
-    _importFuture.push({
-      coords : _importCoords.map(c => [...c]),
-      center : _importCenter ? { ..._importCenter } : null,
+  if (importState.coords) {
+    importState.future.push({
+      coords : importState.coords.map(c => [...c]),
+      center : importState.center ? { ...importState.center } : null,
       rotation: document.getElementById('import-rotation')?.value ?? '0',
-      scaleVal: _importScaleVal,
-      baseScaleCoords: _importBaseScaleCoords ? _importBaseScaleCoords.map(c => [...c]) : null,
-      fixedPoints: _importFixedPoints.map(pt => ({ ...pt })),
+      scaleVal: importState.scaleVal,
+      baseScaleCoords: importState.baseScaleCoords ? importState.baseScaleCoords.map(c => [...c]) : null,
+      fixedPoints: importState.fixedPoints.map(pt => ({ ...pt })),
     });
   }
-  const state = _importHistory.pop();
+  const state = importState.history.pop();
   _importRestoreState(state);
 }
 
 // ---- Redo：一つ先の状態に進む ----
 function _importRedo() {
-  if (_importFuture.length === 0) return;
-  if (_importCoords) {
-    _importHistory.push({
-      coords : _importCoords.map(c => [...c]),
-      center : _importCenter ? { ..._importCenter } : null,
+  if (importState.future.length === 0) return;
+  if (importState.coords) {
+    importState.history.push({
+      coords : importState.coords.map(c => [...c]),
+      center : importState.center ? { ...importState.center } : null,
       rotation: document.getElementById('import-rotation')?.value ?? '0',
-      scaleVal: _importScaleVal,
-      baseScaleCoords: _importBaseScaleCoords ? _importBaseScaleCoords.map(c => [...c]) : null,
-      fixedPoints: _importFixedPoints.map(pt => ({ ...pt })),
+      scaleVal: importState.scaleVal,
+      baseScaleCoords: importState.baseScaleCoords ? importState.baseScaleCoords.map(c => [...c]) : null,
+      fixedPoints: importState.fixedPoints.map(pt => ({ ...pt })),
     });
   }
-  const state = _importFuture.pop();
+  const state = importState.future.pop();
   _importRestoreState(state);
 }
 
 // ---- 状態を復元して再描画 ----
 function _importRestoreState(state) {
-  _importCoords = state.coords.map(c => [...c]);
-  _importCenter = state.center ? { ...state.center } : null;
-  _importScaleVal = Number.isFinite(state.scaleVal) ? state.scaleVal : 100;
-  _importBaseScaleCoords = state.baseScaleCoords
+  importState.coords = state.coords.map(c => [...c]);
+  importState.center = state.center ? { ...state.center } : null;
+  importState.scaleVal = Number.isFinite(state.scaleVal) ? state.scaleVal : 100;
+  importState.baseScaleCoords = state.baseScaleCoords
     ? state.baseScaleCoords.map(c => [...c])
     : null;
   if (Array.isArray(state.fixedPoints)) {
-    _importFixedPoints = state.fixedPoints.map(pt => ({ ...pt })).slice(0, 2);
+    importState.fixedPoints = state.fixedPoints.map(pt => ({ ...pt })).slice(0, 2);
   } else if (state.fixedPoint) {
-    _importFixedPoints = [{ ...state.fixedPoint }];
+    importState.fixedPoints = [{ ...state.fixedPoint }];
   } else {
-    _importFixedPoints = [];
+    importState.fixedPoints = [];
   }
-  _importPendingFixedPoint = null;
-  _isSettingFixedPoint = false;
-  _isPlacingFixedPoint = false;
+  importState.pendingFixedPoint = null;
+  importState.isSettingFixedPoint = false;
+  importState.isPlacingFixedPoint = false;
   _renderFixedPointMarkers();
   _updateFixedPointStatus();
-  if (!_importBaseScaleCoords) _updateBaseScaleCoords();
+  if (!importState.baseScaleCoords) _updateBaseScaleCoords();
   _syncScaleUI();
   const rotEl = document.getElementById('import-rotation');
   if (rotEl) {
@@ -7294,8 +7270,8 @@ function _importRestoreState(state) {
       parseFloat(state.rotation).toFixed(2);
   }
   // 常時有効の4隅マーカーも更新
-  if (_scaleCornerMarkers.length === 4) {
-    _scaleCornerMarkers.forEach((m, i) => m.setLngLat(_importCoords[i]));
+  if (importState.scaleCornerMarkers.length === 4) {
+    importState.scaleCornerMarkers.forEach((m, i) => m.setLngLat(importState.coords[i]));
   }
   // 旧・微調整モード（廃止）: if (_fineTuneActive && _importCornerMarkers.length === 4) { _importCornerMarkers.forEach(...) }
   _replaceImageSource();
@@ -7303,36 +7279,36 @@ function _importRestoreState(state) {
 
 // ---- プレビューマップ上のソース/マーカーを最新設定に更新（画像モード用） ----
 function _updateImportPreview() {
-  if (!_previewMap || !_importImgUrl) return;
+  if (!importState.previewMap || !importState.imgUrl) return;
 
   // 中心位置：マーカーがなければマップ中心で初期化
-  if (!_importCenter) {
-    const mc = _previewMap.getCenter();
-    _importCenter = { lng: mc.lng, lat: mc.lat };
+  if (!importState.center) {
+    const mc = importState.previewMap.getCenter();
+    importState.center = { lng: mc.lng, lat: mc.lat };
   }
-  const c = _importCenter;
+  const c = importState.center;
 
   const [wM, hM] = _importCalcSizeM();
   const rotOffset = parseFloat(document.getElementById('import-rotation')?.value ?? '0');
   let decl = 0;
   try { decl = geomag.field(c.lat, c.lng).declination ?? 0; } catch (e) {}
-  _cachedImportDecl = decl; // ドラッグ用キャッシュを更新
+  importState.cachedDecl = decl; // ドラッグ用キャッシュを更新
   // 用紙サイズ・縮尺変更時はスケールをリセットしてベース座標を再構築
-  _importScaleVal        = 100;
+  importState.scaleVal        = 100;
   const origin = _getImportTransformOrigin() ?? [c.lng, c.lat];
   const baseNoRot = _importCalcCorners(c.lng, c.lat, wM, hM, decl);
-  _importBaseScaleCoords = Math.abs(rotOffset) < 1e-9
+  importState.baseScaleCoords = Math.abs(rotOffset) < 1e-9
     ? baseNoRot
     : _rotateCoordsAroundPivot(baseNoRot, rotOffset, origin);
-  _importCoords = _importBaseScaleCoords.map(p => [...p]);
+  importState.coords = importState.baseScaleCoords.map(p => [...p]);
   _syncScaleUI();
 
   // 初回のみ: 画像全体にフィット
-  if (!_previewMap.getSource('_import-img')) {
-    const lngs = _importCoords.map(p => p[0]), lats = _importCoords.map(p => p[1]);
-    _previewMap.fitBounds(
+  if (!importState.previewMap.getSource('_import-img')) {
+    const lngs = importState.coords.map(p => p[0]), lats = importState.coords.map(p => p[1]);
+    importState.previewMap.fitBounds(
       [[Math.min(...lngs), Math.min(...lats)], [Math.max(...lngs), Math.max(...lats)]],
-      { padding: 60, duration: 0 }
+      { padding: FIT_BOUNDS_PAD, duration: 0 }
     );
   }
 
@@ -7387,23 +7363,23 @@ function _addPreviewContourAndNorth(m) {
 // ---- モーダル共通初期化（previewMap生成） ----
 // onLoad: マップ読み込み完了後に呼ぶコールバック
 function _openImportOverlay(imgUrl, onLoad) {
-  _importImgUrl           = imgUrl;
-  _importCoords           = null;
-  _previewOriLibreLayers  = [];
-  _importCenter         = null;
-  _importBaseCoords     = null;
-  _importHistory        = [];
-  _importFuture         = [];
-  _cachedImportDecl     = 0;
-  _importScaleVal       = 100;
-  _importBaseScaleCoords = null;
+  importState.imgUrl           = imgUrl;
+  importState.coords           = null;
+  importState.oriLibreLayers  = [];
+  importState.center         = null;
+  importState.baseCoords     = null;
+  importState.history        = [];
+  importState.future         = [];
+  importState.cachedDecl     = 0;
+  importState.scaleVal       = 100;
+  importState.baseScaleCoords = null;
   _clearImportFixedPoints();
-  _isDraggingImage      = false;
-  _imgInteractionInited = false;
-  _imgEventsAdded       = false;
+  importState.isDragging      = false;
+  importState.interactionInited = false;
+  importState.eventsAdded       = false;
   // 4隅マーカーを作り直す
-  _scaleCornerMarkers.forEach(m => m.remove());
-  _scaleCornerMarkers = [];
+  importState.scaleCornerMarkers.forEach(m => m.remove());
+  importState.scaleCornerMarkers = [];
   // 透明度スライダーを初期値に
   const opEl = document.getElementById('import-opacity');
   if (opEl) { opEl.value = '70'; document.getElementById('import-opacity-val').textContent = '70'; }
@@ -7415,7 +7391,7 @@ function _openImportOverlay(imgUrl, onLoad) {
   if (rotEl) updateSliderGradient(rotEl, '#2563eb');
   document.getElementById('import-overlay').classList.add('visible');
 
-  if (_previewMap) { _previewMap.remove(); _previewMap = null; }
+  if (importState.previewMap) { importState.previewMap.remove(); importState.previewMap = null; }
 
   // 初期背景: OriLibreが利用可能なら優先（地理院タイルより高品質）
   const bgSel = document.getElementById('import-bg-select');
@@ -7424,21 +7400,26 @@ function _openImportOverlay(imgUrl, onLoad) {
 
   const initStyle = (initBg === 'orilibre') ? oriLibreCachedStyle : _PREVIEW_RASTER_STYLE;
 
-  _previewMap = new maplibregl.Map({
+  importState.previewMap = new maplibregl.Map({
     container: 'import-preview-map',
     style: initStyle,
     center: map.getCenter(),
     zoom: Math.max(map.getZoom(), 12),
     pitch: 0, bearing: 0,
+    pitchWithRotate: false,  // 右クリックドラッグによるピッチ変更を禁止
     attributionControl: false,
   });
+  // 回転・ピッチ操作を完全に無効化（常に真上から北向き固定）
+  importState.previewMap.dragRotate.disable();
+  importState.previewMap.touchZoomRotate.disableRotation();
+  importState.previewMap.touchPitch.disable();
 
-  _previewMap.on('load', () => {
-    if (_previewMap.getTerrain()) _previewMap.setTerrain(null);
+  importState.previewMap.on('load', () => {
+    if (importState.previewMap.getTerrain()) importState.previewMap.setTerrain(null);
 
     if (initBg === 'orilibre') {
       // OriLibre 初期化時: 全レイヤーIDと初期 visibility を記録
-      _previewOriLibreLayers = _previewMap.getStyle().layers.map(l => ({
+      importState.oriLibreLayers = importState.previewMap.getStyle().layers.map(l => ({
         id: l.id,
         vis: l.layout?.visibility ?? 'visible',
       }));
@@ -7446,16 +7427,16 @@ function _openImportOverlay(imgUrl, onLoad) {
       // これにより以降の背景切替は setStyle なし visibility 操作のみで済む
       const rs = _PREVIEW_RASTER_STYLE;
       Object.entries(rs.sources).forEach(([id, src]) => {
-        if (!_previewMap.getSource(id)) _previewMap.addSource(id, src);
+        if (!importState.previewMap.getSource(id)) importState.previewMap.addSource(id, src);
       });
       rs.layers.forEach(l => {
-        if (!_previewMap.getLayer(l.id)) {
-          _previewMap.addLayer({ ...l, layout: { ...(l.layout || {}), visibility: 'none' } });
+        if (!importState.previewMap.getLayer(l.id)) {
+          importState.previewMap.addLayer({ ...l, layout: { ...(l.layout || {}), visibility: 'none' } });
         }
       });
     } else {
       // ラスター初期化時: 等高線・磁北線を追加
-      _addPreviewContourAndNorth(_previewMap);
+      _addPreviewContourAndNorth(importState.previewMap);
     }
 
     onLoad();
@@ -7465,8 +7446,8 @@ function _openImportOverlay(imgUrl, onLoad) {
 // ---- 画像縦横比から最適な用紙サイズ・向きを自動推定してUIに反映 ----
 // ---- 画像ファイルから開く（用紙サイズ設定UI表示・A4デフォルト） ----
 function openImportModal(imageFile) {
-  _importImgFile = imageFile;
-  _importImgAspect = null;
+  importState.imgFile = imageFile;
+  importState.imgAspect = null;
   // 画像モード: コントロールパネル全体を表示（用紙サイズ含む）
   document.getElementById('import-controls').style.display = '';
   document.getElementById('import-image-only-ctrl').style.display = '';
@@ -7475,34 +7456,34 @@ function openImportModal(imageFile) {
   const imgUrl = URL.createObjectURL(imageFile);
   const tmp = new Image();
   tmp.onload  = () => {
-    _importImgAspect = (tmp.width > 0 && tmp.height > 0) ? (tmp.width / tmp.height) : null;
+    importState.imgAspect = (tmp.width > 0 && tmp.height > 0) ? (tmp.width / tmp.height) : null;
     document.getElementById('import-orientation').value = tmp.width >= tmp.height ? 'landscape' : 'portrait';
     _openImportOverlay(imgUrl, _updateImportPreview);
   };
   tmp.onerror = () => {
-    _importImgAspect = null;
+    importState.imgAspect = null;
     document.getElementById('import-orientation').value = 'portrait';
     _openImportOverlay(imgUrl, _updateImportPreview);
   };
   tmp.src = imgUrl;
 }
 
-// ---- KMZ: 現在の _importCenter + 回転スライダーで座標を再計算 ----
+// ---- KMZ: 現在の importState.center + 回転スライダーで座標を再計算 ----
 function _applyKmzTransform() {
-  if (!_previewMap || !_importBaseCoords || !_importCenter) return;
-  const { lng: cLng, lat: cLat } = _importCenter;
+  if (!importState.previewMap || !importState.baseCoords || !importState.center) return;
+  const { lng: cLng, lat: cLat } = importState.center;
   const rotDeg = parseFloat(document.getElementById('import-rotation')?.value ?? '0');
 
-  // _importBaseCoords の重心（基準中心）を算出
-  const baseLngs = _importBaseCoords.map(c => c[0]);
-  const baseLats = _importBaseCoords.map(c => c[1]);
+  // importState.baseCoords の重心（基準中心）を算出
+  const baseLngs = importState.baseCoords.map(c => c[0]);
+  const baseLats = importState.baseCoords.map(c => c[1]);
   const baseCLng = (Math.min(...baseLngs) + Math.max(...baseLngs)) / 2;
   const baseCLat = (Math.min(...baseLats) + Math.max(...baseLats)) / 2;
   const baseCtr  = turf.point([baseCLng, baseCLat]);
   const newCtr   = turf.point([cLng, cLat]);
 
   // 各隅を基準中心からの距離・方位で算出し、まず平行移動して新中心に配置
-  const rawCoords = _importBaseCoords.map(([lng, lat]) => {
+  const rawCoords = importState.baseCoords.map(([lng, lat]) => {
     const pt   = turf.point([lng, lat]);
     const dist = turf.distance(baseCtr, pt, { units: 'kilometers' });
     const bear = turf.bearing(baseCtr, pt);
@@ -7514,7 +7495,7 @@ function _applyKmzTransform() {
     ? rawCoords
     : _rotateCoordsAroundPivot(rawCoords, rotDeg, origin);
   // KMZ変換後のコードをスケール100%ベースとして保存し、現在スケールを適用
-  _importBaseScaleCoords = rotatedRaw;
+  importState.baseScaleCoords = rotatedRaw;
   _applyImportScale();
   _syncScaleUI();
   _replaceImageSource();
@@ -7522,8 +7503,8 @@ function _applyKmzTransform() {
 
 // ---- KMZ座標付きで開く（回転のみ表示、用紙サイズUI非表示） ----
 function openImportModalWithCoords(imgUrl, coords, label) {
-  _importImgFile = null;
-  _importImgAspect = null;
+  importState.imgFile = null;
+  importState.imgAspect = null;
   // KMZモード: コントロールパネルを表示し、用紙サイズ・縮尺部分は非表示
   document.getElementById('import-controls').style.display = '';
   document.getElementById('import-image-only-ctrl').style.display = 'none';
@@ -7536,17 +7517,17 @@ function openImportModalWithCoords(imgUrl, coords, label) {
   // _openImportOverlay がリセットするため、状態変数は onLoad コールバック内で初期化する
   _openImportOverlay(imgUrl, () => {
     // ここで初期化（_openImportOverlay によるリセット後に設定）
-    _importBaseCoords = coords.map(c => [...c]); // 回転前の基準座標
-    _importCoords     = coords.map(c => [...c]);
-    _importScaleVal   = 100;
-    _importBaseScaleCoords = coords.map(c => [...c]);
+    importState.baseCoords = coords.map(c => [...c]); // 回転前の基準座標
+    importState.coords     = coords.map(c => [...c]);
+    importState.scaleVal   = 100;
+    importState.baseScaleCoords = coords.map(c => [...c]);
     _syncScaleUI();
-    _importCenter     = { lng: centerLng, lat: centerLat };
+    importState.center     = { lng: centerLng, lat: centerLat };
 
     // KMZ画像全体が収まるようfitBounds（即時・アニメーションなし）
-    _previewMap.fitBounds(
+    importState.previewMap.fitBounds(
       [[Math.min(...lngs), Math.min(...lats)], [Math.max(...lngs), Math.max(...lats)]],
-      { padding: 60, duration: 0 }
+      { padding: FIT_BOUNDS_PAD, duration: 0 }
     );
 
     // 画像ソース + hitbox を一括初期化
@@ -7556,42 +7537,42 @@ function openImportModalWithCoords(imgUrl, coords, label) {
 
 /* ---- 微調整モード（廃止：拡大縮小モードに統合）----
 function enterFineTuneMode() {
-  if (!_previewMap || !_importCoords) return;
+  if (!importState.previewMap || !importState.coords) return;
   _fineTuneActive = true;
-  if (_previewMap.getLayer('_import-hitbox-layer'))
-    _previewMap.setLayoutProperty('_import-hitbox-layer', 'visibility', 'none');
-  _previewMap.getCanvas().style.cursor = '';
-  _importCornerMarkers = _importCoords.map((coord, i) => {
+  if (importState.previewMap.getLayer('_import-hitbox-layer'))
+    importState.previewMap.setLayoutProperty('_import-hitbox-layer', 'visibility', 'none');
+  importState.previewMap.getCanvas().style.cursor = '';
+  _importCornerMarkers = importState.coords.map((coord, i) => {
     const el = document.createElement('div');
     el.style.cssText =
       'width:14px;height:14px;background:#ff9900;border:2px solid #fff;' +
       'border-radius:50%;cursor:grab;box-shadow:0 1px 4px rgba(0,0,0,0.6);';
     el.title = ['左上', '右上', '右下', '左下'][i];
     const marker = new maplibregl.Marker({ element: el, draggable: true })
-      .setLngLat(coord).addTo(_previewMap);
+      .setLngLat(coord).addTo(importState.previewMap);
     marker.on('dragstart', () => { _importSaveState(); });
-    marker.on('drag', () => { const ll = marker.getLngLat(); _importCoords[i] = [ll.lng, ll.lat]; _replaceImageSourceRaf(); });
+    marker.on('drag', () => { const ll = marker.getLngLat(); importState.coords[i] = [ll.lng, ll.lat]; _replaceImageSourceRaf(); });
     return marker;
   });
 }
 function exitFineTuneMode() {
   _fineTuneActive = false;
   _importCornerMarkers.forEach(m => m.remove()); _importCornerMarkers = [];
-  if (_previewMap && _previewMap.getLayer('_import-hitbox-layer'))
-    _previewMap.setLayoutProperty('_import-hitbox-layer', 'visibility', 'visible');
+  if (importState.previewMap && importState.previewMap.getLayer('_import-hitbox-layer'))
+    importState.previewMap.setLayoutProperty('_import-hitbox-layer', 'visibility', 'visible');
 }
 */
 
 // ---- 4隅マーカーを常時表示（固定点があれば固定点中心、なければ対角固定で相似拡大縮小） ----
 function enterScaleMode() {
-  if (!_previewMap || !_importCoords) return;
-  if (_scaleCornerMarkers.length === 4) {
-    _scaleCornerMarkers.forEach((m, i) => m.setLngLat(_importCoords[i]));
+  if (!importState.previewMap || !importState.coords) return;
+  if (importState.scaleCornerMarkers.length === 4) {
+    importState.scaleCornerMarkers.forEach((m, i) => m.setLngLat(importState.coords[i]));
     return;
   }
 
   // 4隅にドラッグ可能なマーカーを配置
-  _scaleCornerMarkers = _importCoords.map((coord, i) => {
+  importState.scaleCornerMarkers = importState.coords.map((coord, i) => {
     const el = document.createElement('div');
     el.style.cssText =
       'width:14px;height:14px;background:#2288ff;border:2px solid #fff;' +
@@ -7599,7 +7580,7 @@ function enterScaleMode() {
     el.title = ['左上', '右上', '右下', '左下'][i] + '（ドラッグで拡大縮小）';
     const marker = new maplibregl.Marker({ element: el, draggable: true })
       .setLngLat(coord)
-      .addTo(_previewMap);
+      .addTo(importState.previewMap);
 
     // dragstart/drag 用クロージャ変数
     let fixedCoord    = null; // 固定する座標（固定点 or 対角コーナー）
@@ -7609,14 +7590,14 @@ function enterScaleMode() {
 
     marker.on('dragstart', () => {
       _importSaveState();
-      if (_importFixedPoints.length > 0) {
+      if (importState.fixedPoints.length > 0) {
         fixedCoord = _getImportTransformOrigin();
       } else {
         const oppIdx = (i + 2) % 4;                 // 対角コーナーのインデックス
-        fixedCoord   = [..._importCoords[oppIdx]];  // 固定点（対角）
+        fixedCoord   = [...importState.coords[oppIdx]];  // 固定点（対角）
       }
-      startCoords    = _importCoords.map(c => [...c]);
-      savedScaleVal  = _importScaleVal;
+      startCoords    = importState.coords.map(c => [...c]);
+      savedScaleVal  = importState.scaleVal;
       const cosLat   = Math.cos(fixedCoord[1] * Math.PI / 180);
       const dx0      = (startCoords[i][0] - fixedCoord[0]) * cosLat;
       const dy0      =  startCoords[i][1] - fixedCoord[1];
@@ -7631,22 +7612,22 @@ function enterScaleMode() {
       const dy1    =  ll.lat - fixedCoord[1];
       const scale  = Math.sqrt(dx1 * dx1 + dy1 * dy1) / startDist;
       // 全隅を固定点からの相似拡大縮小で再計算
-      _importCoords = startCoords.map(([lng, lat]) => {
+      importState.coords = startCoords.map(([lng, lat]) => {
         const dx = (lng - fixedCoord[0]) * cosLat;
         const dy =  lat - fixedCoord[1];
         return [fixedCoord[0] + dx * scale / cosLat, fixedCoord[1] + dy * scale];
       });
       // 中心を4隅重心で再計算
-      _importCenter = {
-        lng: _importCoords.reduce((s, c) => s + c[0], 0) / 4,
-        lat: _importCoords.reduce((s, c) => s + c[1], 0) / 4,
+      importState.center = {
+        lng: importState.coords.reduce((s, c) => s + c[0], 0) / 4,
+        lat: importState.coords.reduce((s, c) => s + c[1], 0) / 4,
       };
       // スケール倍率を更新しUIと逆変換ベース座標を同期
-      _importScaleVal = savedScaleVal * scale;
+      importState.scaleVal = savedScaleVal * scale;
       _syncScaleUI();
       _updateBaseScaleCoords();
       // 全マーカーを最新座標に移動
-      _scaleCornerMarkers.forEach((m, j) => m.setLngLat(_importCoords[j]));
+      importState.scaleCornerMarkers.forEach((m, j) => m.setLngLat(importState.coords[j]));
       _replaceImageSourceRaf();
     });
 
@@ -7656,33 +7637,33 @@ function enterScaleMode() {
 
 // ---- 4隅マーカー解除 ----
 function exitScaleMode() {
-  _scaleCornerMarkers.forEach(m => m.remove());
-  _scaleCornerMarkers = [];
+  importState.scaleCornerMarkers.forEach(m => m.remove());
+  importState.scaleCornerMarkers = [];
 }
 
 // ---- モーダルを閉じる（revokeUrl=false のとき ObjectURL を解放しない） ----
 function closeImportModal(revokeUrl = true) {
-  _scaleCornerMarkers.forEach(m => m.remove());
-  _scaleCornerMarkers = [];
-  _importFixedPointMarkers.forEach(m => m.remove());
-  _importFixedPointMarkers = [];
-  if (_importFixedPointOverlay && _importFixedPointOverlay.isConnected) {
-    _importFixedPointOverlay.remove();
+  importState.scaleCornerMarkers.forEach(m => m.remove());
+  importState.scaleCornerMarkers = [];
+  importState.fixedPointMarkers.forEach(m => m.remove());
+  importState.fixedPointMarkers = [];
+  if (importState.fixedPointOverlay && importState.fixedPointOverlay.isConnected) {
+    importState.fixedPointOverlay.remove();
   }
-  _importFixedPointOverlay = null;
-  _fixedPointOverlayEventsAdded = false;
+  importState.fixedPointOverlay = null;
+  importState.fixedPointOverlayEventsAdded = false;
   _clearImportFixedPoints();
   // _importCornerMarkers.forEach(m => m.remove()); _importCornerMarkers = []; // 旧・微調整モード（廃止）
   // _fineTuneActive = false; // 廃止
-  _isDraggingImage        = false;
-  _imgInteractionInited   = false;
-  _imgEventsAdded         = false;
+  importState.isDragging        = false;
+  importState.interactionInited   = false;
+  importState.eventsAdded         = false;
   document.getElementById('import-overlay').classList.remove('visible');
-  if (_previewMap)         { _previewMap.remove(); _previewMap = null; }
-  if (revokeUrl && _importImgUrl) { URL.revokeObjectURL(_importImgUrl); }
-  _importImgUrl  = null;
-  _importImgFile = null;
-  _importCoords  = null;
+  if (importState.previewMap)         { importState.previewMap.remove(); importState.previewMap = null; }
+  if (revokeUrl && importState.imgUrl) { URL.revokeObjectURL(importState.imgUrl); }
+  importState.imgUrl  = null;
+  importState.imgFile = null;
+  importState.coords  = null;
 }
 
 // ---- イベントリスナー ----
@@ -7708,7 +7689,7 @@ document.getElementById('import-scale-custom').addEventListener('input', _update
 
 // 背景地図切り替え（setStyle を使わず visibility 操作のみ、画像レイヤーに触れない）
 document.getElementById('import-bg-select').addEventListener('change', (e) => {
-  if (!_previewMap) return;
+  if (!importState.previewMap) return;
   const val = e.target.value;
   const toOriLibre = (val === 'orilibre');
   const rasterLayerMap = {
@@ -7719,15 +7700,15 @@ document.getElementById('import-bg-select').addEventListener('change', (e) => {
   };
 
   // OriLibreレイヤー: 初期化時に記録した ID リストで表示/非表示を一括切り替え
-  _previewOriLibreLayers.forEach(({ id, vis }) => {
-    if (_previewMap.getLayer(id))
-      _previewMap.setLayoutProperty(id, 'visibility', toOriLibre ? vis : 'none');
+  importState.oriLibreLayers.forEach(({ id, vis }) => {
+    if (importState.previewMap.getLayer(id))
+      importState.previewMap.setLayoutProperty(id, 'visibility', toOriLibre ? vis : 'none');
   });
 
   // ラスターレイヤー: 選択したものだけ表示
   Object.entries(rasterLayerMap).forEach(([key, layerId]) => {
-    if (_previewMap.getLayer(layerId))
-      _previewMap.setLayoutProperty(layerId, 'visibility', !toOriLibre && key === val ? 'visible' : 'none');
+    if (importState.previewMap.getLayer(layerId))
+      importState.previewMap.setLayoutProperty(layerId, 'visibility', !toOriLibre && key === val ? 'visible' : 'none');
   });
 
   // 画像ソース/レイヤーには一切触れないので、読み込んだ地図画像はそのまま表示され続ける
@@ -7738,7 +7719,7 @@ document.getElementById('import-rotation').addEventListener('input', (e) => {
   document.getElementById('import-rotation-val').textContent = parseFloat(e.target.value).toFixed(2);
   updateSliderGradient(e.target, '#2563eb');
   // KMZモードと画像モードで処理を分岐
-  if (_importBaseCoords) {
+  if (importState.baseCoords) {
     _applyKmzTransform();
   } else {
     _updateImportRotation();
@@ -7773,7 +7754,7 @@ function _applyRotationAdj(delta) {
   rotEl.value = newVal;
   document.getElementById('import-rotation-val').textContent = newVal.toFixed(2);
   updateSliderGradient(rotEl, '#2563eb');
-  if (_importBaseCoords) { _applyKmzTransform(); } else { _updateImportRotation(); }
+  if (importState.baseCoords) { _applyKmzTransform(); } else { _updateImportRotation(); }
 }
 document.getElementById('import-rotation-minus').addEventListener('click', () => _applyRotationAdj(-0.05));
 document.getElementById('import-rotation-plus') .addEventListener('click', () => _applyRotationAdj( 0.05));
@@ -7784,26 +7765,26 @@ document.getElementById('import-rotation-reset').addEventListener('click', () =>
   rotEl.value = '0';
   document.getElementById('import-rotation-val').textContent = '0.00';
   updateSliderGradient(rotEl, '#2563eb');
-  if (_importBaseCoords) { _applyKmzTransform(); } else { _updateImportRotation(); }
+  if (importState.baseCoords) { _applyKmzTransform(); } else { _updateImportRotation(); }
 });
 
 // 固定点の追加/解除
 document.getElementById('import-fixed-point-set').addEventListener('click', () => {
-  if (!_previewMap || !_importCoords) return;
-  if (_importFixedPoints.length >= 2) return;
+  if (!importState.previewMap || !importState.coords) return;
+  if (importState.fixedPoints.length >= 2) return;
   _setFixedPointSettingMode(true);
-  _importPendingFixedPoint = null;
+  importState.pendingFixedPoint = null;
   _renderFixedPointMarkers();
 });
 document.getElementById('import-fixed-point-commit').addEventListener('click', () => {
-  if (!_importPendingFixedPoint) return;
+  if (!importState.pendingFixedPoint) return;
   _importSaveState();
   _commitPendingFixedPoint();
   _updateBaseScaleCoords();
   _replaceImageSource();
 });
 document.getElementById('import-fixed-point-clear').addEventListener('click', () => {
-  if (_importFixedPoints.length === 0 && !_importPendingFixedPoint) return;
+  if (importState.fixedPoints.length === 0 && !importState.pendingFixedPoint) return;
   _importSaveState();
   _clearImportFixedPoints();
   _updateBaseScaleCoords();
@@ -7812,7 +7793,7 @@ document.getElementById('import-fixed-point-clear').addEventListener('click', ()
 
 // スケール補正スライダー/微調整ボタン
 document.getElementById('import-scale-adj').addEventListener('input', (e) => {
-  _importScaleVal = parseFloat(e.target.value);
+  importState.scaleVal = parseFloat(e.target.value);
   _syncScaleUI();
   _updateImportScale();
 });
@@ -7822,7 +7803,7 @@ function _applyScaleAdj(delta) {
   _importSaveState(); // 変更前にundo用保存
   const cur = parseFloat(scaleEl.value);
   const newVal = Math.min(110, Math.max(90, cur + delta));
-  _importScaleVal = newVal;
+  importState.scaleVal = newVal;
   _syncScaleUI();
   _updateImportScale();
 }
@@ -7830,7 +7811,7 @@ document.getElementById('import-scale-adj-minus').addEventListener('click', () =
 document.getElementById('import-scale-adj-plus') .addEventListener('click', () => _applyScaleAdj( 0.1));
 document.getElementById('import-scale-adj-reset').addEventListener('click', () => {
   _importSaveState();
-  _importScaleVal = 100;
+  importState.scaleVal = 100;
   _syncScaleUI();
   _updateImportScale();
 });
@@ -7845,8 +7826,8 @@ document.getElementById('import-opacity').addEventListener('input', (e) => {
   const opacity = parseInt(e.target.value, 10) / 100;
   document.getElementById('import-opacity-val').textContent = e.target.value;
   updateSliderGradient(e.target, '#2563eb');
-  if (_previewMap && _previewMap.getLayer('_import-layer')) {
-    _previewMap.setPaintProperty('_import-layer', 'raster-opacity', opacity);
+  if (importState.previewMap && importState.previewMap.getLayer('_import-layer')) {
+    importState.previewMap.setPaintProperty('_import-layer', 'raster-opacity', opacity);
   }
 });
 
@@ -7874,18 +7855,18 @@ document.addEventListener('keydown', (e) => {
 
 // 決定ボタン → メインマップにレイヤーを追加・枠を作成してモーダルを閉じる
 document.getElementById('import-decide-btn').addEventListener('click', () => {
-  if (!_importCoords || !_importImgUrl) return;
+  if (!importState.coords || !importState.imgUrl) return;
   const uid     = `img-import-${Date.now()}`;
-  const name    = _importImgFile?.name ?? '手動配置地図';
-  const keepUrl = _importImgUrl;
-  _importImgUrl = null; // closeImportModal での revoke を防ぐ
+  const name    = importState.imgFile?.name ?? '手動配置地図';
+  const keepUrl = importState.imgUrl;
+  importState.imgUrl = null; // closeImportModal での revoke を防ぐ
 
   // 画像をメインマップに追加（表示）
-  addImageLayerToMap(uid + '-src', uid + '-layer', keepUrl, _importCoords, OMAP_INITIAL_OPACITY);
+  addImageLayerToMap(uid + '-src', uid + '-layer', keepUrl, importState.coords, OMAP_INITIAL_OPACITY);
 
   // kmzList UI に登録
-  const lngs = _importCoords.map(c => c[0]);
-  const lats  = _importCoords.map(c => c[1]);
+  const lngs = importState.coords.map(c => c[0]);
+  const lats  = importState.coords.map(c => c[1]);
   kmzLayers.push({
     id: kmzCounter++, name,
     sourceId: uid + '-src', layerId: uid + '-layer',
@@ -7900,7 +7881,7 @@ document.getElementById('import-decide-btn').addEventListener('click', () => {
   mapFrames.push({
     id: uid,
     properties: { name },
-    coordinates: _importCoords.map(c => [...c]),
+    coordinates: importState.coords.map(c => [...c]),
     opacity: OMAP_INITIAL_OPACITY,
     images: [{ id: uid, name, url: keepUrl }],
     activeImageId: uid,
@@ -8058,7 +8039,7 @@ document.getElementById('import-decide-btn').addEventListener('click', () => {
     B2: [515, 728], B3: [364, 515], B4: [257, 364], B5: [182, 257],
   };
 
-  let _previewMap = null;  // プレビュー用 MapLibre インスタンス
+  let printPreviewMap = null;  // 印刷プレビュー用 MapLibre インスタンス
   let _dialogOpen = false;
 
   const overlay        = document.getElementById('print-overlay');
@@ -8090,10 +8071,10 @@ document.getElementById('import-decide-btn').addEventListener('click', () => {
 
   // プレビューマップ中心から印刷範囲の GeoJSON ポリゴンを計算して更新
   function updateRectangle() {
-    if (!_previewMap) return;
+    if (!printPreviewMap) return;
     const [pw_mm, ph_mm] = getPaperDim();
     const scale = parseInt(selScale.value, 10);
-    const c = _previewMap.getCenter();
+    const c = printPreviewMap.getCenter();
     const groundW = (pw_mm / 1000) * scale;  // 印刷幅（地上m）
     const groundH = (ph_mm / 1000) * scale;  // 印刷高（地上m）
     const dLng = groundW / (111320 * Math.cos(c.lat * Math.PI / 180));
@@ -8105,7 +8086,7 @@ document.getElementById('import-decide-btn').addEventListener('click', () => {
       [c.lng - dLng/2, c.lat - dLat/2],
       [c.lng - dLng/2, c.lat + dLat/2],
     ]];
-    const src = _previewMap.getSource('print-area');
+    const src = printPreviewMap.getSource('print-area');
     if (src) src.setData({ type: 'FeatureCollection', features: [{ type: 'Feature', geometry: { type: 'Polygon', coordinates: coords } }] });
   }
 
@@ -8127,12 +8108,12 @@ document.getElementById('import-decide-btn').addEventListener('click', () => {
     _dialogOpen = true;
     overlay.classList.add('visible');
 
-    if (!_previewMap) {
+    if (!printPreviewMap) {
       // 現在のスタイルを取得（地形は除去して 2D 表示）
       const rawStyle = map.getStyle();
       const previewStyle = { ...rawStyle, terrain: undefined };
 
-      _previewMap = new maplibregl.Map({
+      printPreviewMap = new maplibregl.Map({
         container: 'print-preview-map',
         style: previewStyle,
         center: map.getCenter(),
@@ -8144,21 +8125,21 @@ document.getElementById('import-decide-btn').addEventListener('click', () => {
         preserveDrawingBuffer: false,
       });
 
-      _previewMap.on('load', () => {
+      printPreviewMap.on('load', () => {
         // 印刷範囲を表す GeoJSON ソース・レイヤーを追加
-        _previewMap.addSource('print-area', {
+        printPreviewMap.addSource('print-area', {
           type: 'geojson',
           data: { type: 'FeatureCollection', features: [] },
         });
         // 半透明の塗り
-        _previewMap.addLayer({
+        printPreviewMap.addLayer({
           id: 'print-area-fill',
           type: 'fill',
           source: 'print-area',
           paint: { 'fill-color': 'rgba(255,255,255,0.08)' },
         });
         // 赤の破線枠
-        _previewMap.addLayer({
+        printPreviewMap.addLayer({
           id: 'print-area-line',
           type: 'line',
           source: 'print-area',
@@ -8168,10 +8149,10 @@ document.getElementById('import-decide-btn').addEventListener('click', () => {
       });
 
       // プレビューマップが移動するたびに矩形を再描画（常に中心に表示）
-      _previewMap.on('move', updateRectangle);
+      printPreviewMap.on('move', updateRectangle);
     } else {
       // 再度開いたときはメインマップの中心に合わせる
-      _previewMap.setCenter(map.getCenter());
+      printPreviewMap.setCenter(map.getCenter());
       updateRectangle();
     }
     updateInfo();
@@ -8204,7 +8185,7 @@ document.getElementById('import-decide-btn').addEventListener('click', () => {
 
     try {
       // エクスポート時の中心はプレビューマップの中心を使用
-      const center = _previewMap ? _previewMap.getCenter() : map.getCenter();
+      const center = printPreviewMap ? printPreviewMap.getCenter() : map.getCenter();
       const zoom   = calcExportZoom(dpi, scale, center.lat);
 
       // 隠しコンテナを生成（画面外に配置）
@@ -8451,7 +8432,7 @@ document.getElementById('import-decide-btn').addEventListener('click', () => {
 
   // MapLibre の contextmenu イベント（右クリック位置の lngLat を取得）
   map.on('contextmenu', (e) => {
-    if (pcSimActive) return; // PCシム中は無効
+    if (pcSimState.active) return; // PCシム中は無効
     ({ lng: _lng, lat: _lat } = e.lngLat);
     const z = map.getZoom().toFixed(2);
     anchor.href = `https://www.google.com/maps/@${_lat.toFixed(6)},${_lng.toFixed(6)},${z}z`;
