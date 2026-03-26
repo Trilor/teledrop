@@ -2151,9 +2151,10 @@ function _makeLayerCtrlRow(initialVisible, initialPct, onToggle, onOpacity) {
   // 不透明度スライダー
   const slider = document.createElement('input');
   slider.type = 'range';
-  slider.className = 'setting-slider tree-opacity-slider';
+  slider.className = 'ui-slider';
   slider.min = '0'; slider.max = '100'; slider.step = '1';
   slider.value = String(initialPct);
+  updateSliderGradient(slider);
 
   const valLabel = document.createElement('span');
   valLabel.className = 'tree-opacity-val';
@@ -2161,6 +2162,7 @@ function _makeLayerCtrlRow(initialVisible, initialPct, onToggle, onOpacity) {
 
   slider.addEventListener('input', () => {
     valLabel.textContent = slider.value + '%';
+    updateSliderGradient(slider);
     onOpacity(parseInt(slider.value, 10));
   });
 
