@@ -4398,7 +4398,6 @@ async function _applyDeckLod2(visible) {
           loader: window.loaders?.Tiles3DLoader,
           opacity: 0.8,
           pointSize: 1,
-          minZoom: 14,
           // PBR ライティングを無効化してテクスチャ色をフラットに描画
           _subLayerProps: {
             scenegraph: { _lighting: 'flat' },
