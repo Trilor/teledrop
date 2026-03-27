@@ -11,9 +11,9 @@
 // Q地図 DEM / DEM5A / 湖水深タイルは共に国土地理院 NumPNG 形式（x=2^16R+2^8G+B, u=0.01m）
 // gsjdem:// プロトコルが Q地図 > DEM5A > 湖水深 の優先順で合成し Terrarium 形式に変換する。
 // DEM5A・湖水深タイルは標準の {z}/{x}/{y} 順。
-export const QCHIZU_DEM_BASE  = 'https://mapdata.qchizu.xyz/03_dem/52_gsi/all_2026/1_01';
+export const QCHIZU_DEM_BASE  = 'https://qchizu3.xsrv.jp/mapdata/d52001';
 // Cloudflare Worker 経由の CORS プロキシ URL（mlcontour worker: true を可能にするため）
-export const QCHIZU_PROXY_BASE = 'https://teledrop-proxy.trilor.workers.dev/qchizu/03_dem/52_gsi/all_2026/1_01';
+export const QCHIZU_PROXY_BASE = 'https://teledrop-proxy.trilor.workers.dev/qchizu/mapdata/d52001';
 export const DEM5A_BASE       = 'https://cyberjapandata.gsi.go.jp/xyz/dem5a_png'; // 基盤地図情報DEM5A {z}/{x}/{y}.png
 export const DEM1A_BASE       = 'https://cyberjapandata.gsi.go.jp/xyz/dem1a_png'; // 基盤地図情報DEM1A {z}/{x}/{y}.png
 // 湖水深タイルは廃止（2026-03-23 コメントアウト）
@@ -30,7 +30,7 @@ export const TERRAIN_URL = 'gsjdem://terrain/{z}/{x}/{y}.png';
 
 // ★ CS立体図（ブラウザ生成・Q地図DEMから動的生成）
 //   csdem:// プロトコルでQ地図DEMタイルをリアルタイムにCS立体図へ変換します。
-export const CS_RELIEF_URL = 'csdem://mapdata.qchizu.xyz/03_dem/52_gsi/all_2026/1_01/{z}/{x}/{y}.webp';
+export const CS_RELIEF_URL = `csdem://${QCHIZU_DEM_BASE.replace(/^https?:\/\//, '')}/{z}/{x}/{y}.webp`;
 
 // ★ 地域別CS立体図（0.5mDEM由来・高精度）の定義リスト
 //   在る地域では全国地理院CSタイルよりも高解像度なため、上層に重ねて表示する。
@@ -187,6 +187,53 @@ export const REGIONAL_CS_LAYERS = [
   }, */
 ];
 
+// ★ デバイスごとの物理PPI定義（実寸縮尺計算に使用）階層構造
+// 標準モニターのCSS仮定値は96だが、高解像度モニターでは実際の物理PPIで補正が必要。
+export const DEVICE_PPI_DATA = [
+  {
+    category: 'Apple Mac / iPad',
+    devices: [
+      { name: 'MacBook Air (M1/M2/M3)',          ppi: 224 },
+      { name: 'MacBook Pro 14 / 16インチ',        ppi: 254 },
+      { name: 'iMac 24インチ',                    ppi: 218 },
+      { name: 'iPad Pro / iPad Air',              ppi: 264 },
+    ],
+  },
+  {
+    category: 'Microsoft Surface',
+    devices: [
+      { name: 'Surface Laptop（ノート型）',        ppi: 201 },
+      { name: 'Surface Pro（キーボード分離型）',   ppi: 267 },
+      { name: 'Surface Go（小型）',               ppi: 220 },
+    ],
+  },
+  {
+    category: 'Windows ノートPC',
+    devices: [
+      { name: '13〜14インチ（持ち運び向け）',      ppi: 166 },
+      { name: '15〜16インチ（大画面・テンキー付）', ppi: 141 },
+      { name: '高解像度モデル（4K画質）',           ppi: 282 },
+    ],
+  },
+  {
+    category: '外付けモニター',
+    devices: [
+      { name: '24インチ フルHD（標準的）',          ppi: 96  },
+      { name: '27インチ フルHD',                   ppi: 82  },
+      { name: '27インチ 4K（高精細）',              ppi: 163 },
+    ],
+  },
+  {
+    category: 'スマートフォン',
+    devices: [
+      { name: 'iPhone（標準 / Pro）',              ppi: 460 },
+      { name: 'Android スマホ（一般的）',           ppi: 420 },
+      { name: 'Android スマホ（大型 Ultra 等）',   ppi: 500 },
+    ],
+  },
+];
+export const DEFAULT_DEVICE_PPI = 96;
+
 // ★ 初期表示: 京都大学吉田キャンパス
 export const INITIAL_CENTER = [135.7814,35.0261];
 
@@ -201,6 +248,12 @@ export const INITIAL_BEARING = 0;
 
 // ★ 地形誇張係数（1.0 = 実寸。2D表示時は視覚的影響なし）
 export const TERRAIN_EXAGGERATION = 1.0;
+
+// ★ 地図アニメーション・UI レイアウト
+export const EASE_DURATION          = 600;  // 標準カメラアニメーション時間（ms）
+export const FIT_BOUNDS_PAD         = 60;   // fitBounds の標準パディング（px）
+export const FIT_BOUNDS_PAD_SIDEBAR = 30;   // サイドバーがある場合の左側追加パディング（px）
+export const SIDEBAR_DEFAULT_WIDTH  = 300;  // サイドバーの offsetWidth フォールバック値（px）
 
 // ★ KMZオーバーレイの初期不透明度
 export const OMAP_INITIAL_OPACITY = 1.0;

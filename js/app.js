@@ -42,7 +42,8 @@ import {
   INITIAL_CENTER, INITIAL_ZOOM, INITIAL_PITCH, INITIAL_BEARING,
   TERRAIN_EXAGGERATION, OMAP_INITIAL_OPACITY, CS_INITIAL_OPACITY,
   EASE_DURATION, FIT_BOUNDS_PAD, FIT_BOUNDS_PAD_SIDEBAR, SIDEBAR_DEFAULT_WIDTH,
-  RASTER_BASEMAPS
+  RASTER_BASEMAPS,
+  DEVICE_PPI_DATA, DEFAULT_DEVICE_PPI,
 } from './config.js';
 
 import {
@@ -248,11 +249,17 @@ map.on('load', async () => {
   消えないようにしている（visibility 切替方式）。
   ========================================================
   */
+  // MapLibre の式: fetchZoom = round(viewZoom + log2(512 / tileSize))
+  // DPR=1.5 のとき tileSize=171 → round(viewZoom + 1.58) → viewZoom+2 のタイルを取得
+  // → 256px タイルを ~171 CSS px（=256物理px）に縮小表示 → シャープ（Q地図と同等）
+  // DPR=1.0 のとき tileSize=256 → round(viewZoom + 1.0) → 通常どおり viewZoom+1
+  const _rasterTileSize = Math.round(256 / (window.devicePixelRatio || 1));
+
   Object.entries(RASTER_BASEMAPS).filter(([, cfg]) => cfg.url).forEach(([key, cfg]) => {
     map.addSource(key, {
       type: 'raster',
       tiles: [cfg.url],
-      tileSize: 256,
+      tileSize: _rasterTileSize,
       maxzoom: cfg.maxzoom,
       attribution: cfg.attr,
     });
@@ -435,7 +442,7 @@ map.on('load', async () => {
     map.addSource('basemap-fallback', {
       type: 'raster',
       tiles: ['https://cyberjapandata.gsi.go.jp/xyz/pale/{z}/{x}/{y}.png'],
-      tileSize: 256,
+      tileSize: _rasterTileSize,
       attribution: '<a href="https://maps.gsi.go.jp/development/ichiran.html">地理院タイル</a>',
     });
 
@@ -573,7 +580,7 @@ map.on('load', async () => {
   // min/max パラメータはスライダー操作時に setTiles() で動的更新する
   map.addSource('color-relief', {
     type: 'raster',
-    tiles: ['dem2relief://mapdata.qchizu.xyz/03_dem/52_gsi/all_2026/1_01/{z}/{x}/{y}.webp?min=0&max=500&_init=1'],
+    tiles: [`dem2relief://${QCHIZU_DEM_BASE.replace(/^https?:\/\//, '')}/{z}/{x}/{y}.webp?min=0&max=500&_init=1`],
     tileSize: 512,
     minzoom: 5,
     maxzoom: 15, // Q地図DEMタイルの提供上限(16)よりひとつ下。これ以上のズームはオーバーズームで補完
@@ -638,7 +645,7 @@ map.on('load', async () => {
     const srcCfg = {
       type: 'raster',
       tiles: [layer.tileUrl],
-      tileSize: 256,
+      tileSize: _rasterTileSize,
       minzoom: Math.min(layer.minzoom, 17),
       maxzoom: layer.maxzoom,
       bounds: layer.bounds,
@@ -998,9 +1005,13 @@ async function loadKmz(file) {
         'raster-resampling': 'linear',
       },
     });
-    // レイヤーを確実に上層へ移動（等高線・CSレイヤーより上、GPXレイヤーより下）
-    // GPXレイヤーが存在する場合はその直下に挿入し、GPXが常に最前面になるようにする
-    if (map.getLayer('gpx-track-outline')) {
+    // レイヤーをオーバーレイ（等高線・CS立体図）の直下に挿入する
+    // オーバーレイが存在しない場合はGPXの直下、GPXもなければ最前面に移動する
+    const _kmzOverlayAnchor1 = ['color-contour-regular', 'contour-regular', 'color-relief-layer', 'cs-relief-layer']
+      .find(id => map.getLayer(id));
+    if (_kmzOverlayAnchor1) {
+      map.moveLayer(layerId, _kmzOverlayAnchor1);
+    } else if (map.getLayer('gpx-track-outline')) {
       map.moveLayer(layerId, 'gpx-track-outline');
     } else {
       map.moveLayer(layerId);
@@ -1169,8 +1180,12 @@ async function loadImageWithJgw(imageFile, jgwText, crsValue) {
     },
   });
 
-  // GPX 軌跡レイヤーの下に挿入する（KMZ と同じ扱い）
-  if (map.getLayer('gpx-track-outline')) {
+  // オーバーレイ（等高線・CS立体図）の直下に挿入する（KMZ と同じ扱い）
+  const _kmzOverlayAnchor2 = ['color-contour-regular', 'contour-regular', 'color-relief-layer', 'cs-relief-layer']
+    .find(id => map.getLayer(id));
+  if (_kmzOverlayAnchor2) {
+    map.moveLayer(layerId, _kmzOverlayAnchor2);
+  } else if (map.getLayer('gpx-track-outline')) {
     map.moveLayer(layerId, 'gpx-track-outline');
   } else {
     map.moveLayer(layerId);
@@ -4002,7 +4017,7 @@ function updateCsVisibility() {
   }
   // スライダーはカード選択だけで表示（オーバーレイトグルのON/OFFに依存しない）
   const crCtrls = document.getElementById('color-relief-controls');
-  if (crCtrls) crCtrls.style.display = (currentOverlay === 'color-relief') ? '' : 'none';
+  if (crCtrls) crCtrls.style.display = (currentOverlay === 'color-relief' || currentOverlay === 'color-contour') ? '' : 'none';
 
   // 色別等高線の表示制御（contourState.demMode に応じて排他表示）
   const showColorContour = overlay === 'color-contour';
@@ -4116,9 +4131,6 @@ map.on('zoomend', updateCsVisibility);
 
 
 // ---- 色別標高図 デュアルレンジスライダー ----
-// DEM タイルベース URL（プロトコルを除いたパス部分）
-const COLOR_RELIEF_DEM_BASE = 'mapdata.qchizu.xyz/03_dem/52_gsi/all_2026/1_01';
-
 // 現在の min/max 値
 let crMin = 0;
 let crMax = 500;
@@ -4206,7 +4218,7 @@ let _crRepaintTimer = null;
 function applyColorReliefTiles() {
   if (!map.getSource('color-relief')) return;
   map.getSource('color-relief').setTiles([
-    `dem2relief://${COLOR_RELIEF_DEM_BASE}/{z}/{x}/{y}.webp?min=${crMin}&max=${crMax}`
+    `dem2relief://${QCHIZU_DEM_BASE.replace(/^https?:\/\//, '')}/{z}/{x}/{y}.webp?min=${crMin}&max=${crMax}`
   ]);
   clearTimeout(_crRepaintTimer);
   let remaining = 20; // 20 × 100ms = 2 秒
@@ -4296,9 +4308,11 @@ function updateColorReliefSource() {
 function autoFitColorRelief() {
   // 低ズームでは地形タイルの同時リクエスト数を抑えるためグリッドを縮小
   const GRID = map.getZoom() <= 9 ? 10 : 20; // 10×10=100点 or 20×20=400点
+  // map.unproject() は CSS 論理ピクセルを期待するため offsetWidth/offsetHeight を使用する
+  // （canvas.width/height は DPR 倍の物理ピクセルのため使用してはいけない）
   const canvas = map.getCanvas();
-  const w = canvas.width;
-  const h = canvas.height;
+  const w = canvas.offsetWidth;
+  const h = canvas.offsetHeight;
 
   let globalMin = Infinity, globalMax = -Infinity;
 
@@ -5372,26 +5386,197 @@ document.querySelectorAll('.sidebar-close-btn').forEach(btn => {
 });
 
 // ---- 縮尺セレクト（現在の縮尺をリアルタイム表示 ＋ プリセット選択でズーム） ----
-// CSS仕様上 1 CSS inch = 96 CSS pixel（devicePixelRatio に依存しない定数）
-// MapLibre の getZoom() は CSS pixel 基準のため、物理DPIではなく CSS PPI を使う
-const SCREEN_DPI = 96;
+// モニターの物理PPIを考慮した実寸縮尺を計算・表示する。
+// 物理PPI: ユーザーが選択したモニターの実際のピクセル密度
+// effectiveDPI（CSS px/inch）= physicalPPI / DPR
+// → 地上分解能(m/CSS px) × effectiveDPI / 0.0254(m/inch) = 縮尺分母
+const _allDevicePpis = DEVICE_PPI_DATA.flatMap(cat => cat.devices.map(d => d.ppi));
+let currentDevicePPI = (() => {
+  const saved = parseInt(localStorage.getItem('teledrop-device-ppi'), 10);
+  return (saved && _allDevicePpis.includes(saved)) ? saved : DEFAULT_DEVICE_PPI;
+})();
+
+// PPI値からデバイス名を返す
+function findDeviceName(ppi) {
+  for (const cat of DEVICE_PPI_DATA) {
+    const dev = cat.devices.find(d => d.ppi === ppi);
+    if (dev) return dev.name;
+  }
+  return `${ppi} ppi`;
+}
+
+// カスケードメニューを構築し、イベントを登録する
+// メニュー・サブメニューを body 直下に配置し position:fixed で座標を JS 計算することで
+// パネルの overflow:hidden によるクリップを回避する
+(function buildPpiCascade() {
+  const btn   = document.getElementById('ppi-cascade-btn');
+  const label = document.getElementById('ppi-cascade-label');
+  const menu  = document.getElementById('ppi-cascade-menu');
+  if (!btn || !menu) return;
+
+  // body 直下に移動してオーバーフロークリップを回避
+  document.body.appendChild(menu);
+
+  // メニュー項目を生成（サブメニューは個別に body に追加）
+  const subs = []; // 各カテゴリのサブメニュー要素を保持
+  menu.innerHTML = DEVICE_PPI_DATA.map((cat, i) =>
+    `<div class="ppi-cascade-cat" data-cat-idx="${i}">
+      <span>${cat.category}</span>
+      <span class="ppi-cascade-cat-arrow">▶</span>
+    </div>`
+  ).join('');
+
+  DEVICE_PPI_DATA.forEach((cat, i) => {
+    const sub = document.createElement('div');
+    sub.className = 'ppi-cascade-sub';
+    sub.innerHTML = cat.devices.map(dev =>
+      `<div class="ppi-cascade-item${dev.ppi === currentDevicePPI ? ' selected' : ''}" data-ppi="${dev.ppi}">
+        <span>${dev.name}</span>
+        <span class="ppi-cascade-item-ppi">${dev.ppi} ppi</span>
+      </div>`
+    ).join('');
+    document.body.appendChild(sub);
+    subs.push(sub);
+  });
+
+  function closeAll() {
+    menu.classList.remove('open');
+    subs.forEach(s => { s.style.display = ''; });
+  }
+
+  // ボタンクリックでメニューを fixed 座標に表示
+  btn.addEventListener('click', e => {
+    e.stopPropagation();
+    if (menu.classList.contains('open')) { closeAll(); return; }
+    const r = btn.getBoundingClientRect();
+    menu.style.top  = (r.bottom + 2) + 'px';
+    menu.style.left = r.left + 'px';
+    menu.classList.add('open');
+  });
+
+  // カテゴリホバーでサブメニューを fixed 座標に表示
+  menu.querySelectorAll('.ppi-cascade-cat').forEach(catEl => {
+    const idx = parseInt(catEl.dataset.catIdx, 10);
+    const sub = subs[idx];
+    catEl.addEventListener('mouseenter', () => {
+      subs.forEach(s => { s.style.display = ''; }); // 他を閉じる
+      const r = catEl.getBoundingClientRect();
+      sub.style.top  = r.top + 'px';
+      sub.style.left = r.right + 'px';
+      sub.style.display = 'block';
+    });
+    // カテゴリ行からサブメニューへ移動した場合は閉じない
+    catEl.addEventListener('mouseleave', e => {
+      if (sub.contains(e.relatedTarget)) return;
+      sub.style.display = '';
+    });
+    sub.addEventListener('mouseleave', e => {
+      if (catEl.contains(e.relatedTarget)) return;
+      sub.style.display = '';
+    });
+  });
+
+  // 外クリックで閉じる
+  document.addEventListener('click', e => {
+    if (!btn.contains(e.target) && !menu.contains(e.target) && !subs.some(s => s.contains(e.target))) {
+      closeAll();
+    }
+  });
+
+  // デバイス選択
+  subs.forEach(sub => {
+    sub.addEventListener('click', e => {
+      const item = e.target.closest('.ppi-cascade-item');
+      if (!item) return;
+      const ppi = parseInt(item.dataset.ppi, 10);
+      currentDevicePPI = ppi;
+      localStorage.setItem('teledrop-device-ppi', ppi);
+      label.textContent = findDeviceName(ppi);
+      subs.forEach(s => s.querySelectorAll('.ppi-cascade-item').forEach(el =>
+        el.classList.toggle('selected', parseInt(el.dataset.ppi, 10) === ppi)
+      ));
+      closeAll();
+      updateScaleDisplay();
+      updatePpiRuler();
+    });
+  });
+
+  // 初期ラベルを設定
+  label.textContent = findDeviceName(currentDevicePPI);
+})();
+
+// 実寸定規を SVG で描画する（40mm = 4cm を物理的に正確な CSS px 幅で表示）
+// ユーザーが実物の定規を画面に当てて PPI 設定を確認できるようにする
+function updatePpiRuler() {
+  const svg = document.getElementById('ppi-ruler');
+  if (!svg) return;
+  const dpr        = window.devicePixelRatio || 1;
+  const pxPerMm    = currentDevicePPI / (dpr * 25.4); // CSS px per mm
+
+  // 左右の余白（ラベルが見切れないよう確保）
+  const PAD        = 10;
+  // 親コンテナの利用可能幅に収まる cm 数を自動決定（左右PAD分を差し引く）
+  // clientWidth が 0 の場合（パネル非表示時）は 240px をフォールバックとして使用
+  const containerW = svg.parentElement ? svg.parentElement.clientWidth : 0;
+  const availPx    = (containerW > 0 ? containerW : 240) - PAD * 2 - 16;
+  const totalMm    = Math.max(10, Math.floor(availPx / pxPerMm / 10) * 10); // 1cm 単位で切り捨て
+  const totalPx    = pxPerMm * totalMm;
+  const H          = 34; // SVG 高さ
+  const BASE       = H - 2; // ベースラインY
+
+  svg.setAttribute('width', Math.ceil(totalPx + PAD * 2));
+
+  const lines = [];
+  const texts = [];
+
+  // ベースライン・左端縦線（PAD オフセット）
+  lines.push(`<line x1="${PAD}" y1="${BASE}" x2="${PAD + totalPx}" y2="${BASE}" stroke="currentColor" stroke-width="1.5"/>`);
+  lines.push(`<line x1="${PAD}" y1="${BASE - 16}" x2="${PAD}" y2="${BASE}" stroke="currentColor" stroke-width="1.5"/>`);
+
+  // 0 ラベル（左端縦線の真上・中央揃え）
+  texts.push(`<text x="${PAD}" y="${BASE - 18}" font-size="11" fill="currentColor" font-family="system-ui,sans-serif" font-weight="500" text-anchor="middle">0</text>`);
+
+  for (let mm = 1; mm <= totalMm; mm++) {
+    const x     = PAD + mm * pxPerMm;
+    const isCm  = mm % 10 === 0;
+    const is5mm = mm % 5 === 0;
+    const tickH = isCm ? 16 : is5mm ? 10 : 5;
+    lines.push(`<line x1="${x}" y1="${BASE - tickH}" x2="${x}" y2="${BASE}" stroke="currentColor" stroke-width="${isCm ? 1.5 : 1}"/>`);
+    if (isCm) {
+      texts.push(`<text x="${x}" y="${BASE - 18}" font-size="11" fill="currentColor" font-family="system-ui,sans-serif" font-weight="500" text-anchor="middle">${mm / 10}</text>`);
+    }
+  }
+
+  svg.innerHTML = lines.join('') + texts.join('');
+}
+
+updatePpiRuler();
+
+// MapLibre GL JS のデフォルト tileSize は 512px
+// → ワールド幅 = 512 × 2^zoom CSS px
+// → 地上分解能 = 2π × 6378137 × cos(lat) / (512 × 2^zoom)
+//              = 78271.51696 × cos(lat) / 2^zoom  [m/CSS px]
+// ※ 旧来の Web メルカトル定数 156543.03392 は 256px タイル用であり
+//    MapLibre で使うと縮尺分母が 2 倍になるため使用しない
+const _MERCATOR_COEFF = 78271.51696; // 2π × 6378137 / 512
 
 // 現在の地図ズーム・中心緯度から縮尺分母を計算する
-// 計算式: 地上分解能(m/px) = 156543.034 × cos(緯度) / 2^zoom
-// 縮尺分母 = 地上分解能 × DPI / 1インチ(m換算)
+// effectiveDPI = 物理PPI / DPR （CSS ピクセルあたりの物理インチ逆数）
 function calcScaleDenominator() {
   const center = map.getCenter();
   const zoom = map.getZoom();
-  const groundRes = 156543.03392 * Math.cos(center.lat * Math.PI / 180) / Math.pow(2, zoom);
-  return Math.round(groundRes * SCREEN_DPI / 0.0254);
+  const groundRes = _MERCATOR_COEFF * Math.cos(center.lat * Math.PI / 180) / Math.pow(2, zoom);
+  const effectiveDPI = currentDevicePPI / (window.devicePixelRatio || 1);
+  return Math.round(groundRes * effectiveDPI / 0.0254);
 }
 
 // 縮尺分母からズームレベルを計算して地図を移動するヘルパー
 function zoomToScale(targetScale) {
   if (!targetScale) return;
   const center = map.getCenter();
-  const targetGroundRes = targetScale * 0.0254 / SCREEN_DPI;
-  const zoom = Math.log2(156543.03392 * Math.cos(center.lat * Math.PI / 180) / targetGroundRes);
+  const effectiveDPI = currentDevicePPI / (window.devicePixelRatio || 1);
+  const targetGroundRes = targetScale * 0.0254 / effectiveDPI;
+  const zoom = Math.log2(_MERCATOR_COEFF * Math.cos(center.lat * Math.PI / 180) / targetGroundRes);
   map.easeTo({ zoom, duration: EASE_DURATION });
 }
 
@@ -5575,7 +5760,7 @@ function initSimMinimap() {
         'mini-base': {
           type: 'raster',
           tiles: ['https://cyberjapandata.gsi.go.jp/xyz/std/{z}/{x}/{y}.png'],
-          tileSize: 256,
+          tileSize: Math.round(256 / (window.devicePixelRatio || 1)),
           attribution: '',
           maxzoom: 18,
         },
@@ -6293,7 +6478,7 @@ function getReadmapBaseStyle(bgKey) {
       'pc-read-base': {
         type: 'raster',
         tiles: [bm.url],
-        tileSize: 256,
+        tileSize: Math.round(256 / (window.devicePixelRatio || 1)),
         attribution: '',
         maxzoom: bm.maxzoom,
       },
@@ -7324,10 +7509,10 @@ function _updateImportPreview() {
 const _PREVIEW_RASTER_STYLE = {
   version: 8,
   sources: {
-    'bg-osm':       { type: 'raster', tiles: ['https://tile.openstreetmap.org/{z}/{x}/{y}.png'],                                    tileSize: 256, attribution: '© OpenStreetMap contributors' },
-    'bg-gsi-std':   { type: 'raster', tiles: ['https://cyberjapandata.gsi.go.jp/xyz/std/{z}/{x}/{y}.png'],                          tileSize: 256, attribution: '国土地理院' },
-    'bg-gsi-pale':  { type: 'raster', tiles: ['https://cyberjapandata.gsi.go.jp/xyz/pale/{z}/{x}/{y}.png'],                         tileSize: 256, attribution: '国土地理院' },
-    'bg-gsi-photo': { type: 'raster', tiles: ['https://cyberjapandata.gsi.go.jp/xyz/seamlessphoto/{z}/{x}/{y}.jpg'],                tileSize: 256, attribution: '国土地理院' },
+    'bg-osm':       { type: 'raster', tiles: ['https://tile.openstreetmap.org/{z}/{x}/{y}.png'],                                    tileSize: Math.round(256 / (window.devicePixelRatio || 1)), attribution: '© OpenStreetMap contributors' },
+    'bg-gsi-std':   { type: 'raster', tiles: ['https://cyberjapandata.gsi.go.jp/xyz/std/{z}/{x}/{y}.png'],                          tileSize: Math.round(256 / (window.devicePixelRatio || 1)), attribution: '国土地理院' },
+    'bg-gsi-pale':  { type: 'raster', tiles: ['https://cyberjapandata.gsi.go.jp/xyz/pale/{z}/{x}/{y}.png'],                         tileSize: Math.round(256 / (window.devicePixelRatio || 1)), attribution: '国土地理院' },
+    'bg-gsi-photo': { type: 'raster', tiles: ['https://cyberjapandata.gsi.go.jp/xyz/seamlessphoto/{z}/{x}/{y}.jpg'],                tileSize: Math.round(256 / (window.devicePixelRatio || 1)), attribution: '国土地理院' },
   },
   layers: [
     { id: 'bg-osm-layer',       type: 'raster', source: 'bg-osm',       layout: { visibility: 'visible' } },
