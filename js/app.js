@@ -5972,6 +5972,7 @@ document.getElementById('chk-readmap-dot').addEventListener('change', e => {
 // ---- 状態変数 ----
 const pcSimState = {
   active:          false,      // PCシム実行中か
+  paused:          false,      // Esc で一時停止中か（ポーズHUD表示中）
   animFrame:       null,       // requestAnimationFrame ID
   lastTime:        null,       // 前フレームのタイムスタンプ
   readMap:         null,       // 読図用 MapLibre インスタンス
@@ -6028,12 +6029,23 @@ async function startPcSim() {
 
 /* ----------------------------------------------------------------
    Pointer Lock の変化を監視 → ロック成功時に onPcSimLocked を呼ぶ
+   Esc でロック解除 → pausePcSim でポーズHUDを表示
+   ポーズから再開 → resumePcSimLocked でループ再開
    ---------------------------------------------------------------- */
 document.addEventListener('pointerlockchange', () => {
   if (document.pointerLockElement === document.getElementById('map')) {
-    if (!pcSimState.active) onPcSimLocked();
+    // ポインターロック取得
+    if (!pcSimState.active) {
+      onPcSimLocked();           // 新規開始
+    } else if (pcSimState.paused) {
+      resumePcSimLocked();       // ポーズから再開
+    }
   } else {
-    if (pcSimState.active) stopPcSim();
+    // ポインターロック解放
+    if (pcSimState.active && !pcSimState.paused) {
+      pausePcSim();              // Esc 押下 → ポーズHUD表示
+    }
+    // paused 中の解放は無視（pausePcSim 内で既に処理済み）
   }
 });
 document.addEventListener('pointerlockerror', (e) => {
@@ -6108,10 +6120,51 @@ function onPcSimLocked() {
 }
 
 /* ----------------------------------------------------------------
+   pausePcSim: Esc によるポインターロック解放 → ポーズHUD表示
+   アニメーションループを停止し、UI はシミュレーターモードのまま保持する。
+   ---------------------------------------------------------------- */
+function pausePcSim() {
+  pcSimState.paused = true;
+
+  // アニメーションループを停止（再開時に再起動する）
+  if (pcSimState.animFrame) { cancelAnimationFrame(pcSimState.animFrame); pcSimState.animFrame = null; }
+
+  // クロスヘアとヒントを隠す（HUD と重ならないように）
+  document.getElementById('pc-sim-hint').style.display       = 'none';
+  document.getElementById('pc-sim-crosshair').style.display  = 'none';
+
+  // ポーズHUDを表示
+  document.getElementById('pc-sim-pause-hud').style.display = 'flex';
+}
+
+/* ----------------------------------------------------------------
+   resumePcSimLocked: ポーズHUDから「再開」→ ポインターロック再取得後の復帰処理
+   ---------------------------------------------------------------- */
+function resumePcSimLocked() {
+  pcSimState.paused = false;
+
+  // ポーズHUDを隠す
+  document.getElementById('pc-sim-pause-hud').style.display = 'none';
+
+  // クロスヘアとヒントを復元
+  const hintOn = document.getElementById('chk-sim-hint')?.checked ?? true;
+  document.getElementById('pc-sim-hint').style.display      = hintOn ? 'block' : 'none';
+  document.getElementById('pc-sim-crosshair').style.display = 'block';
+
+  // アニメーションループを再開
+  pcSimState.lastTime  = null;
+  pcSimState.animFrame = requestAnimationFrame(pcSimLoop);
+}
+
+/* ----------------------------------------------------------------
    stopPcSim: モード終了 & 全リソースを解放
    ---------------------------------------------------------------- */
 function stopPcSim() {
   pcSimState.active = false;
+  pcSimState.paused = false;
+
+  // ポーズHUDを非表示
+  document.getElementById('pc-sim-pause-hud').style.display = 'none';
 
   if (pcSimState.animFrame) { cancelAnimationFrame(pcSimState.animFrame); pcSimState.animFrame = null; }
 
@@ -6708,6 +6761,38 @@ function _onSimPickKeydown(e) {
 document.getElementById('pc-sim-toggle-btn').addEventListener('click', () => {
   if (pcSimState.active) stopPcSim();
   else enterSimStartPicking();
+});
+
+/* ----------------------------------------------------------------
+   システム設定モーダル: 開閉
+   ---------------------------------------------------------------- */
+function openSysSettingsModal() {
+  document.getElementById('sys-settings-modal').style.display = 'flex';
+}
+function closeSysSettingsModal() {
+  document.getElementById('sys-settings-modal').style.display = 'none';
+}
+
+document.getElementById('sys-settings-open-btn').addEventListener('click', openSysSettingsModal);
+document.getElementById('sys-settings-close-btn').addEventListener('click', closeSysSettingsModal);
+// モーダル背景クリックで閉じる
+document.getElementById('sys-settings-modal').addEventListener('click', (e) => {
+  if (e.target === document.getElementById('sys-settings-modal')) closeSysSettingsModal();
+});
+
+/* ----------------------------------------------------------------
+   ポーズHUD: 再開 / システム設定 / 終了 ボタン
+   ---------------------------------------------------------------- */
+document.getElementById('pause-hud-resume-btn').addEventListener('click', () => {
+  // ポーズHUD を隠してポインターロックを再取得 → resumePcSimLocked が呼ばれる
+  document.getElementById('pc-sim-pause-hud').style.display = 'none';
+  startPcSim();
+});
+
+document.getElementById('pause-hud-settings-btn').addEventListener('click', openSysSettingsModal);
+
+document.getElementById('pause-hud-stop-btn').addEventListener('click', () => {
+  stopPcSim();
 });
 
 

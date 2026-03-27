@@ -141,8 +141,8 @@
   /* 矢印の形・色・サイズを変えたい場合はここだけ編集すれば全体に反映される */
   --chevron-color:      %23666;   /* 矢印色（#666）※ SVG内のためパーセントエンコード */
   --chevron-width:      1.5;      /* 線の太さ（SVG stroke-width） */
-  --chevron-down:       url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 10 7'%3E%3Cpolyline points='1,1 5,6 9,1' fill='none' stroke='%23666' stroke-width='1.5' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E");
-  --chevron-right:      url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 7 10'%3E%3Cpolyline points='1,1 6,5 1,9' fill='none' stroke='%23666' stroke-width='1.5' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E");
+  --chevron-down:       url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 10 6'%3E%3Cpolyline points='1,1 5,5 9,1' fill='none' stroke='%23666' stroke-width='1.5' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E");
+  --chevron-right:      url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 6 10'%3E%3Cpolyline points='1,1 5,5 1,9' fill='none' stroke='%23666' stroke-width='1.5' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E");
   --chevron-size-down:  8px 5px;  /* background-size（下向き） */
   --chevron-size-right: 5px 8px;  /* background-size（右向き） */
   --chevron-inset:      6px;      /* 右端からの距離（background-position） */
@@ -692,19 +692,14 @@ body {
   flex: 1;
   min-width: 0;
 }
+/* ベーススタイルは「共通パネルプルダウン」セクションで定義済み */
 .ppi-cascade-btn {
   display: block;
   width: 100%;
   text-align: left;
-  cursor: pointer;
-  background: var(--bg-select) var(--chevron-down) no-repeat right var(--chevron-inset) center / var(--chevron-size-down);
-  color: var(--text-ink);
-  border: 1px solid #b0b8b0;
-  border-radius: 4px;
   padding: 2px var(--chevron-pad-r) 2px 6px;
   font-size: var(--font-sm);
   font-family: inherit;
-  outline: none;
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -1058,24 +1053,45 @@ body {
 }
 
 /* ================================================================
-   共通プルダウン矢印 (.setting-select / .ppi-cascade-btn / .ppi-cascade-cat)
-   全プルダウンの矢印（くの字 chevron）をここで一括管理。
-   矢印の形・色・サイズを変えたい場合は :root の --chevron-* 変数だけ編集すれば
-   すべてのプルダウンに反映される。
+   共通パネルプルダウン
+   全プルダウンのベーススタイルをここで一括管理。
+   サイズ・色を変えたい場合はこのブロックだけ編集すれば全体に反映される。
+   対象: .setting-select / #sel-contour-interval / #sel-magnetic-north-interval /
+         #speed-select / .ppi-cascade-btn
+   矢印の形・色は :root の --chevron-* 変数で管理
    ================================================================ */
-.setting-select {
+
+/* ---- ベーススタイル（外観・色・ボーダー） — 全プルダウン共通 ---- */
+.setting-select,
+#sel-contour-interval,
+#sel-magnetic-north-interval,
+#speed-select,
+.ppi-cascade-btn {
   appearance: none;
   background: var(--bg-select) var(--chevron-down) no-repeat right var(--chevron-inset) center / var(--chevron-size-down);
-  color: var(--text-ink);
+  color: var(--text-main);
   border: 1px solid #b0b8b0;
   border-radius: 4px;
-  padding: 2px var(--chevron-pad-r) 2px 4px;
-  font-size: var(--font-sm);
   cursor: pointer;
   outline: none;
+}
+/* ---- 無効状態 — 全プルダウン共通 ---- */
+.setting-select:disabled,
+#sel-contour-interval:disabled,
+#sel-magnetic-north-interval:disabled,
+#speed-select:disabled,
+.ppi-cascade-btn:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+
+/* ---- 個別プロパティ（サイズ・レイアウトのみここで上書き） ---- */
+.setting-select {
   flex: 1;
   min-width: 0;
   width: 100%;
+  padding: 2px var(--chevron-pad-r) 2px 4px;
+  font-size: var(--font-sm);
 }
 
 /* ---- ベースマップカードグリッド ---- */
@@ -2380,38 +2396,12 @@ label.setting-label {
   white-space: nowrap;
 }
 
-#sel-contour-interval {
-  flex: 1;
-  background: var(--bg-select);
-  color: var(--text-ink);
-  border: 1px solid #b0b8b0;
-  border-radius: 4px;
-  padding: 3px 6px;
-  font-size: var(--font-base);
-  cursor: pointer;
-  outline: none;
-}
-
-#sel-contour-interval:disabled {
-  opacity: 0.5;
-  cursor: default;
-}
-
+/* ベーススタイルは「共通パネルプルダウン」セクションで定義済み */
+#sel-contour-interval,
 #sel-magnetic-north-interval {
   flex: 1;
-  background: var(--bg-select);
-  color: var(--text-ink);
-  border: 1px solid #b0b8b0;
-  border-radius: 4px;
-  padding: 3px 6px;
+  padding: 3px var(--chevron-pad-r) 3px 6px;
   font-size: var(--font-base);
-  cursor: pointer;
-  outline: none;
-}
-
-#sel-magnetic-north-interval:disabled {
-  opacity: 0.5;
-  cursor: default;
 }
 
 /* チェックボックス/トグルのない行でラベル位置を揃えるスペーサー */
@@ -2610,16 +2600,11 @@ label.setting-label {
   text-align: center;
 }
 
+/* ベーススタイルは「共通パネルプルダウン」セクションで定義済み */
 #speed-select {
   flex-shrink: 0;
-  background: var(--bg-select);
-  color: var(--text-main);
-  border: 1px solid #c0c0c0;
-  border-radius: 4px;
-  padding: 3px 5px;
+  padding: 3px var(--chevron-pad-r) 3px 5px;
   font-size: var(--font-sm);
-  cursor: pointer;
-  outline: none;
 }
 
 /* GPX軌跡が読み込まれているときの情報表示 */
@@ -4210,3 +4195,203 @@ label.setting-label {
   min-width: 0;
   font-size: var(--font-md);
 }
+
+/* =================================================================
+   サイドバー: スペーサー + スケール設定ボタン
+   ================================================================= */
+
+/* アイコンバー内で残りスペースを埋め、ボタンを下部に寄せる */
+.sidebar-nav-spacer {
+  flex: 1;
+}
+
+/* システム設定モーダルを開くボタン（nav-btn と同系スタイル） */
+.sidebar-modal-btn {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  width: 100%;
+  padding: 6px 4px;
+  border: none;
+  background: none;
+  color: var(--text-sub);
+  cursor: pointer;
+  font-size: var(--font-xs);
+  gap: 2px;
+  transition: background var(--transition), color var(--transition);
+  border-radius: 0;
+}
+.sidebar-modal-btn:hover {
+  background: var(--bg-hover-btn);
+  color: var(--primary);
+}
+.sidebar-modal-btn .nav-icon {
+  font-size: 18px;
+  line-height: 1;
+}
+.sidebar-modal-btn .nav-label {
+  font-size: 10px;
+  white-space: nowrap;
+}
+
+/* =================================================================
+   システム設定モーダル
+   ================================================================= */
+
+#sys-settings-modal {
+  display: none;
+  position: fixed;
+  inset: 0;
+  background: rgba(0,0,0,0.55);
+  z-index: 10000;
+  align-items: center;
+  justify-content: center;
+}
+#sys-settings-modal.visible { display: flex; }
+
+#sys-settings-wrapper {
+  position: relative;
+  width: min(92vw, 440px);
+  background: var(--bg-panel);
+  border-radius: 10px;
+  box-shadow: 0 8px 32px rgba(0,0,0,0.28);
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+}
+
+#sys-settings-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 10px 14px;
+  background: var(--primary);
+  color: var(--on-primary);
+  font-size: var(--font-base);
+  font-weight: var(--font-bold);
+  flex-shrink: 0;
+}
+
+#sys-settings-close-btn {
+  background: var(--white-subtle);
+  border: none;
+  color: var(--on-primary);
+  border-radius: 4px;
+  width: 24px;
+  height: 24px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  font-size: 12px;
+  line-height: 1;
+  transition: background var(--transition);
+}
+#sys-settings-close-btn:hover { background: var(--white-hover); }
+
+#sys-settings-body {
+  padding: 16px;
+  overflow-y: auto;
+}
+
+.sys-section-title {
+  font-size: var(--font-sm);
+  font-weight: var(--font-bold);
+  color: var(--text-muted);
+  margin-bottom: 10px;
+  padding-bottom: 4px;
+  border-bottom: 1px solid var(--border-subtle);
+}
+
+/* =================================================================
+   PC シミュレーター ポーズHUD
+   ================================================================= */
+
+#pc-sim-pause-hud {
+  display: none;
+  position: fixed;
+  inset: 0;
+  background: rgba(0,0,0,0.68);
+  z-index: 9800;
+  align-items: center;
+  justify-content: center;
+}
+
+#pause-hud-card {
+  background: rgba(18, 26, 38, 0.95);
+  border: 1px solid rgba(255,255,255,0.13);
+  border-radius: 14px;
+  padding: 22px 26px 20px;
+  min-width: 300px;
+  max-width: 380px;
+  width: min(90vw, 380px);
+  color: #dde4ed;
+  backdrop-filter: blur(10px);
+  -webkit-backdrop-filter: blur(10px);
+}
+
+#pause-hud-title {
+  text-align: center;
+  font-size: 17px;
+  font-weight: bold;
+  margin-bottom: 18px;
+  letter-spacing: 0.06em;
+  color: #ffffff;
+}
+
+.pause-hud-settings {
+  display: flex;
+  flex-direction: column;
+  margin-bottom: 18px;
+}
+
+/* HUD 内 setting-row の文字色をダーク背景向けに上書き */
+#pause-hud-card .setting-label { color: #9fb8cc; font-size: var(--font-sm); }
+#pause-hud-card .opacity-val   { color: #c8d8e4; }
+#pause-hud-card .setting-row   { border-color: rgba(255,255,255,0.06); }
+
+/* HUD 内プルダウン */
+#pause-hud-card .setting-select {
+  background-color: rgba(255,255,255,0.08);
+  color: #dde4ed;
+  border-color: rgba(255,255,255,0.18);
+}
+
+/* HUD 内トグルスイッチの track 色 */
+#pause-hud-card .toggle-switch input:not(:checked) + .toggle-slider {
+  background: rgba(255,255,255,0.2);
+}
+
+.pause-hud-actions {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.pause-hud-btn {
+  width: 100%;
+  padding: 10px;
+  border: none;
+  border-radius: 7px;
+  font-size: var(--font-base);
+  font-family: inherit;
+  cursor: pointer;
+  background: rgba(255,255,255,0.1);
+  color: #dde4ed;
+  transition: background 0.15s;
+  letter-spacing: 0.02em;
+}
+.pause-hud-btn:hover { background: rgba(255,255,255,0.2); }
+
+.pause-hud-btn--primary {
+  background: var(--primary);
+  color: var(--on-primary);
+}
+.pause-hud-btn--primary:hover { background: var(--primary-hover); }
+
+.pause-hud-btn--danger {
+  background: rgba(185, 40, 40, 0.7);
+  color: #fff;
+}
+.pause-hud-btn--danger:hover { background: rgba(185, 40, 40, 0.92); }
