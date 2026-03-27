@@ -4323,3 +4323,18 @@ label.setting-label {
   color: #fff;
 }
 .pause-hud-btn--danger:hover { background: rgba(185, 40, 40, 0.92); }
+
+/* ---- 印刷・エクスポート カスタムコントロールボタン ---- */
+.print-ctrl-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 29px;
+  height: 29px;
+  background: none;
+  border: none;
+  cursor: pointer;
+  color: #333;
+  padding: 0;
+}
+.print-ctrl-btn:hover { background: rgba(0,0,0,0.05); }

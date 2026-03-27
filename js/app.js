@@ -213,22 +213,36 @@ map.addControl(new maplibregl.GeolocateControl({
 
 /*
   ========================================================
-  地図エクスポート機能（@watergis/maplibre-gl-export）
-  印刷アイコンボタンを右上に追加。PDF / PNG / JPG で出力可能。
+  印刷・エクスポートボタン（独自 MapLibre カスタムコントロール）
+  クリックすると独自の印刷モーダルを開く。
   ========================================================
 */
-// UMDビルドでは globalThis.MaplibreExportControl が名前空間オブジェクト
-// その中にクラス・定数が全てまとまっている
-const _exp = window.MaplibreExportControl;
-map.addControl(new _exp.MaplibreExportControl({
-  PageSize: _exp.Size.A4,
-  PageOrientation: _exp.PageOrientation.Landscape,
-  Format: _exp.Format.PNG,
-  DPI: _exp.DPI[96],
-  Crosshair: false,
-  PrintableArea: true,
-  Local: 'ja',
-}), 'top-right');
+class PrintButtonControl {
+  onAdd() {
+    this._container = document.createElement('div');
+    this._container.className = 'maplibregl-ctrl maplibregl-ctrl-group';
+    const btn = document.createElement('button');
+    btn.className = 'maplibregl-ctrl-icon print-ctrl-btn';
+    btn.type = 'button';
+    btn.title = '印刷・エクスポート';
+    btn.setAttribute('aria-label', '印刷・エクスポート');
+    btn.innerHTML = `<svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24"
+      fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"
+      aria-hidden="true">
+      <polyline points="6 9 6 2 18 2 18 9"/>
+      <path d="M6 18H4a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-2"/>
+      <rect x="6" y="14" width="12" height="8"/>
+    </svg>`;
+    // クリック時に独自印刷モーダルを開く（initPrintDialog の openDialog を呼ぶ）
+    btn.addEventListener('click', () => {
+      document.getElementById('print-overlay').dispatchEvent(new CustomEvent('open-print-dialog'));
+    });
+    this._container.appendChild(btn);
+    return this._container;
+  }
+  onRemove() { this._container.remove(); }
+}
+map.addControl(new PrintButtonControl(), 'top-right');
 
 
 /*
@@ -8545,26 +8559,8 @@ document.getElementById('import-decide-btn').addEventListener('click', () => {
     doc.save('map_export.pdf');
   }
 
-  // maplibre-gl-export のボタンクリックを横取りして独自ダイアログを表示
-  // capture フェーズで先にイベントを捕捉し、ライブラリの動作を抑制する
-  map.once('idle', () => {
-    // maplibre-gl-export はボタン自体に class="maplibregl-export-control" を付与する
-    const tryIntercept = () => {
-      const btn = document.querySelector('.maplibregl-export-control');
-      if (btn) {
-        // capture フェーズで先に捕捉してライブラリのクリックハンドラを抑制
-        btn.addEventListener('click', (e) => {
-          e.stopImmediatePropagation();
-          e.stopPropagation();
-          e.preventDefault();
-          openDialog();
-        }, true);
-      } else {
-        setTimeout(tryIntercept, 200);
-      }
-    };
-    tryIntercept();
-  });
+  // 独自 PrintButtonControl からのカスタムイベントでダイアログを開く
+  overlay.addEventListener('open-print-dialog', openDialog);
 
   // コントロール変更時の更新
   [selPaper, selOrientation, selScale].forEach(el => {
