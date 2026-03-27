@@ -3104,6 +3104,56 @@ label.setting-label {
 }
 
 /* ===================================================================
+   共通モーダルデコレーション
+   wrapper・header・close-btn のデザインをここで一元管理する。
+   サイズ（width / height）は各モーダルの個別ルールで上書きする。
+   =================================================================== */
+
+/* モーダル本体の枠・影・形状 */
+.modal-wrapper {
+  position: relative;
+  border-radius: 12px;
+  overflow: hidden;
+  box-shadow: 0 6px 24px var(--overlay-dark);
+  border: 2px solid var(--white-border);
+  background: var(--bg-surface);
+  display: flex;
+  flex-direction: column;
+}
+
+/* ヘッダー（緑背景 + 白テキスト） */
+.modal-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 6px 10px;
+  flex-shrink: 0;
+  background: var(--primary);
+  color: var(--on-primary);
+  font-size: var(--font-base);
+  font-weight: var(--font-bold);
+}
+
+/* 閉じるボタン（円形・白半透明） */
+.modal-close-btn {
+  background: var(--white-subtle);
+  border: none;
+  color: var(--on-primary);
+  font-size: var(--font-lg);
+  width: 24px;
+  height: 24px;
+  border-radius: 50%;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  line-height: 1;
+  transition: background var(--transition);
+  flex-shrink: 0;
+}
+.modal-close-btn:hover { background: var(--white-hover); }
+
+/* ===================================================================
    地図画像 位置合わせモーダル（読図モードポップアップと同デザイン）
    =================================================================== */
 
@@ -3119,48 +3169,11 @@ label.setting-label {
 }
 #import-overlay.visible { display: flex; }
 
-/* モーダル本体（PC readmap wrapper と同系スタイル） */
+/* モーダル本体: サイズのみ個別定義（装飾は .modal-wrapper で共通管理） */
 #import-modal-wrapper {
-  position: relative;
   width: min(92vw, 1040px);
   height: min(88vh, 720px);
-  border-radius: 12px;
-  overflow: hidden;
-  box-shadow: 0 6px 24px var(--overlay-dark);
-  border: 2px solid var(--white-border);
-  background: var(--bg-surface);
-  display: flex;
-  flex-direction: column;
 }
-
-/* ヘッダー：左パネルヘッダーと同じ緑 */
-#import-modal-header {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  padding: 6px 10px;
-  flex-shrink: 0;
-  background: var(--primary);
-  color: var(--on-primary);
-  font-size: var(--font-base);
-  font-weight: var(--font-bold);
-}
-#import-overlay-close-btn {
-  background: var(--white-subtle);
-  border: none;
-  color: var(--on-primary);
-  font-size: var(--font-lg);
-  width: 24px;
-  height: 24px;
-  border-radius: 50%;
-  cursor: pointer;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  line-height: 1;
-  transition: background var(--transition);
-}
-#import-overlay-close-btn:hover { background: var(--white-hover); }
 
 /* モードタブ：1タブ + Undo/Redo */
 #import-mode-tabs {
@@ -3442,45 +3455,11 @@ label.setting-label {
 }
 #print-overlay.visible { display: flex; }
 
+/* モーダル本体: サイズのみ個別定義（装飾は .modal-wrapper で共通管理） */
 #print-modal-wrapper {
-  position: relative;
   width: min(92vw, 900px);
   height: min(88vh, 640px);
-  border-radius: 12px;
-  overflow: hidden;
-  box-shadow: 0 6px 24px var(--overlay-dark);
-  border: 2px solid var(--white-border);
-  background: var(--bg-surface);
-  display: flex;
-  flex-direction: column;
 }
-#print-modal-header {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  padding: 6px 10px;
-  flex-shrink: 0;
-  background: var(--primary);
-  color: var(--on-primary);
-  font-size: var(--font-base);
-  font-weight: var(--font-bold);
-}
-#print-overlay-close-btn {
-  background: var(--white-subtle);
-  border: none;
-  color: var(--on-primary);
-  font-size: var(--font-lg);
-  width: 24px;
-  height: 24px;
-  border-radius: 50%;
-  cursor: pointer;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  line-height: 1;
-  transition: background var(--transition);
-}
-#print-overlay-close-btn:hover { background: var(--white-hover); }
 
 #print-modal-body {
   flex: 1;
@@ -4233,10 +4212,10 @@ label.setting-label {
 }
 
 /* =================================================================
-   環境設定モーダル（#import-overlay と同サイズ・同デザイン）
+   環境設定モーダル
    ================================================================= */
 
-/* 全画面暗転オーバーレイ（import-overlay と同系） */
+/* 全画面暗転オーバーレイ */
 #sys-settings-modal {
   display: none;
   position: fixed;
@@ -4248,49 +4227,11 @@ label.setting-label {
 }
 #sys-settings-modal.visible { display: flex; }
 
-/* モーダル本体（import-modal-wrapper と同スタイル） */
+/* モーダル本体: サイズのみ個別定義（装飾は .modal-wrapper で共通管理） */
 #sys-settings-wrapper {
-  position: relative;
   width: min(92vw, 1040px);
   height: min(88vh, 720px);
-  border-radius: 12px;
-  box-shadow: 0 8px 40px rgba(0,0,0,0.38);
-  background: var(--bg-surface);
-  display: flex;
-  flex-direction: column;
-  overflow: hidden;
 }
-
-/* ヘッダー（import-modal-header と完全同一） */
-#sys-settings-header {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  padding: 6px 10px;
-  background: var(--primary);
-  color: var(--on-primary);
-  font-size: var(--font-base);
-  font-weight: var(--font-bold);
-  flex-shrink: 0;
-}
-
-/* 閉じるボタン（import-overlay-close-btn と同一） */
-#sys-settings-close-btn {
-  background: var(--white-subtle);
-  border: none;
-  color: var(--on-primary);
-  font-size: var(--font-lg);
-  border-radius: 4px;
-  width: 26px;
-  height: 26px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  cursor: pointer;
-  line-height: 1;
-  transition: background var(--transition);
-}
-#sys-settings-close-btn:hover { background: var(--white-hover); }
 
 /* ボディ: 2列横並び（左: スケール設定 / 右: シミュレーター設定） */
 #sys-settings-body {
