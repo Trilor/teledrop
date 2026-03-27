@@ -3457,8 +3457,8 @@ label.setting-label {
 
 /* モーダル本体: サイズのみ個別定義（装飾は .modal-wrapper で共通管理） */
 #print-modal-wrapper {
-  width: min(92vw, 900px);
-  height: min(88vh, 640px);
+  width: min(92vw, 1040px);
+  height: min(88vh, 720px);
 }
 
 #print-modal-body {
