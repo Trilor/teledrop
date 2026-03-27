@@ -6768,6 +6768,8 @@ document.getElementById('pc-sim-toggle-btn').addEventListener('click', () => {
    ---------------------------------------------------------------- */
 function openSysSettingsModal() {
   document.getElementById('sys-settings-modal').style.display = 'flex';
+  // モーダル表示後に定規を再描画（非表示時は clientWidth=0 のため正確なサイズで再計算）
+  requestAnimationFrame(() => updatePpiRuler());
 }
 function closeSysSettingsModal() {
   document.getElementById('sys-settings-modal').style.display = 'none';

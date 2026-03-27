@@ -3592,7 +3592,8 @@ label.setting-label {
   #sidebar-logo { display: none; }
 
   /* ナビボタン: 横並びに */
-  .sidebar-nav-btn {
+  .sidebar-nav-btn,
+  .sidebar-modal-btn {
     flex: 1;
     height: 54px;
     width: auto;
@@ -3600,6 +3601,8 @@ label.setting-label {
     flex-direction: column;
     gap: 2px;
   }
+  /* スペーサーはモバイル横並びでは不要 */
+  .sidebar-nav-spacer { display: none; }
   .nav-label { display: block; font-size: 9px; }
 
   /* アクティブインジケーター: PC同様に背景色で表現（ボーダー不要） */
@@ -4197,7 +4200,7 @@ label.setting-label {
 }
 
 /* =================================================================
-   サイドバー: スペーサー + スケール設定ボタン
+   サイドバー: スペーサー + 環境設定ボタン
    ================================================================= */
 
 /* アイコンバー内で残りスペースを埋め、ボタンを下部に寄せる */
@@ -4205,67 +4208,65 @@ label.setting-label {
   flex: 1;
 }
 
-/* システム設定モーダルを開くボタン（nav-btn と同系スタイル） */
+/* 環境設定モーダルを開くボタン（sidebar-nav-btn と完全同一スタイル） */
 .sidebar-modal-btn {
+  width: 44px;
+  height: 52px;
+  border: none;
+  background: transparent;
+  color: #000;
+  border-radius: 6px;
+  cursor: pointer;
   display: flex;
   flex-direction: column;
   align-items: center;
   justify-content: center;
-  width: 100%;
-  padding: 6px 4px;
-  border: none;
-  background: none;
-  color: var(--text-sub);
-  cursor: pointer;
-  font-size: var(--font-xs);
   gap: 2px;
   transition: background var(--transition), color var(--transition);
-  border-radius: 0;
+  position: relative;
+  flex-shrink: 0;
+  padding: 0;
 }
 .sidebar-modal-btn:hover {
-  background: var(--bg-hover-btn);
-  color: var(--primary);
-}
-.sidebar-modal-btn .nav-icon {
-  font-size: 18px;
-  line-height: 1;
-}
-.sidebar-modal-btn .nav-label {
-  font-size: 10px;
-  white-space: nowrap;
+  background: rgba(0,0,0,0.07);
+  color: #000;
 }
 
 /* =================================================================
-   システム設定モーダル
+   環境設定モーダル（#import-overlay と同サイズ・同デザイン）
    ================================================================= */
 
+/* 全画面暗転オーバーレイ（import-overlay と同系） */
 #sys-settings-modal {
   display: none;
   position: fixed;
   inset: 0;
-  background: rgba(0,0,0,0.55);
   z-index: 10000;
+  background: var(--overlay-mid);
   align-items: center;
   justify-content: center;
 }
 #sys-settings-modal.visible { display: flex; }
 
+/* モーダル本体（import-modal-wrapper と同スタイル） */
 #sys-settings-wrapper {
   position: relative;
-  width: min(92vw, 440px);
-  background: var(--bg-panel);
-  border-radius: 10px;
-  box-shadow: 0 8px 32px rgba(0,0,0,0.28);
-  overflow: hidden;
+  width: min(92vw, 1040px);
+  height: min(88vh, 720px);
+  border-radius: 12px;
+  box-shadow: 0 8px 40px rgba(0,0,0,0.38);
+  background: var(--bg-surface);
   display: flex;
   flex-direction: column;
+  overflow: hidden;
 }
 
+/* ヘッダー（import-modal-header と完全同一） */
 #sys-settings-header {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: 10px 14px;
+  padding: 6px 10px;
   background: var(--primary);
   color: var(--on-primary);
   font-size: var(--font-base);
@@ -4273,39 +4274,50 @@ label.setting-label {
   flex-shrink: 0;
 }
 
+/* 閉じるボタン（import-overlay-close-btn と同一） */
 #sys-settings-close-btn {
   background: var(--white-subtle);
   border: none;
   color: var(--on-primary);
+  font-size: var(--font-lg);
   border-radius: 4px;
-  width: 24px;
-  height: 24px;
+  width: 26px;
+  height: 26px;
   display: flex;
   align-items: center;
   justify-content: center;
   cursor: pointer;
-  font-size: 12px;
   line-height: 1;
   transition: background var(--transition);
 }
 #sys-settings-close-btn:hover { background: var(--white-hover); }
 
+/* ボディ: 2列横並び（左: スケール設定 / 右: シミュレーター設定） */
 #sys-settings-body {
-  padding: 16px;
-  overflow-y: auto;
+  flex: 1;
+  display: flex;
+  overflow: hidden;
+  min-height: 0;
 }
 
-.sys-section-title {
-  font-size: var(--font-sm);
-  font-weight: var(--font-bold);
-  color: var(--text-muted);
-  margin-bottom: 10px;
-  padding-bottom: 4px;
-  border-bottom: 1px solid var(--border-subtle);
+/* 各列 */
+.env-col {
+  flex: 1;
+  overflow-y: auto;
+  padding: 0;
+  min-width: 0;
+}
+
+/* 列間の縦区切り線 */
+.env-divider {
+  width: 1px;
+  background: #e0e0e0;
+  flex-shrink: 0;
+  margin: 8px 0;
 }
 
 /* =================================================================
-   PC シミュレーター ポーズHUD
+   PC シミュレーター ポーズHUD（シンプルなボタンのみ）
    ================================================================= */
 
 #pc-sim-pause-hud {
@@ -4323,9 +4335,7 @@ label.setting-label {
   border: 1px solid rgba(255,255,255,0.13);
   border-radius: 14px;
   padding: 22px 26px 20px;
-  min-width: 300px;
-  max-width: 380px;
-  width: min(90vw, 380px);
+  width: min(90vw, 280px);
   color: #dde4ed;
   backdrop-filter: blur(10px);
   -webkit-backdrop-filter: blur(10px);
@@ -4338,29 +4348,6 @@ label.setting-label {
   margin-bottom: 18px;
   letter-spacing: 0.06em;
   color: #ffffff;
-}
-
-.pause-hud-settings {
-  display: flex;
-  flex-direction: column;
-  margin-bottom: 18px;
-}
-
-/* HUD 内 setting-row の文字色をダーク背景向けに上書き */
-#pause-hud-card .setting-label { color: #9fb8cc; font-size: var(--font-sm); }
-#pause-hud-card .opacity-val   { color: #c8d8e4; }
-#pause-hud-card .setting-row   { border-color: rgba(255,255,255,0.06); }
-
-/* HUD 内プルダウン */
-#pause-hud-card .setting-select {
-  background-color: rgba(255,255,255,0.08);
-  color: #dde4ed;
-  border-color: rgba(255,255,255,0.18);
-}
-
-/* HUD 内トグルスイッチの track 色 */
-#pause-hud-card .toggle-switch input:not(:checked) + .toggle-slider {
-  background: rgba(255,255,255,0.2);
 }
 
 .pause-hud-actions {
