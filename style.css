@@ -4439,6 +4439,55 @@ label.setting-label {
 .settings-item-ctrl--slider {
   width: 220px;
 }
+
+/* --stack バリアント: ラベルとコントロールを縦積みにして全幅スライダー */
+.settings-item--stack {
+  flex-direction: column;
+  align-items: stretch;
+  gap: 6px;
+  padding-bottom: 16px;
+}
+.settings-item--stack .settings-item-label {
+  flex: none;
+}
+.settings-item--stack .settings-item-ctrl--slider {
+  width: auto;
+}
+
+/* スライダーつまみ追従バブル */
+.slider-bubble-wrap {
+  position: relative;
+  flex: 1;
+  min-width: 0;
+}
+.slider-bubble-wrap .ui-slider {
+  width: 100%;
+  display: block;
+}
+.slider-bubble {
+  position: absolute;
+  bottom: calc(100% + 6px);
+  transform: translateX(-50%);
+  background: var(--primary);
+  color: #fff;
+  font-size: 11px;
+  font-weight: 600;
+  padding: 2px 7px;
+  border-radius: 4px;
+  white-space: nowrap;
+  pointer-events: none;
+  line-height: 1.6;
+}
+.slider-bubble::after {
+  content: '';
+  position: absolute;
+  top: 100%;
+  left: 50%;
+  transform: translateX(-50%);
+  border: 4px solid transparent;
+  border-top-color: var(--primary);
+}
+
 .settings-slider-bound {
   font-size: var(--font-xs);
   color: var(--text-muted);
@@ -4482,7 +4531,7 @@ label.setting-label {
   justify-content: center;
 }
 .settings-ruler-inner {
-  width: 85%;
+  width: 100%;
   background: var(--bg-subtle);
   border-radius: 6px;
   overflow: hidden;

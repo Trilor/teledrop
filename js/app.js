@@ -5494,9 +5494,7 @@ function findDeviceName(ppi) {
       updatePpiRuler();
       // 手動スライダーをプリセット値に同期
       const _ms = document.getElementById('ppi-manual-slider');
-      const _mv = document.getElementById('ppi-manual-val');
-      if (_ms) { _ms.value = ppi; updateSliderGradient(_ms); }
-      if (_mv) _mv.textContent = ppi + ' ppi';
+      if (_ms) { _ms.value = ppi; updateSliderGradient(_ms); updatePpiSliderBubble(_ms); }
     });
   });
 
@@ -5504,49 +5502,58 @@ function findDeviceName(ppi) {
   label.textContent = findDeviceName(currentDevicePPI);
 })();
 
-// 実寸定規を SVG で描画する（40mm = 4cm を物理的に正確な CSS px 幅で表示）
-// ユーザーが実物の定規を画面に当てて PPI 設定を確認できるようにする
+// 実寸定規を SVG で描画する
+// 目盛り幅は PPI に基づく固定間隔。コンテナ幅に合わせて右端でクリップされる（Inkscape スタイル）
 function updatePpiRuler() {
   const svg = document.getElementById('ppi-ruler');
   if (!svg) return;
-  const dpr        = window.devicePixelRatio || 1;
-  const pxPerMm    = currentDevicePPI / (dpr * 25.4); // CSS px per mm
+  const dpr     = window.devicePixelRatio || 1;
+  const pxPerMm = currentDevicePPI / (dpr * 25.4); // CSS px per mm
 
-  // 左右の余白（ラベルが見切れないよう確保）
-  const PAD        = 10;
-  // 親コンテナの利用可能幅に収まる cm 数を自動決定（左右PAD分を差し引く）
-  // clientWidth が 0 の場合（パネル非表示時）は 240px をフォールバックとして使用
+  // SVG 幅 = 親コンテナの実幅（overflow:hidden でクリップ）
   const containerW = svg.parentElement ? svg.parentElement.clientWidth : 0;
-  const availPx    = (containerW > 0 ? containerW : 240) - PAD * 2 - 16;
-  const totalMm    = Math.max(10, Math.floor(availPx / pxPerMm / 10) * 10); // 1cm 単位で切り捨て
-  const totalPx    = pxPerMm * totalMm;
-  const H          = 34; // SVG 高さ
-  const BASE       = H - 2; // ベースラインY
+  const W   = containerW > 0 ? containerW : 240;
+  const H   = 34;
+  const BASE = H - 2; // ベースラインY
 
-  svg.setAttribute('width', Math.ceil(totalPx + PAD * 2));
+  svg.setAttribute('width', W);
 
   const lines = [];
   const texts = [];
 
-  // ベースライン・左端縦線（PAD オフセット）
-  lines.push(`<line x1="${PAD}" y1="${BASE}" x2="${PAD + totalPx}" y2="${BASE}" stroke="currentColor" stroke-width="1.5"/>`);
-  lines.push(`<line x1="${PAD}" y1="${BASE - 16}" x2="${PAD}" y2="${BASE}" stroke="currentColor" stroke-width="1.5"/>`);
+  // ベースライン（全幅）と左端縦線
+  lines.push(`<line x1="0" y1="${BASE}" x2="${W}" y2="${BASE}" stroke="currentColor" stroke-width="1.5"/>`);
+  lines.push(`<line x1="0" y1="${BASE - 16}" x2="0" y2="${BASE}" stroke="currentColor" stroke-width="1.5"/>`);
+  // 0 ラベル（左端・左揃え）
+  texts.push(`<text x="3" y="${BASE - 18}" font-size="11" fill="currentColor" font-family="system-ui,sans-serif" font-weight="500" text-anchor="start">0</text>`);
 
-  // 0 ラベル（左端縦線の真上・中央揃え）
-  texts.push(`<text x="${PAD}" y="${BASE - 18}" font-size="11" fill="currentColor" font-family="system-ui,sans-serif" font-weight="500" text-anchor="middle">0</text>`);
-
-  for (let mm = 1; mm <= totalMm; mm++) {
-    const x     = PAD + mm * pxPerMm;
+  // 1mm 刻みで目盛りを描画し、コンテナ幅を超えたら終了（右端でクリップ）
+  for (let mm = 1; mm * pxPerMm <= W + 0.5; mm++) {
+    const x     = mm * pxPerMm;
     const isCm  = mm % 10 === 0;
     const is5mm = mm % 5 === 0;
     const tickH = isCm ? 16 : is5mm ? 10 : 5;
-    lines.push(`<line x1="${x}" y1="${BASE - tickH}" x2="${x}" y2="${BASE}" stroke="currentColor" stroke-width="${isCm ? 1.5 : 1}"/>`);
+    lines.push(`<line x1="${x.toFixed(2)}" y1="${BASE - tickH}" x2="${x.toFixed(2)}" y2="${BASE}" stroke="currentColor" stroke-width="${isCm ? 1.5 : 1}"/>`);
     if (isCm) {
-      texts.push(`<text x="${x}" y="${BASE - 18}" font-size="11" fill="currentColor" font-family="system-ui,sans-serif" font-weight="500" text-anchor="middle">${mm / 10}</text>`);
+      texts.push(`<text x="${x.toFixed(2)}" y="${BASE - 18}" font-size="11" fill="currentColor" font-family="system-ui,sans-serif" font-weight="500" text-anchor="middle">${mm / 10}</text>`);
     }
   }
 
   svg.innerHTML = lines.join('') + texts.join('');
+}
+
+// スライダーつまみの位置に追従してバブルを更新する
+function updatePpiSliderBubble(slider) {
+  const bubble = document.getElementById('ppi-slider-bubble');
+  if (!bubble || !slider) return;
+  const min    = parseFloat(slider.min);
+  const max    = parseFloat(slider.max);
+  const val    = parseFloat(slider.value);
+  const pct    = (val - min) / (max - min);
+  const thumbW = 16; // CSS thumb 幅（ui-slider で指定した値と揃える）
+  const left   = pct * (slider.offsetWidth - thumbW) + thumbW / 2;
+  bubble.style.left = left + 'px';
+  bubble.textContent = Math.round(val) + ' ppi';
 }
 
 updatePpiRuler();
@@ -5555,17 +5562,17 @@ updatePpiRuler();
 {
   const _slider = document.getElementById('ppi-manual-slider');
   const _val    = document.getElementById('ppi-manual-val');
-  if (_slider && _val) {
+  if (_slider) {
     // 初期値を currentDevicePPI に合わせる
     _slider.value = currentDevicePPI;
     updateSliderGradient(_slider);
-    _val.textContent = currentDevicePPI + ' ppi';
+    updatePpiSliderBubble(_slider);
     _slider.addEventListener('input', () => {
       const ppi = parseInt(_slider.value, 10);
       currentDevicePPI = ppi;
       localStorage.setItem('teledrop-device-ppi', ppi);
       updateSliderGradient(_slider);
-      _val.textContent = ppi + ' ppi';
+      updatePpiSliderBubble(_slider);
       updateScaleDisplay();
       updatePpiRuler();
     });
@@ -6796,9 +6803,7 @@ function openSysSettingsModal() {
   requestAnimationFrame(() => {
     updatePpiRuler();
     const _ms = document.getElementById('ppi-manual-slider');
-    const _mv = document.getElementById('ppi-manual-val');
-    if (_ms) { _ms.value = currentDevicePPI; updateSliderGradient(_ms); }
-    if (_mv) _mv.textContent = currentDevicePPI + ' ppi';
+    if (_ms) { _ms.value = currentDevicePPI; updateSliderGradient(_ms); updatePpiSliderBubble(_ms); }
   });
 }
 function closeSysSettingsModal() {
