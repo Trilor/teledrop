@@ -757,18 +757,23 @@ map.on('load', async () => {
     const z = map.getZoom();
     const t = Math.max(0, Math.min(1, (z - 7) / 4));
 
-    // 上空（sky-color）: 常に濃いめ。地平線（horizon-color）は常に上空より薄めで差を維持
-    // z≤7=宇宙（黒）、z≈8.2=上層大気（濃紺）、z≈9.4=成層圏（深青）、z≥11=対流圏（青）
-    const skyColor     = _lerpMulti([[0,'#000000'],[0.3,'#000033'],[0.6,'#002277'],[1,'#003a99']], t);
-    const horizonColor = _lerpMulti([[0,'#000820'],[0.3,'#001a4d'],[0.6,'#1a4499'],[1,'#4488cc']], t);
-    const bgColor      = horizonColor;  // 背景は地平線色と揃える
+    // z7（宇宙）〜z18（地上）で一方向に遷移。t=0=黒、t=1=明るい青空
+    const t2 = Math.max(0, Math.min(1, (z - 7) / 11));  // z18で t=1
+
+    // 上空: 黒→濃紺→深青→明青
+    const skyColor     = _lerpMulti([[0,'#000000'],[0.2,'#000033'],[0.5,'#002277'],[0.8,'#003a99'],[1,'#0055cc']], t2);
+    // 地平線: 常に上空より薄め。高ズームで薄い水色へ
+    const horizonColor = _lerpMulti([[0,'#000820'],[0.2,'#001a4d'],[0.5,'#1a4499'],[0.8,'#4488cc'],[1,'#87ceeb']], t2);
+    const bgColor      = horizonColor;
+    // 地平線色の広がりも高ズームほど拡大（0.2=宇宙→0.8=地上）
+    const skyHorizonBlend = 0.2 + 0.6 * t2;
 
     _globeBgEl.style.backgroundColor = bgColor;
     map.setSky({
       'sky-color':          skyColor,
-      'sky-horizon-blend':  0.5,
+      'sky-horizon-blend':  skyHorizonBlend,
       'horizon-color':      horizonColor,
-      'horizon-fog-blend':  0,   // フォグを地形に乗せない（地形の白みを防ぐ）
+      'horizon-fog-blend':  0,
       'fog-color':          horizonColor,
       'atmosphere-blend':   0,
     });
