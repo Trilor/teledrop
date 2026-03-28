@@ -750,7 +750,7 @@ body {
 .ppi-cascade-menu {
   position: fixed;
   z-index: 10100;
-  background: var(--bg-panel);
+  background: var(--bg-select);
   border: 1px solid var(--border-muted);
   border-radius: 4px;
   box-shadow: 2px 4px 12px rgba(0,0,0,0.15);
@@ -807,7 +807,6 @@ body {
   align-items: center;
   justify-content: space-between;
   gap: 10px;
-  background: var(--bg-select);
 }
 .cascade-item:hover,
 .ppi-cascade-item:hover {
