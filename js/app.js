@@ -6770,6 +6770,15 @@ function closeSysSettingsModal() {
 
 document.getElementById('sys-settings-open-btn').addEventListener('click', openSysSettingsModal);
 document.getElementById('sys-settings-close-btn').addEventListener('click', closeSysSettingsModal);
+
+// 左ナビのセクション切り替え
+document.getElementById('settings-nav').addEventListener('click', e => {
+  const btn = e.target.closest('.settings-nav-item');
+  if (!btn) return;
+  const sec = btn.dataset.section;
+  document.querySelectorAll('.settings-nav-item').forEach(b => b.classList.toggle('active', b === btn));
+  document.querySelectorAll('.settings-section').forEach(s => s.classList.toggle('active', s.id === `settings-sec-${sec}`));
+});
 // モーダル背景クリックで閉じる
 document.getElementById('sys-settings-modal').addEventListener('click', (e) => {
   if (e.target === document.getElementById('sys-settings-modal')) closeSysSettingsModal();
