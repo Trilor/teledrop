@@ -756,7 +756,7 @@ map.on('load', async () => {
       'horizon-color':      _lerpHex('#000820', '#ffffff', t),
       'horizon-fog-blend':  0.5,
       'fog-color':          _lerpHex('#000820', '#ffffff', t),
-      'atmosphere-blend':   t * t,  // 二乗で緩やかに立ち上がる（低ズームで急激に明るくなるのを防ぐ）
+      'atmosphere-blend':   0,
     });
   };
   map.on('zoom', _updateGlobeBg);
