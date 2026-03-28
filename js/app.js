@@ -5492,6 +5492,11 @@ function findDeviceName(ppi) {
       closeAll();
       updateScaleDisplay();
       updatePpiRuler();
+      // 手動スライダーをプリセット値に同期
+      const _ms = document.getElementById('ppi-manual-slider');
+      const _mv = document.getElementById('ppi-manual-val');
+      if (_ms) { _ms.value = ppi; updateSliderGradient(_ms); }
+      if (_mv) _mv.textContent = ppi + ' ppi';
     });
   });
 
@@ -5545,6 +5550,27 @@ function updatePpiRuler() {
 }
 
 updatePpiRuler();
+
+// 手動PPIスライダー — ドラッグ中にリアルタイムで定規・縮尺を更新
+{
+  const _slider = document.getElementById('ppi-manual-slider');
+  const _val    = document.getElementById('ppi-manual-val');
+  if (_slider && _val) {
+    // 初期値を currentDevicePPI に合わせる
+    _slider.value = currentDevicePPI;
+    updateSliderGradient(_slider);
+    _val.textContent = currentDevicePPI + ' ppi';
+    _slider.addEventListener('input', () => {
+      const ppi = parseInt(_slider.value, 10);
+      currentDevicePPI = ppi;
+      localStorage.setItem('teledrop-device-ppi', ppi);
+      updateSliderGradient(_slider);
+      _val.textContent = ppi + ' ppi';
+      updateScaleDisplay();
+      updatePpiRuler();
+    });
+  }
+}
 
 // MapLibre GL JS のデフォルト tileSize は 512px
 // → ワールド幅 = 512 × 2^zoom CSS px
@@ -6766,8 +6792,14 @@ document.getElementById('pc-sim-toggle-btn').addEventListener('click', () => {
    ---------------------------------------------------------------- */
 function openSysSettingsModal() {
   document.getElementById('sys-settings-modal').style.display = 'flex';
-  // モーダル表示後に定規を再描画（非表示時は clientWidth=0 のため正確なサイズで再計算）
-  requestAnimationFrame(() => updatePpiRuler());
+  // モーダル表示後に定規・スライダーを最新値で再描画（非表示時は clientWidth=0）
+  requestAnimationFrame(() => {
+    updatePpiRuler();
+    const _ms = document.getElementById('ppi-manual-slider');
+    const _mv = document.getElementById('ppi-manual-val');
+    if (_ms) { _ms.value = currentDevicePPI; updateSliderGradient(_ms); }
+    if (_mv) _mv.textContent = currentDevicePPI + ' ppi';
+  });
 }
 function closeSysSettingsModal() {
   document.getElementById('sys-settings-modal').style.display = 'none';

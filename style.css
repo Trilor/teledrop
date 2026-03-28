@@ -4445,11 +4445,52 @@ label.setting-label {
   flex-shrink: 0;
 }
 
-/* 定規行: 縦並び */
-.settings-item--ruler {
-  flex-direction: column;
-  align-items: flex-start;
-  gap: 6px;
+/* 画面・校正 説明文 */
+.settings-display-desc {
+  padding: 12px 24px;
+  font-size: var(--font-sm);
+  color: var(--text-sub);
+  line-height: 1.7;
+  border-bottom: 1px solid var(--border-subtle);
+  margin: 0;
+}
+
+/* 「または手動で調整」区切り線 */
+.settings-display-sep {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 0 24px;
+  height: 36px;
+  font-size: var(--font-xs);
+  color: var(--text-muted);
+  letter-spacing: 0.04em;
+  border-bottom: 1px solid var(--border-subtle);
+}
+.settings-display-sep::before,
+.settings-display-sep::after {
+  content: '';
+  flex: 1;
+  height: 1px;
+  background: var(--border-light);
+}
+
+/* 定規コンテナ */
+.settings-ruler-wrap {
+  padding: 16px 24px 20px;
+  display: flex;
+  justify-content: center;
+}
+.settings-ruler-inner {
+  width: 85%;
+  background: var(--bg-subtle);
+  border-radius: 6px;
+  overflow: hidden;
+  padding: 4px 0;
+}
+.settings-ruler-inner #ppi-ruler {
+  display: block;
+  color: var(--text-ink);
 }
 
 /* =================================================================
