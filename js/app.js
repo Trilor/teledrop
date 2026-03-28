@@ -6669,15 +6669,7 @@ function pcSimLoop(timestamp) {
     const moveBearing = pcSimState.bearing + Math.atan2(right / len, fwd / len) * (180 / Math.PI);
     const dest = turf.destination([pcSimState.playerLng, pcSimState.playerLat], distKm, moveBearing);
 
-    // bird mode: 目標地点の地形が飛行高度を超える場合は移動を阻止
-    let canMove = true;
-    if (pcSimState.viewMode === 'bird') {
-      const destTerrain = map.queryTerrainElevation(
-        { lng: dest.geometry.coordinates[0], lat: dest.geometry.coordinates[1] }, { exaggerated: false }
-      );
-      if (destTerrain !== null && destTerrain + 10 > pcSimState.birdFloorH) canMove = false;
-    }
-    if (canMove) {
+    if (true) {
       pcSimState.playerLng = dest.geometry.coordinates[0];
       pcSimState.playerLat = dest.geometry.coordinates[1];
     }
@@ -6741,9 +6733,13 @@ function pcSimLoop(timestamp) {
       pcSimState.birdFloorH = Math.max(pcSimState.birdBaseTerrainH + pcSimState.birdAltM, floorH);
     } else {
       // 通常: 目標高度へローパスフィルタで追従
+      // birdAltM=0（地表面）のときは即時追従して地面に沿って走る
       const targetH = pcSimState.birdBaseTerrainH + pcSimState.birdAltM;
       const neededH = Math.max(targetH, floorH);
-      pcSimState.birdFloorH += (neededH - pcSimState.birdFloorH) * Math.min(1, dt / BIRD_FLOOR_TC);
+      const tc = pcSimState.birdAltM === 0 ? 0 : BIRD_FLOOR_TC;
+      pcSimState.birdFloorH = tc === 0
+        ? neededH
+        : pcSimState.birdFloorH + (neededH - pcSimState.birdFloorH) * Math.min(1, dt / tc);
     }
   }
 
