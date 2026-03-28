@@ -5555,7 +5555,7 @@ function updatePpiSliderBubble(slider) {
   if (bubble) {
     const left = pct * (slider.offsetWidth - thumbW) + thumbW / 2;
     bubble.style.left = left + 'px';
-    bubble.textContent = Math.round(val) + ' ppi';
+    bubble.textContent = Math.round(val);
   }
   if (numEl) numEl.textContent = Math.round(val);
 }
@@ -6804,11 +6804,12 @@ document.getElementById('pc-sim-toggle-btn').addEventListener('click', () => {
 function openSysSettingsModal() {
   document.getElementById('sys-settings-modal').style.display = 'flex';
   // モーダル表示後に定規・スライダーを最新値で再描画（非表示時は clientWidth=0）
-  requestAnimationFrame(() => {
+  // 二重 rAF でレイアウト完了後に offsetWidth を確実に取得する
+  requestAnimationFrame(() => requestAnimationFrame(() => {
     updatePpiRuler();
     const _ms = document.getElementById('ppi-manual-slider');
     if (_ms) { _ms.value = currentDevicePPI; updateSliderGradient(_ms); updatePpiSliderBubble(_ms); }
-  });
+  }));
 }
 function closeSysSettingsModal() {
   document.getElementById('sys-settings-modal').style.display = 'none';
