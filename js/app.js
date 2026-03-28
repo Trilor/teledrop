@@ -5577,15 +5577,15 @@ function updatePpiRuler() {
   const texts = [];
 
   // 左端に "0" ラベルが収まるよう小さなオフセット（文字幅の半分程度）を設ける
-  const OX = 5; // 左端オフセット（px）
+  const OX = 16; // 左端オフセット（px）
+  const RW = W; // 描画幅（コンテナ全幅）
   // ベースライン（全幅）と 0 目盛り縦線
-  lines.push(`<line x1="${OX}" y1="${BASE}" x2="${W}" y2="${BASE}" stroke="currentColor" stroke-width="1.5"/>`);
-  lines.push(`<line x1="${OX}" y1="${BASE - 16}" x2="${OX}" y2="${BASE}" stroke="currentColor" stroke-width="1.5"/>`);
+  lines.push(`<path d="M${OX},${BASE - 16} L${OX},${BASE} L${RW},${BASE}" stroke="currentColor" stroke-width="1.5" fill="none" stroke-linejoin="miter"/>`);
   // 0 ラベル（目盛り中央揃え）
   texts.push(`<text x="${OX}" y="${BASE - 18}" font-size="11" fill="currentColor" font-family="system-ui,sans-serif" font-weight="500" text-anchor="middle">0</text>`);
 
-  // 1mm 刻みで目盛りを描画し、コンテナ幅を超えたら終了（右端でクリップ）
-  for (let mm = 1; OX + mm * pxPerMm <= W + 0.5; mm++) {
+  // 1mm 刻みで目盛りを描画し、描画幅を超えたら終了（右端でクリップ）
+  for (let mm = 1; OX + mm * pxPerMm <= RW + 0.5; mm++) {
     const x     = OX + mm * pxPerMm;
     const isCm  = mm % 10 === 0;
     const is5mm = mm % 5 === 0;
@@ -6022,7 +6022,7 @@ document.getElementById('sim-toggle-btn')?.addEventListener('click', toggleSimMo
    ================================================================ */
 function addSimPosMarker() {
   if (mobileSimState.posMarker) return;
-  const isBird = pcSimState.viewMode === 'bird';
+  // const isBird = pcSimState.viewMode === 'bird';  // 鳥瞰モード（非表示中）
   const el = document.createElement('div');
   el.id = 'sim-pos-marker-el';
   el.style.cssText = `
@@ -6031,7 +6031,6 @@ function addSimPosMarker() {
     border: 4px solid rgba(255,255,255,0.85);
     box-shadow: 0 0 8px rgba(0,0,0,0.55);
     pointer-events: none;
-    ${isBird ? 'display: none;' : ''}
   `;
   mobileSimState.posMarker = new maplibregl.Marker({ element: el, anchor: 'center' })
     .setLngLat(map.getCenter())
@@ -6078,16 +6077,16 @@ const pcSimState = {
   smoothedSlopeAdj: 0,         // 地形傾斜による自動ピッチ補正（deg、ローパスフィルタ済み）
   cachedTerrainH:  0,          // queryTerrainElevation が null のときに使うキャッシュ値
   viewMode:        'terrain',  // 'terrain'（地形追従）| 'bird'（鳥瞰）
-  birdAltM:        200,        // 鳥瞰モードの地形相対高度（m）
-  birdBaseTerrainH: 0,         // 開始地点の地形高（bird mode 絶対高度の基準）
-  birdFloorH:       0,         // ローパス済み飛行基準高度（案A+B）
+  // birdAltM:        200,        // 鳥瞰モードの地形相対高度（m）
+  // birdBaseTerrainH: 0,         // 開始地点の地形高（bird mode 絶対高度の基準）
+  // birdFloorH:       0,         // ローパス済み飛行基準高度（案A+B）
   startLng:        null,       // クリック待ちで記録した開始座標（経度）
   startLat:        null,       // クリック待ちで記録した開始座標（緯度）
   pickingActive:   false,      // クリック待ちモード中か
   keys: {                      // キー押下状態（Pointer Lock 有無に関わらず追跡）
     KeyW: false, KeyA: false, KeyS: false, KeyD: false,
     ArrowUp: false, ArrowDown: false, ArrowLeft: false, ArrowRight: false,
-    KeyQ: false, KeyE: false,  // bird mode 高度上昇/下降
+    // KeyQ: false, KeyE: false,  // bird mode 高度上昇/下降
   },
 };
 const PC_CAM_DIST_MIN = 1;
@@ -6196,7 +6195,7 @@ function getPcSimSpeedKmh() {
   return simSpeedFromSlider(parseFloat(pcSimSpeedSlider.value)) || 50;
 }
 
-// ---- 飛行高度スライダー（鳥瞰モード） ----
+/* ---- 飛行高度スライダー（鳥瞰モード） ----
 // 対数スケール変換: スライダー内部値(0–1000) → 高度(10–5000 m)、10m単位に丸める
 const _BIRD_ALT_MIN = 10, _BIRD_ALT_MAX = 5000;
 function birdAltFromSlider(t) {
@@ -6229,6 +6228,7 @@ if (birdAltSlider) {
   updateSliderGradient(birdAltSlider);
   updateBirdAltBubble(birdAltSlider);
 }
+*/
 
 // シミュレーターモード ボタンセレクト
 let _simViewMode = 'terrain'; // 現在選択中のモードを変数で保持（DOM クエリより確実）
@@ -6250,6 +6250,7 @@ function syncSimStartButtons() {
   terrainBtn.classList.toggle('pc-sim-active', pcSimState.active && pcSimState.viewMode !== 'bird');
   birdBtn.classList.toggle('pc-sim-active', pcSimState.active && pcSimState.viewMode === 'bird');
 }
+/* setSimViewMode と .sim-view-mode-chips イベントリスナー（非表示中）
 function setSimViewMode(mode) {
   _simViewMode = (mode === 'bird') ? 'bird' : 'terrain';
   document.querySelectorAll('.sim-view-mode-chips .type-chip').forEach(btn => {
@@ -6263,6 +6264,7 @@ document.querySelectorAll('.sim-view-mode-chips .type-chip').forEach(btn => {
     setSimViewMode(btn.dataset.simMode ?? 'terrain');
   });
 });
+*/
 syncSimStartButtons();
 
 /* ----------------------------------------------------------------
@@ -6329,22 +6331,23 @@ function onPcSimLocked() {
   pcSimState.bearing   = map.getBearing();
   pcSimState.camDistM  = 100;
 
-  // モードはボタンクリック時に pcSimState.viewMode へ直接セット済み、高度のみ読み込み
-  pcSimState.birdAltM = birdAltFromSlider(parseFloat(document.getElementById('pc-bird-alt')?.value ?? '482'));
-  // モードに応じた初期ピッチ（鳥瞰: 45°、地形追従: PC_SIM_PITCH）
-  pcSimState.pitch     = (pcSimState.viewMode === 'bird') ? 45 : PC_SIM_PITCH;
-  // 読図マップのドット・矢印を鳥瞰モード時は青色に
-  document.getElementById('pc-sim-readmap-overlay')?.classList.toggle('bird-mode', pcSimState.viewMode === 'bird');
+  // モードはボタンクリック時に pcSimState.viewMode へ直接セット済み
+  // pcSimState.birdAltM = birdAltFromSlider(parseFloat(document.getElementById('pc-bird-alt')?.value ?? '482'));
+  // 初期ピッチは地形追従固定
+  pcSimState.pitch     = PC_SIM_PITCH;
+  // // 読図マップのドット・矢印を鳥瞰モード時は青色に（非表示中）
+  // document.getElementById('pc-sim-readmap-overlay')?.classList.toggle('bird-mode', pcSimState.viewMode === 'bird');
   pcSimState.smoothedSlopeAdj = 0;
 
   // キャッシュを現在地の地形高度で初期化
   pcSimState.cachedTerrainH  = map.queryTerrainElevation({ lng: pcSimState.playerLng, lat: pcSimState.playerLat }, { exaggerated: false }) ?? 0;
 
-  // bird mode: 開始地点の地形高を基準高度として記録（案A）
+  /* bird mode: 開始地点の地形高を基準高度として記録（案A）（非表示中）
   if (pcSimState.viewMode === 'bird') {
     pcSimState.birdBaseTerrainH = pcSimState.cachedTerrainH;
     pcSimState.birdFloorH       = pcSimState.cachedTerrainH + pcSimState.birdAltM;
   }
+  */
 
   // ③ カメラをプレイヤー視点へ即配置
   setCameraFromPlayer();
@@ -6429,8 +6432,8 @@ function stopPcSim() {
   pcSimState.active = false;
   pcSimState.paused = false;
 
-  // 鳥瞰モードカラーをリセット
-  document.getElementById('pc-sim-readmap-overlay')?.classList.remove('bird-mode');
+  // 鳥瞰モードカラーをリセット（非表示中）
+  // document.getElementById('pc-sim-readmap-overlay')?.classList.remove('bird-mode');
 
   // ポーズHUDを非表示
   document.getElementById('pc-sim-pause-hud').style.display = 'none';
@@ -6442,9 +6445,9 @@ function stopPcSim() {
   if (pcSimState.readMap) { pcSimState.readMap.remove(); pcSimState.readMap = null; }
 
   removeSimPosMarker();
-  // 鳥瞰固定ドットを非表示
-  const _birdDot = document.getElementById('pc-sim-pos-dot');
-  if (_birdDot) _birdDot.style.display = 'none';
+  // 鳥瞰固定ドットを非表示（非表示中）
+  // const _birdDot = document.getElementById('pc-sim-pos-dot');
+  // if (_birdDot) _birdDot.style.display = 'none';
 
   // キー状態・補正値リセット
   Object.keys(pcSimState.keys).forEach(k => { pcSimState.keys[k] = false; });
@@ -6522,7 +6525,7 @@ function setCameraFromPlayer() {
   const R       = 6371008.8;
   const lat_rad = pcSimState.playerLat * Math.PI / 180;
 
-  // ── 鳥瞰モード ──────────────────────────────────────────────────────
+  /* ── 鳥瞰モード ──────────────────────────────────────────────────────（非表示中）
   // calculateCameraOptionsFromCameraLngLatAltRotation でカメラ eye を直接配置する。
   // プレイヤーの3D上空点 [playerLng, playerLat, h + birdAltM] を中心に
   // pitch/bearing に従いカメラを後方上方に置くことで、
@@ -6554,6 +6557,7 @@ function setCameraFromPlayer() {
     map.jumpTo(camOpts);
     return;
   }
+  */
 
   // ── 地形追従モード ───────────────────────────────────────────────────
   let effectivePitch = Math.max(0, Math.min(map.getMaxPitch(), pcSimState.pitch + pcSimState.smoothedSlopeAdj));
@@ -6713,7 +6717,7 @@ function pcSimLoop(timestamp) {
     pcSimState.smoothedSlopeAdj = 0;
   }
 
-  // ── bird mode: Q/E 高度制御 + 飛行基準高度更新 ──────────────────────────
+  /* ── bird mode: Q/E 高度制御 + 飛行基準高度更新 ──────────────────────────（非表示中）
   // 通常: ローパスフィルタで地形変化に滑らかに追従
   // Q/E 押下時: ローパスをバイパスしてレート速度で即時変更
   if (pcSimState.viewMode === 'bird') {
@@ -6747,6 +6751,7 @@ function pcSimLoop(timestamp) {
         : pcSimState.birdFloorH + (neededH - pcSimState.birdFloorH) * Math.min(1, dt / tc);
     }
   }
+  */
 
   // ── カメラを配置（プレイヤーを常に画面中央に） ───────────────────
   setCameraFromPlayer();
@@ -6758,6 +6763,7 @@ function pcSimLoop(timestamp) {
       `rotate(${-pcSimState.bearing}deg)`;
   }
 
+  /* bird mode ドット表示（非表示中）
   if (pcSimState.viewMode === 'bird') {
     // 鳥瞰モード: 画面中央固定の CSS ドット（#pc-sim-pos-dot）でプレイヤー位置を表示
     // maplibregl.Marker は terrain 面に投影されるため altitude が反映されない。
@@ -6766,11 +6772,11 @@ function pcSimLoop(timestamp) {
     if (mobileSimState.posMarker) mobileSimState.posMarker.getElement().style.display = 'none';
     const dot = document.getElementById('pc-sim-pos-dot');
     if (dot) { dot.style.display = 'block'; dot.style.background = '#0369b0'; }
-  } else {
+  } else { */
     const dot = document.getElementById('pc-sim-pos-dot');
     if (dot) { dot.style.display = 'none'; dot.style.background = ''; }
     updateSimPosMarker(pcSimState.playerLng, pcSimState.playerLat);
-  }
+  /* } */
 
   pcSimState.animFrame = requestAnimationFrame(pcSimLoop);
 }
@@ -7126,6 +7132,7 @@ document.getElementById('pc-sim-toggle-btn').addEventListener('click', () => {
   }
 });
 
+/* 「空を飛ぶ」ボタンのイベントリスナー（非表示中）
 document.getElementById('pc-sim-bird-btn').addEventListener('click', () => {
   if (pcSimState.active) stopPcSim();
   else {
@@ -7133,6 +7140,7 @@ document.getElementById('pc-sim-bird-btn').addEventListener('click', () => {
     enterSimStartPicking();
   }
 });
+*/
 
 /* ----------------------------------------------------------------
    システム設定モーダル: 開閉

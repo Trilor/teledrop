@@ -4637,11 +4637,9 @@ label.setting-label {
 /* 定規コンテナ */
 .settings-ruler-wrap {
   padding: 16px 24px 24px;
-  display: flex;
-  justify-content: center;
 }
 .settings-ruler-inner {
-  width: 90%;
+  width: 100%;
   background: #f8f9fa;
   border-radius: 8px;
   overflow: hidden;
