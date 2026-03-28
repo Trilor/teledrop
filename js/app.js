@@ -769,14 +769,8 @@ map.on('load', async () => {
     const skyHorizonBlend = 0.5;
 
     _globeBgEl.style.backgroundColor = bgColor;
-    map.setSky({
-      'sky-color':          skyColor,
-      'sky-horizon-blend':  skyHorizonBlend,
-      'horizon-color':      horizonColor,
-      'horizon-fog-blend':  0,
-      'fog-color':          horizonColor,
-      'atmosphere-blend':   0,
-    });
+    // sky レイヤーを完全無効化（globe→mercator 遷移による大気エフェクトを切り分け）
+    map.setSky(null);
   };
   map.on('zoom', _updateGlobeBg);
   _updateGlobeBg();
