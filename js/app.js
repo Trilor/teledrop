@@ -6030,6 +6030,8 @@ const pcSimState = {
   cachedTerrainH:  0,          // queryTerrainElevation が null のときに使うキャッシュ値
   viewMode:        'terrain',  // 'terrain'（地形追従）| 'bird'（鳥瞰）
   birdAltM:        200,        // 鳥瞰モードの地形相対高度（m）
+  birdBaseTerrainH: 0,         // 開始地点の地形高（bird mode 絶対高度の基準）
+  birdFloorH:       0,         // ローパス済み飛行基準高度（案A+B）
   startLng:        null,       // クリック待ちで記録した開始座標（経度）
   startLat:        null,       // クリック待ちで記録した開始座標（緯度）
   pickingActive:   false,      // クリック待ちモード中か
@@ -6284,6 +6286,12 @@ function onPcSimLocked() {
   // キャッシュを現在地の地形高度で初期化
   pcSimState.cachedTerrainH  = map.queryTerrainElevation({ lng: pcSimState.playerLng, lat: pcSimState.playerLat }, { exaggerated: false }) ?? 0;
 
+  // bird mode: 開始地点の地形高を基準高度として記録（案A）
+  if (pcSimState.viewMode === 'bird') {
+    pcSimState.birdBaseTerrainH = pcSimState.cachedTerrainH;
+    pcSimState.birdFloorH       = pcSimState.cachedTerrainH + pcSimState.birdAltM;
+  }
+
   // ③ カメラをプレイヤー視点へ即配置
   setCameraFromPlayer();
 
@@ -6470,7 +6478,8 @@ function setCameraFromPlayer() {
     // pitch > 84.3° で内部の dzNormalized < 0.1 ガードが発動して破綻するため 80° に制限
     const birdPitch    = Math.max(0, Math.min(80, pcSimState.pitch));
     const birdPitchRad = birdPitch * Math.PI / 180;
-    const playerAlt    = h + pcSimState.birdAltM;
+    // birdFloorH: 開始地点基準の絶対高度（案A）+ 地形フロア保護のローパス済み値（案B）
+    const playerAlt    = pcSimState.birdFloorH;
     const camDist      = pcSimState.camDistM;
 
     const backKm = camDist * Math.sin(birdPitchRad) / 1000;
@@ -6645,6 +6654,24 @@ function pcSimLoop(timestamp) {
   } else {
     // 鳥瞰モード or 地形なし: 傾斜補正をゼロに維持
     pcSimState.smoothedSlopeAdj = 0;
+  }
+
+  // ── bird mode: 飛行基準高度をローパスフィルタで更新（案A+B） ──────────────
+  if (pcSimState.viewMode === 'bird') {
+    const BIRD_CLEARANCE_M = 10;   // 地形から最低限のクリアランス（m）
+    const BIRD_FLOOR_TC    = 20;   // ローパス時定数（秒）地形上昇への追従速度
+
+    // 案A: 開始地点基準の絶対高度
+    const targetH = pcSimState.birdBaseTerrainH + pcSimState.birdAltM;
+    // 案B: 現在地形フロア（地形に埋まらないための下限）
+    const currentTerrain = map.queryTerrainElevation(
+      { lng: pcSimState.playerLng, lat: pcSimState.playerLat }, { exaggerated: false }
+    ) ?? pcSimState.cachedTerrainH;
+    const floorH = currentTerrain + BIRD_CLEARANCE_M;
+
+    // 大きい方（基準高度 or 地形フロア）をターゲットにローパス追従
+    const neededH = Math.max(targetH, floorH);
+    pcSimState.birdFloorH += (neededH - pcSimState.birdFloorH) * Math.min(1, dt / BIRD_FLOOR_TC);
   }
 
   // ── カメラを配置（プレイヤーを常に画面中央に） ───────────────────
