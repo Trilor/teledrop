@@ -740,22 +740,34 @@ map.on('load', async () => {
   }
 
   // ズームに応じて空と背景を更新する（globe低ズーム→宇宙空間表現）
-  // ズーム9以下: 宇宙（黒）、ズーム13以上: 青空（白→青）、9〜13: 段階遷移
+  // 多段階カラーストップ補間ヘルパー（stops: [[t, '#rrggbb'], ...]）
+  function _lerpMulti(stops, t) {
+    for (let i = 0; i < stops.length - 1; i++) {
+      const [t0, c0] = stops[i], [t1, c1] = stops[i + 1];
+      if (t <= t1) return _lerpHex(c0, c1, (t - t0) / (t1 - t0));
+    }
+    return stops[stops.length - 1][1];
+  }
+
+  // z7（カーマン線）→z11（対流圏）で段階的に遷移
+  // 空: 黒→濃紺→深青→空青
+  // 地平線: 濃紺→中青→水色（白は使わない）
   _updateGlobeBg = () => {
     if (!_globeBgEl) return;
     const z = map.getZoom();
-    // t=0: 宇宙（黒）、t=1: 青空。カーマン線（100km≒z7）から対流圏（z11）へ遷移
     const t = Math.max(0, Math.min(1, (z - 7) / 4));
-    // 背景色もtに合わせて滑らかに補間（黒→白）
-    const highZoomColor = mobileSimState.active ? '#dbeff9' : '#fff';
-    _globeBgEl.style.backgroundColor = t <= 0 ? '#000' : t >= 1 ? highZoomColor : _lerpHex('#000000', highZoomColor, t);
 
+    const skyColor     = _lerpMulti([[0,'#000000'],[0.3,'#000033'],[0.6,'#003399'],[1,'#0066cc']], t);
+    const horizonColor = _lerpMulti([[0,'#000820'],[0.3,'#001a4d'],[0.6,'#3366cc'],[1,'#b0d8f0']], t);
+    const bgColor      = _lerpMulti([[0,'#000000'],[0.3,'#000033'],[0.6,'#3366cc'],[1,'#c8e8f8']], t);
+
+    _globeBgEl.style.backgroundColor = bgColor;
     map.setSky({
-      'sky-color':          _lerpHex('#000000', '#0066cc', t),
+      'sky-color':          skyColor,
       'sky-horizon-blend':  0.8,
-      'horizon-color':      _lerpHex('#000820', '#ffffff', t),
+      'horizon-color':      horizonColor,
       'horizon-fog-blend':  0.5,
-      'fog-color':          _lerpHex('#000820', '#ffffff', t),
+      'fog-color':          horizonColor,
       'atmosphere-blend':   0,
     });
   };
