@@ -760,13 +760,13 @@ map.on('load', async () => {
     // z7（宇宙）〜z18（地上）で一方向に遷移。t=0=黒、t=1=明るい青空
     const t2 = Math.max(0, Math.min(1, (z - 7) / 11));  // z18で t=1
 
-    // 上空: 黒→濃紺→深青（z18でも濃い青を維持）
-    const skyColor     = _lerpMulti([[0,'#000000'],[0.2,'#000033'],[0.5,'#001155'],[0.8,'#001a77'],[1,'#002277']], t2);
-    // 地平線: 常に上空より薄め（z18でも落ち着いた中青）
-    const horizonColor = _lerpMulti([[0,'#000820'],[0.2,'#001a4d'],[0.5,'#0d2f73'],[0.8,'#143d8c'],[1,'#1a4499']], t2);
+    // 上空: z11(t≈0.36)で明青に達し、z18でさらに明るく
+    const skyColor     = _lerpMulti([[0,'#000000'],[0.15,'#000033'],[0.36,'#0055cc'],[1,'#33aaff']], t2);
+    // 地平線: z11で水色、z18でさらに薄く
+    const horizonColor = _lerpMulti([[0,'#000820'],[0.15,'#001a4d'],[0.36,'#87ceeb'],[1,'#c8eeff']], t2);
     const bgColor      = horizonColor;
-    // 地平線色の広がり（0.2=宇宙→0.5=地上）
-    const skyHorizonBlend = 0.2 + 0.3 * t2;
+    // 地平線色の広がり（0.2=宇宙→0.8=地上）
+    const skyHorizonBlend = 0.2 + 0.6 * t2;
 
     _globeBgEl.style.backgroundColor = bgColor;
     map.setSky({
