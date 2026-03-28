@@ -6042,15 +6042,18 @@ function kmhToPace(kmh) {
   return `${min}:${String(sec).padStart(2, '0')}`;
 }
 
-// 速度バブルの位置とテキストを更新
+// 速度バブル・ヘッダー数値・ペース表示を更新
 function updateSimSpeedBubble(slider) {
-  const bubble = document.getElementById('pc-sim-speed-bubble');
-  if (!bubble || !slider) return;
+  if (!slider) return;
   const pct = (parseFloat(slider.value) - parseFloat(slider.min))
             / (parseFloat(slider.max)  - parseFloat(slider.min));
-  bubble.style.setProperty('--pct', pct);
   const kmh = parseInt(slider.value, 10);
-  bubble.textContent = `${kmh} km/h · ${kmhToPace(kmh)}/km`;
+  const bubble = document.getElementById('pc-sim-speed-bubble');
+  if (bubble) { bubble.style.setProperty('--pct', pct); bubble.textContent = kmh; }
+  const numEl  = document.getElementById('pc-sim-speed-num');
+  if (numEl) numEl.textContent = kmh;
+  const paceEl = document.getElementById('pc-sim-pace-display');
+  if (paceEl) paceEl.textContent = `（${kmhToPace(kmh)}/km）`;
 }
 
 pcSimSpeedSlider.addEventListener('input', () => {

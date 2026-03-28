@@ -4498,11 +4498,24 @@ label.setting-label {
   padding: 14px 24px;
   border-bottom: 1px solid var(--border-subtle);
 }
+.settings-sim-speed-unit {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  font-size: var(--font-sm);
+  color: var(--text-muted);
+  line-height: 1.4;
+}
+.settings-sim-speed-pace {
+  font-size: var(--font-xs);
+  color: var(--text-disabled);
+}
+
 .settings-sim-speed-ctrl {
   display: flex;
   align-items: center;
   gap: 6px;
-  padding-top: 16px; /* バブルのスペース確保 */
+  padding-top: 18px; /* バブルのスペース確保 */
 }
 .settings-sim-speed-ctrl .slider-bubble-wrap {
   position: relative;
