@@ -6462,15 +6462,33 @@ function setCameraFromPlayer() {
 
   // ── 鳥瞰モード ──────────────────────────────────────────────────────
   if (pcSimState.viewMode === 'bird') {
-    const relativeAlt = Math.max(1, pcSimState.birdAltM);
+    const birdPitch    = Math.max(0, Math.min(85, pcSimState.pitch));
+    const birdPitchRad = birdPitch * Math.PI / 180;
+    const birdAlt      = Math.max(1, pcSimState.birdAltM);
+
     const targetZoom = Math.max(10, Math.min(map.getMaxZoom(), Math.log2(
       H * 2 * Math.PI * R * Math.cos(lat_rad) /
-      (1024 * Math.tan(fov_rad / 2) * relativeAlt)
+      (1024 * Math.tan(fov_rad / 2) * birdAlt)
     )));
+
+    // pitch がある場合に center を前方にずらして「プレイヤーの上空点」を画面中央に補正する。
+    // 地形面上の center を bearing 方向へ birdAlt * tan(pitch) 前方にずらすと、
+    // 透視投影でプレイヤー（地形面 + birdAlt）が画面中央に投影される。
+    const fwdKm = birdAlt * Math.tan(birdPitchRad) / 1000;
+    let birdCenterLng = pcSimState.playerLng;
+    let birdCenterLat = pcSimState.playerLat;
+    if (fwdKm > 0.001) {
+      const fwdPt = turf.destination(
+        [pcSimState.playerLng, pcSimState.playerLat], fwdKm, pcSimState.bearing
+      );
+      birdCenterLng = fwdPt.geometry.coordinates[0];
+      birdCenterLat = fwdPt.geometry.coordinates[1];
+    }
+
     map.jumpTo({
-      center:  [pcSimState.playerLng, pcSimState.playerLat],
+      center:  [birdCenterLng, birdCenterLat],
       bearing: pcSimState.bearing,
-      pitch:   Math.max(0, Math.min(85, pcSimState.pitch)),
+      pitch:   birdPitch,
       zoom:    targetZoom,
     });
     return;
