@@ -4460,6 +4460,11 @@ async function updateBuildingLayer() {
   const mode       = document.getElementById('sel-building')?.value ?? 'plateau';
   const buildingOn = document.getElementById('chk-building')?.checked ?? true;
 
+  // トグルオフ時はプルダウンを無効化
+  const selBuilding = document.getElementById('sel-building');
+  selBuilding.disabled = !buildingOn;
+  selBuilding._csSync?.();
+
   // 既存 MapLibre レイヤーを一旦削除
   if (map.getLayer('building-3d')) map.removeLayer('building-3d');
 
@@ -4628,6 +4633,7 @@ chkContour.addEventListener('change', () => {
   const vis = chkContour.checked ? 'visible' : 'none';
   setAllContourVisibility(map, vis);
   selContour.disabled = !chkContour.checked;
+  selContour._csSync?.();
   document.querySelector('label[for="chk-contour"]').classList.toggle('disabled', !chkContour.checked);
 });
 
@@ -4660,6 +4666,7 @@ const selMagneticNorth = document.getElementById('sel-magnetic-north-interval');
 chkMagneticNorth.addEventListener('change', () => {
   const vis = chkMagneticNorth.checked ? 'visible' : 'none';
   selMagneticNorth.disabled = !chkMagneticNorth.checked;
+  selMagneticNorth._csSync?.();
   document.querySelector('label[for="chk-magnetic-north"]').classList.toggle('disabled', !chkMagneticNorth.checked);
   if (map.getLayer('magnetic-north-layer')) {
     map.setLayoutProperty('magnetic-north-layer', 'visibility', vis);
