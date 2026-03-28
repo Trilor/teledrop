@@ -810,6 +810,7 @@ body {
 .ppi-cascade-item:hover {
   background: var(--primary-light);
   color: var(--primary-dark);
+  font-weight: var(--font-bold);
 }
 .cascade-item.selected,
 .ppi-cascade-item.selected {
@@ -817,11 +818,12 @@ body {
   background: var(--primary-light);
   color: var(--primary-dark);
 }
-/* メニュー内をホバー中は、選択中アイテムの背景をホバーアイテムに移す */
+/* メニュー内をホバー中は、選択中アイテムの背景・太字をホバーアイテムに移す */
 .cascade-menu:hover .cascade-item.selected:not(:hover),
 .ppi-cascade-menu:hover .ppi-cascade-item.selected:not(:hover) {
   background: transparent;
   color: inherit;
+  font-weight: inherit;
 }
 
 /* ---- アイテム右側の補足テキスト（例: PPI値） ---- */
