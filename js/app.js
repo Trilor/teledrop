@@ -6538,7 +6538,14 @@ function setCameraFromPlayer() {
       Math.max(0.00001, backKm),
       (pcSimState.bearing + 180) % 360
     );
-    const cameraAlt = playerAlt + Math.max(1, camDist * Math.cos(birdPitchRad));
+    // カメラ位置の地形高を取得し、山に埋まらないよう下限を設ける
+    const backTerrainH = map.queryTerrainElevation(
+      { lng: backPt.geometry.coordinates[0], lat: backPt.geometry.coordinates[1] }, { exaggerated: false }
+    ) ?? 0;
+    const cameraAlt = Math.max(
+      playerAlt + Math.max(1, camDist * Math.cos(birdPitchRad)),
+      backTerrainH + 5
+    );
 
     const camOpts = map.calculateCameraOptionsFromCameraLngLatAltRotation(
       new maplibregl.LngLat(backPt.geometry.coordinates[0], backPt.geometry.coordinates[1]),
