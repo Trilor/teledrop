@@ -151,7 +151,7 @@
   /* ===== プルダウン外観（ドロップダウン共通） ===== */
   /* <select> 要素および .cascade-btn の見た目をここで一元管理。 */
   /* 個別クラスはサイズ・レイアウトのみ上書きし、外観はここだけ変更すれば全体に反映される。 */
-  --dropdown-bg:     var(--bg-select);   /* 背景色 */
+  --dropdown-bg:     var(--bg-panel);    /* 背景色 (#f6f6f6) */
   --dropdown-border: #b0b8b0;            /* 枠線色 */
   --dropdown-radius: 4px;                /* 角丸 */
   --dropdown-color:  var(--text-main);   /* テキスト色 */
@@ -765,7 +765,7 @@ body {
 .ppi-cascade-menu {
   position: fixed;
   z-index: 10100;
-  background: var(--bg-select);
+  background: var(--dropdown-bg);
   border: 1px solid var(--border-muted);
   border-radius: 4px;
   box-shadow: 2px 4px 12px rgba(0,0,0,0.15);
