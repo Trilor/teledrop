@@ -6462,35 +6462,31 @@ function setCameraFromPlayer() {
 
   // ── 鳥瞰モード ──────────────────────────────────────────────────────
   if (pcSimState.viewMode === 'bird') {
+    // FreeCameraOptions でカメラ eye を直接配置する。
+    // プレイヤーの3D上空点 [playerLng, playerLat, h + birdAltM] を中心に
+    // pitch/bearing に従いカメラを後方上方に置き、setPitchBearing で向きを合わせる。
+    // これにより「上空の自分」を中心にカメラが回転する。
     const birdPitch    = Math.max(0, Math.min(85, pcSimState.pitch));
     const birdPitchRad = birdPitch * Math.PI / 180;
-    const birdAlt      = Math.max(1, pcSimState.birdAltM);
+    const playerAlt    = h + pcSimState.birdAltM;  // 地形高 + 飛行高度
+    const camDist      = pcSimState.camDistM;
 
-    const targetZoom = Math.max(10, Math.min(map.getMaxZoom(), Math.log2(
-      H * 2 * Math.PI * R * Math.cos(lat_rad) /
-      (1024 * Math.tan(fov_rad / 2) * birdAlt)
-    )));
+    // カメラ eye の位置: プレイヤーの後方 sin(pitch)*camDist、上方 cos(pitch)*camDist
+    const backKm = camDist * Math.sin(birdPitchRad) / 1000;
+    const backPt = turf.destination(
+      [pcSimState.playerLng, pcSimState.playerLat],
+      Math.max(0, backKm),
+      (pcSimState.bearing + 180) % 360
+    );
+    const cameraAlt = playerAlt + Math.max(1, camDist * Math.cos(birdPitchRad));
 
-    // pitch がある場合に center を前方にずらして「プレイヤーの上空点」を画面中央に補正する。
-    // 地形面上の center を bearing 方向へ birdAlt * tan(pitch) 前方にずらすと、
-    // 透視投影でプレイヤー（地形面 + birdAlt）が画面中央に投影される。
-    const fwdKm = birdAlt * Math.tan(birdPitchRad) / 1000;
-    let birdCenterLng = pcSimState.playerLng;
-    let birdCenterLat = pcSimState.playerLat;
-    if (fwdKm > 0.001) {
-      const fwdPt = turf.destination(
-        [pcSimState.playerLng, pcSimState.playerLat], fwdKm, pcSimState.bearing
-      );
-      birdCenterLng = fwdPt.geometry.coordinates[0];
-      birdCenterLat = fwdPt.geometry.coordinates[1];
-    }
-
-    map.jumpTo({
-      center:  [birdCenterLng, birdCenterLat],
-      bearing: pcSimState.bearing,
-      pitch:   birdPitch,
-      zoom:    targetZoom,
-    });
+    const fc = new maplibregl.FreeCameraOptions();
+    fc.position = maplibregl.MercatorCoordinate.fromLngLat(
+      { lng: backPt.geometry.coordinates[0], lat: backPt.geometry.coordinates[1] },
+      cameraAlt
+    );
+    fc.setPitchBearing(birdPitch, pcSimState.bearing);
+    map.setFreeCameraOptions(fc);
     return;
   }
 
