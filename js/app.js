@@ -6475,10 +6475,11 @@ function setCameraFromPlayer() {
     const birdPitchRad = birdPitch * Math.PI / 180;
     const birdAlt      = pcSimState.birdAltM;
 
-    const relativeAlt = Math.max(0.3, pcSimState.camDistM * Math.cos(birdPitchRad) + birdAlt);
-    const targetZoom  = Math.max(12, Math.min(map.getMaxZoom(), Math.log2(
+    // zoom は birdAlt のみで計算（pitch に依存しない）
+    // → pitch を変えてもカメラ高度は不変、プレイヤー上空点を中心に回転するだけ
+    const targetZoom = Math.max(10, Math.min(map.getMaxZoom(), Math.log2(
       H * 2 * Math.PI * R * Math.cos(lat_rad) /
-      (1024 * Math.tan(fov_rad / 2) * relativeAlt)
+      (1024 * Math.tan(fov_rad / 2) * Math.max(1, birdAlt))
     )));
 
     const fwdKm = birdAlt * Math.tan(birdPitchRad) / 1000;
