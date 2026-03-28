@@ -740,21 +740,23 @@ map.on('load', async () => {
   }
 
   // ズームに応じて空と背景を更新する（globe低ズーム→宇宙空間表現）
-  // ズーム5以下: 宇宙（黒）、ズーム10以上: 青空（白→青）、5〜10: 段階遷移
+  // ズーム9以下: 宇宙（黒）、ズーム13以上: 青空（白→青）、9〜13: 段階遷移
   _updateGlobeBg = () => {
     if (!_globeBgEl) return;
     const z = map.getZoom();
+    // t=0: 宇宙（黒）、t=1: 青空。遷移域を9〜13に設定
+    const t = Math.max(0, Math.min(1, (z - 9) / 4));
+    // 背景色もtに合わせて滑らかに補間（黒→白）
     const highZoomColor = mobileSimState.active ? '#dbeff9' : '#fff';
-    _globeBgEl.style.backgroundColor = z < 7 ? '#000' : highZoomColor;
+    _globeBgEl.style.backgroundColor = t <= 0 ? '#000' : t >= 1 ? highZoomColor : _lerpHex('#000000', highZoomColor, t);
 
-    const t = Math.max(0, Math.min(1, (z - 5) / 5));  // 0=宇宙, 1=青空
     map.setSky({
       'sky-color':          _lerpHex('#000000', '#0066cc', t),
       'sky-horizon-blend':  0.8,
       'horizon-color':      _lerpHex('#000820', '#ffffff', t),
       'horizon-fog-blend':  0.5,
       'fog-color':          _lerpHex('#000820', '#ffffff', t),
-      'atmosphere-blend':   0.1 + 0.9 * t,
+      'atmosphere-blend':   t * t,  // 二乗で緩やかに立ち上がる（低ズームで急激に明るくなるのを防ぐ）
     });
   };
   map.on('zoom', _updateGlobeBg);
