@@ -757,8 +757,8 @@ map.on('load', async () => {
     const z = map.getZoom();
     const t = Math.max(0, Math.min(1, (z - 7) / 4));
 
-    // z0（宇宙）〜z11（地上）で一方向に遷移。z0でも微かな大気色を表現
-    const t2 = Math.max(0, Math.min(1, z / 11));  // z11で t=1
+    // z0〜z22（最大ズーム）で一方向に連続遷移
+    const t2 = Math.max(0, Math.min(1, z / 22));
 
     // 上空: 暗青（z0）→濃紺→深青→明青（z11）
     const skyColor     = _lerpMulti([[0,'#000510'],[0.3,'#000844'],[0.6,'#002277'],[1,'#0055cc']], t2);
