@@ -765,8 +765,7 @@ map.on('load', async () => {
     // 地平線: 常に上空より薄め。z11で水色
     const horizonColor = _lerpMulti([[0,'#001030'],[0.3,'#001a4d'],[0.6,'#1a4499'],[1,'#87ceeb']], t2);
     const bgColor      = horizonColor;
-    // 地平線色の広がりも高ズームほど拡大（0.2=z0→0.8=z11以上）
-    const skyHorizonBlend = 0.2 + 0.6 * t2;
+    const skyHorizonBlend = 0.5;  // 固定（動的にすると明るさが非単調になるため）
 
     _globeBgEl.style.backgroundColor = bgColor;
     map.setSky({
