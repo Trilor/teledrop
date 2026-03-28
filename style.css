@@ -4561,6 +4561,14 @@ label.setting-label {
   font-size: var(--font-sm);
   color: var(--text-muted);
 }
+.settings-item-title-sub {
+  display: block;
+  font-size: var(--font-xs);
+  font-weight: 400;
+  color: var(--text-muted);
+  margin-top: 2px;
+  letter-spacing: 0;
+}
 
 /* =================================================================
    PC シミュレーター ポーズHUD（シンプルなボタンのみ）
