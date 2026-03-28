@@ -812,6 +812,7 @@ body {
 .cascade-item:hover,
 .ppi-cascade-item:hover {
   background: var(--bg-hover-btn);
+  border-radius: 3px;
 }
 .cascade-item.selected,
 .ppi-cascade-item.selected {
