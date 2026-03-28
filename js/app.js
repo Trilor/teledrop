@@ -6462,34 +6462,49 @@ function setCameraFromPlayer() {
 
   // ── 鳥瞰モード ──────────────────────────────────────────────────────
   if (pcSimState.viewMode === 'bird') {
-    // calculateCameraOptionsFromCameraLngLatAltRotation でカメラを正確に配置する。
-    // カメラ eye 位置（経度・緯度・高度）から bearing/pitch を指定すると、
-    // プレイヤーの上空点 [playerLng, playerLat, h + birdAltM] を中心に
-    // カメラが回転するようになる。
-    // pitch > 60° は calculateCameraOptionsFromCameraLngLatAltRotation の想定範囲外のため
-    // cos(pitch) がほぼ0になりカメラ高度とプレイヤー高度が一致してcenterが無限遠に飛ぶ
-    const birdPitch    = Math.max(0, Math.min(60, pcSimState.pitch));
+    // map.jumpTo() + center 前方補正で正確に実装する。
+    //
+    // 視線がプレイヤー上空点 (h + birdAltM) を通り地形面 (z=h) と交わる点を center に設定すると、
+    // プレイヤー上空点が透視投影で画面中央に来る。
+    //
+    // 視線の水平距離 = camDist * sin(pitch)
+    // 視線の垂直距離 = camDist * cos(pitch) + birdAltM  ←（eye〜地形面）
+    // eye〜プレイヤー上空点の垂直 = camDist * cos(pitch)
+    // プレイヤー上空点〜地形面の垂直 = birdAltM
+    // 比例より: center オフセット = birdAltM * tan(pitch)  ← これが正確な式
+    //
+    // zoom はカメラ eye の地形面からの高度 (cameraRelAlt) で計算する。
+    // この方式は pitch = 0°〜85° で動作し、API制限がない。
+    const birdPitch    = Math.max(0, Math.min(85, pcSimState.pitch));
     const birdPitchRad = birdPitch * Math.PI / 180;
-    const playerAlt    = h + pcSimState.birdAltM;
+    const birdAlt      = Math.max(1, pcSimState.birdAltM);
     const camDist      = pcSimState.camDistM;
 
-    // カメラ eye 位置: プレイヤー上空点の後方 sin(pitch)*camDist、上方 cos(pitch)*camDist
-    const backKm = camDist * Math.sin(birdPitchRad) / 1000;
-    const backPt = turf.destination(
-      [pcSimState.playerLng, pcSimState.playerLat],
-      Math.max(0.00001, backKm),
-      (pcSimState.bearing + 180) % 360
-    );
-    const cameraAlt = playerAlt + Math.max(1, camDist * Math.cos(birdPitchRad));
+    // カメラ eye の地形面からの高度 = birdAlt + camDist*cos(pitch)
+    const cameraRelAlt = birdAlt + Math.max(1, camDist * Math.cos(birdPitchRad));
+    const targetZoom = Math.max(10, Math.min(map.getMaxZoom(), Math.log2(
+      H * 2 * Math.PI * R * Math.cos(lat_rad) /
+      (1024 * Math.tan(fov_rad / 2) * cameraRelAlt)
+    )));
 
-    const camOpts = map.calculateCameraOptionsFromCameraLngLatAltRotation(
-      new maplibregl.LngLat(backPt.geometry.coordinates[0], backPt.geometry.coordinates[1]),
-      cameraAlt,
-      pcSimState.bearing,
-      birdPitch,
-      0
-    );
-    map.jumpTo(camOpts);
+    // center = プレイヤー位置から bearing 方向に birdAlt * tan(pitch) 前方の地形面点
+    const fwdKm = birdAlt * Math.tan(birdPitchRad) / 1000;
+    let birdCenterLng = pcSimState.playerLng;
+    let birdCenterLat = pcSimState.playerLat;
+    if (fwdKm > 0.001) {
+      const fwdPt = turf.destination(
+        [pcSimState.playerLng, pcSimState.playerLat], fwdKm, pcSimState.bearing
+      );
+      birdCenterLng = fwdPt.geometry.coordinates[0];
+      birdCenterLat = fwdPt.geometry.coordinates[1];
+    }
+
+    map.jumpTo({
+      center:  [birdCenterLng, birdCenterLat],
+      bearing: pcSimState.bearing,
+      pitch:   birdPitch,
+      zoom:    targetZoom,
+    });
     return;
   }
 
