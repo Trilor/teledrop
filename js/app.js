@@ -757,19 +757,16 @@ map.on('load', async () => {
     const z = map.getZoom();
     const t = Math.max(0, Math.min(1, (z - 7) / 4));
 
-    const skyColor     = _lerpMulti([[0,'#000000'],[0.3,'#000033'],[0.6,'#003399'],[1,'#0055aa']], t);
-    const horizonColor = _lerpMulti([[0,'#000820'],[0.3,'#001a4d'],[0.6,'#2255bb'],[1,'#5599dd']], t);
-    const bgColor      = _lerpMulti([[0,'#000000'],[0.3,'#000033'],[0.6,'#2255bb'],[1,'#5599dd']], t);
-    // 低ズーム（宇宙）は広く地平線色で覆う、高ズーム（地上）は薄めにして濃い空青を維持
-    const skyHorizonBlend = 0.8 - 0.5 * t;   // 0.8（宇宙）→ 0.3（地上）
-    const horizFogBlend   = 0.5 - 0.3 * t;   // 0.5（宇宙）→ 0.2（地上）
+    const skyColor     = _lerpMulti([[0,'#000000'],[0.3,'#000033'],[0.6,'#003399'],[1,'#0066cc']], t);
+    const horizonColor = _lerpMulti([[0,'#000820'],[0.3,'#001a4d'],[0.6,'#3366cc'],[1,'#b0d8f0']], t);
+    const bgColor      = _lerpMulti([[0,'#000000'],[0.3,'#000033'],[0.6,'#3366cc'],[1,'#c8e8f8']], t);
 
     _globeBgEl.style.backgroundColor = bgColor;
     map.setSky({
       'sky-color':          skyColor,
-      'sky-horizon-blend':  skyHorizonBlend,
+      'sky-horizon-blend':  0.8,
       'horizon-color':      horizonColor,
-      'horizon-fog-blend':  horizFogBlend,
+      'horizon-fog-blend':  0.5,
       'fog-color':          horizonColor,
       'atmosphere-blend':   0,
     });
