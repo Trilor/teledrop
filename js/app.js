@@ -6461,19 +6461,38 @@ function setCameraFromPlayer() {
   const lat_rad = pcSimState.playerLat * Math.PI / 180;
 
   // ── 鳥瞰モード ──────────────────────────────────────────────────────
-  // terrain mode のカメラ計算をそのまま流用し、
-  // zoom の基準距離に birdAltM を加算することでカメラを上に平行移動する。
-  // center・bearing・pitch はそのまま（描写上の現在位置は変わらない）。
+  // カメラが追従する中心点を「地形面」ではなく「上空点 (h + birdAltM)」にする。
+  //
+  // MapLibre の jumpTo は center（地形面の点）を画面中央に投影するが、
+  // center を bearing 方向に birdAltM * tan(pitch) 前方にずらすと
+  // プレイヤーの上空点 (h + birdAltM) が透視投影上で画面中央に来る。
+  // zoom は camDistM（プレイヤー上空点からカメラまでの距離）で計算する。
   if (pcSimState.viewMode === 'bird') {
     const birdPitch    = Math.max(0, Math.min(map.getMaxPitch(), pcSimState.pitch));
     const birdPitchRad = birdPitch * Math.PI / 180;
-    const relativeAlt  = Math.max(0.3, pcSimState.camDistM * Math.cos(birdPitchRad)) + pcSimState.birdAltM;
-    const targetZoom   = Math.max(10, Math.min(map.getMaxZoom(), Math.log2(
+    const birdAlt      = pcSimState.birdAltM;
+
+    // zoom: プレイヤー上空点からカメラまでの垂直距離 (camDistM * cos(pitch)) を基準に
+    const relativeAlt = Math.max(0.3, pcSimState.camDistM * Math.cos(birdPitchRad));
+    const targetZoom  = Math.max(10, Math.min(map.getMaxZoom(), Math.log2(
       H * 2 * Math.PI * R * Math.cos(lat_rad) /
       (1024 * Math.tan(fov_rad / 2) * relativeAlt)
     )));
+
+    // center: プレイヤー位置から前方に birdAlt * tan(pitch) ずらした地形面点
+    const fwdKm = birdAlt * Math.tan(birdPitchRad) / 1000;
+    let birdCenterLng = pcSimState.playerLng;
+    let birdCenterLat = pcSimState.playerLat;
+    if (fwdKm > 0.001) {
+      const fwdPt = turf.destination(
+        [pcSimState.playerLng, pcSimState.playerLat], fwdKm, pcSimState.bearing
+      );
+      birdCenterLng = fwdPt.geometry.coordinates[0];
+      birdCenterLat = fwdPt.geometry.coordinates[1];
+    }
+
     map.jumpTo({
-      center:  [pcSimState.playerLng, pcSimState.playerLat],
+      center:  [birdCenterLng, birdCenterLat],
       bearing: pcSimState.bearing,
       pitch:   birdPitch,
       zoom:    targetZoom,
