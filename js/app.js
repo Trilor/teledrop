@@ -8787,12 +8787,24 @@ function makeCustomSelect(sel) {
     document.querySelectorAll('.custom-select-menu.open').forEach(m => {
       if (m !== panel) m.classList.remove('open');
     });
+
+    // 開くたびに項目を再構築（option テキストが動的に変わる場合に追従）
+    buildItems();
+    syncDisplay();
+
     const r = btn.getBoundingClientRect();
+
+    // 実際の高さを計測するために visibility:hidden のまま一時表示
+    panel.style.visibility = 'hidden';
+    panel.classList.add('open');
+    const panelH = Math.min(panel.scrollHeight, Math.floor(window.innerHeight * 0.5));
+    panel.classList.remove('open');
+    panel.style.visibility = '';
+
     // 画面下端に収まらない場合は上方向に展開
     const spaceBelow = window.innerHeight - r.bottom;
-    const estH = Math.min(panel.scrollHeight || 300, window.innerHeight * 0.5);
-    if (spaceBelow < estH && r.top > spaceBelow) {
-      panel.style.top = (r.top - estH - 2) + 'px';
+    if (spaceBelow < panelH && r.top > spaceBelow) {
+      panel.style.top = (r.top - panelH - 2) + 'px';
     } else {
       panel.style.top = (r.bottom + 2) + 'px';
     }
