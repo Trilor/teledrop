@@ -6720,8 +6720,7 @@ function pcSimLoop(timestamp) {
   // ── bird mode: Q/E 高度制御 + 飛行基準高度更新 ──────────────────────────
   if (pcSimState.viewMode === 'bird') {
     const BIRD_CLEARANCE_M = 10;   // 地形から最低限のクリアランス（m）
-    const BIRD_FLOOR_TC    = 20;   // ローパス時定数（秒）
-    const BIRD_ALT_RATE    = 30;   // Q/E 高度変化速度（m/s）
+    const BIRD_ALT_RATE = 30;  // Q/E 高度変化速度（m/s）
 
     // Q/E: 高度変更（birdAltM を増減）
     if (pcSimState.keys.KeyQ) pcSimState.birdAltM = Math.min(5000, pcSimState.birdAltM + BIRD_ALT_RATE * dt);
@@ -6733,14 +6732,7 @@ function pcSimLoop(timestamp) {
 
     const targetH = pcSimState.birdBaseTerrainH + pcSimState.birdAltM;
     const floorH  = currentTerrain + BIRD_CLEARANCE_M;
-    const neededH = Math.max(targetH, floorH);
-
-    if (pcSimState.keys.KeyQ || pcSimState.keys.KeyE) {
-      // Q/E 押下中はローパスをバイパスして即時反映
-      pcSimState.birdFloorH = neededH;
-    } else {
-      pcSimState.birdFloorH += (neededH - pcSimState.birdFloorH) * Math.min(1, dt / BIRD_FLOOR_TC);
-    }
+    pcSimState.birdFloorH = Math.max(targetH, floorH);
   }
 
   // ── カメラを配置（プレイヤーを常に画面中央に） ───────────────────
