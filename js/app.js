@@ -6475,26 +6475,16 @@ function setCameraFromPlayer() {
     const birdPitchRad = birdPitch * Math.PI / 180;
     const birdAlt      = pcSimState.birdAltM;
 
-    // zoom は birdAlt のみで計算（pitch に依存しない）
-    // → pitch を変えてもカメラ高度は不変、プレイヤー上空点を中心に回転するだけ
+    // zoom は birdAlt のみで計算（pitch 不依存 → pitch 変化でカメラ高度は変わらない）
     const targetZoom = Math.max(10, Math.min(map.getMaxZoom(), Math.log2(
       H * 2 * Math.PI * R * Math.cos(lat_rad) /
       (1024 * Math.tan(fov_rad / 2) * Math.max(1, birdAlt))
     )));
 
-    const fwdKm = birdAlt * Math.tan(birdPitchRad) / 1000;
-    let birdCenterLng = pcSimState.playerLng;
-    let birdCenterLat = pcSimState.playerLat;
-    if (fwdKm > 0.001) {
-      const fwdPt = turf.destination(
-        [pcSimState.playerLng, pcSimState.playerLat], fwdKm, pcSimState.bearing
-      );
-      birdCenterLng = fwdPt.geometry.coordinates[0];
-      birdCenterLat = fwdPt.geometry.coordinates[1];
-    }
-
+    // center はプレイヤー位置固定（前方補正しない）
+    // → pitch を変えても現在位置は動かない
     map.jumpTo({
-      center:  [birdCenterLng, birdCenterLat],
+      center:  [pcSimState.playerLng, pcSimState.playerLat],
       bearing: pcSimState.bearing,
       pitch:   birdPitch,
       zoom:    targetZoom,
