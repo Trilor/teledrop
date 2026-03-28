@@ -6826,10 +6826,11 @@ document.getElementById('pc-sim-toggle-btn').addEventListener('click', () => {
    ---------------------------------------------------------------- */
 function openSysSettingsModal() {
   document.getElementById('sys-settings-modal').style.display = 'flex';
-  // バブル位置は CSS calc(--pct) で決まるため即時更新可。定規は clientWidth が必要なので rAF 後
+  // バブル位置は CSS calc(--pct) で決まるため即時更新可
   const _ms = document.getElementById('ppi-manual-slider');
   if (_ms) { _ms.value = currentDevicePPI; updateSliderGradient(_ms); updatePpiSliderBubble(_ms); }
-  requestAnimationFrame(() => { updatePpiRuler(); });
+  // 定規は clientWidth が必要。二重 rAF でレイアウト確定後に取得する
+  requestAnimationFrame(() => requestAnimationFrame(() => { updatePpiRuler(); }));
 }
 function closeSysSettingsModal() {
   document.getElementById('sys-settings-modal').style.display = 'none';
@@ -6845,6 +6846,8 @@ document.getElementById('settings-nav').addEventListener('click', e => {
   const sec = btn.dataset.section;
   document.querySelectorAll('.settings-nav-item').forEach(b => b.classList.toggle('active', b === btn));
   document.querySelectorAll('.settings-section').forEach(s => s.classList.toggle('active', s.id === `settings-sec-${sec}`));
+  // 画面・校正セクション表示時に定規を再描画（非表示中は clientWidth=0 のため）
+  if (sec === 'display') requestAnimationFrame(() => { updatePpiRuler(); });
 });
 // モーダル背景クリックで閉じる
 document.getElementById('sys-settings-modal').addEventListener('click', (e) => {
