@@ -265,7 +265,7 @@ body {
   height: 56px;
   border: none;
   background: transparent;
-  color: var(--text-main);
+  color: var(--text-sub);
   border-radius: 0;
   cursor: pointer;
   display: flex;
@@ -4348,7 +4348,7 @@ label.setting-label {
   position: relative;
 }
 .settings-nav-item:hover {
-  background: var(--bg-hover);
+  background: var(--bg-hover-btn);
   color: var(--text-main);
 }
 .settings-nav-item.active {
