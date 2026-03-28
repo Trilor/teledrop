@@ -5973,13 +5973,16 @@ document.getElementById('sim-toggle-btn')?.addEventListener('click', toggleSimMo
    ================================================================ */
 function addSimPosMarker() {
   if (mobileSimState.posMarker) return;
+  const isBird = pcSimState.viewMode === 'bird';
   const el = document.createElement('div');
+  el.id = 'sim-pos-marker-el';
   el.style.cssText = `
     width: 22px; height: 22px; border-radius: 50%;
     background: #e63030;
     border: 4px solid rgba(255,255,255,0.85);
     box-shadow: 0 0 8px rgba(0,0,0,0.55);
     pointer-events: none;
+    ${isBird ? 'display: none;' : ''}
   `;
   mobileSimState.posMarker = new maplibregl.Marker({ element: el, anchor: 'center' })
     .setLngLat(map.getCenter())
@@ -6270,8 +6273,7 @@ function onPcSimLocked() {
   pcSimState.bearing   = map.getBearing();
   pcSimState.camDistM  = 100;
 
-  // 環境設定からモード・高度を読み込み
-  pcSimState.viewMode = getSimViewMode();
+  // モードはボタンクリック時に pcSimState.viewMode へ直接セット済み、高度のみ読み込み
   pcSimState.birdAltM = birdAltFromSlider(parseFloat(document.getElementById('pc-bird-alt')?.value ?? '482'));
   // モードに応じた初期ピッチ（鳥瞰: 45°、地形追従: PC_SIM_PITCH）
   pcSimState.pitch     = (pcSimState.viewMode === 'bird') ? 45 : PC_SIM_PITCH;
@@ -6378,6 +6380,9 @@ function stopPcSim() {
   if (pcSimState.readMap) { pcSimState.readMap.remove(); pcSimState.readMap = null; }
 
   removeSimPosMarker();
+  // 鳥瞰固定ドットを非表示
+  const _birdDot = document.getElementById('pc-sim-pos-dot');
+  if (_birdDot) _birdDot.style.display = 'none';
 
   // キー状態・補正値リセット
   Object.keys(pcSimState.keys).forEach(k => { pcSimState.keys[k] = false; });
@@ -6636,7 +6641,19 @@ function pcSimLoop(timestamp) {
       `rotate(${-pcSimState.bearing}deg)`;
   }
 
-  updateSimPosMarker(pcSimState.playerLng, pcSimState.playerLat);
+  if (pcSimState.viewMode === 'bird') {
+    // 鳥瞰モード: 画面中央固定の CSS ドット（#pc-sim-pos-dot）でプレイヤー位置を表示
+    // maplibregl.Marker は terrain 面に投影されるため altitude が反映されない。
+    // setCameraFromPlayer() で center = playerLng/Lat にしているため、
+    // 固定中央ドットが常に自分の真上の空中にあるように見える。
+    if (mobileSimState.posMarker) mobileSimState.posMarker.getElement().style.display = 'none';
+    const dot = document.getElementById('pc-sim-pos-dot');
+    if (dot) { dot.style.display = 'block'; dot.style.background = '#0369b0'; }
+  } else {
+    const dot = document.getElementById('pc-sim-pos-dot');
+    if (dot) { dot.style.display = 'none'; dot.style.background = ''; }
+    updateSimPosMarker(pcSimState.playerLng, pcSimState.playerLat);
+  }
 
   pcSimState.animFrame = requestAnimationFrame(pcSimLoop);
 }
@@ -6987,7 +7004,7 @@ function _onSimPickKeydown(e) {
 document.getElementById('pc-sim-toggle-btn').addEventListener('click', () => {
   if (pcSimState.active) stopPcSim();
   else {
-    setSimViewMode('terrain');
+    pcSimState.viewMode = 'terrain'; // ボタンクリック時に直接セット
     enterSimStartPicking();
   }
 });
@@ -6995,7 +7012,7 @@ document.getElementById('pc-sim-toggle-btn').addEventListener('click', () => {
 document.getElementById('pc-sim-bird-btn').addEventListener('click', () => {
   if (pcSimState.active) stopPcSim();
   else {
-    setSimViewMode('bird');
+    pcSimState.viewMode = 'bird'; // ボタンクリック時に直接セット
     enterSimStartPicking();
   }
 });
