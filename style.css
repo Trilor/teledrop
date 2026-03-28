@@ -818,15 +818,6 @@ body {
   color: var(--primary);
   font-weight: 600;
 }
-/* メニュー内をホバー中は、選択中アイテムのスタイルをホバーアイテムへ移す */
-/* ppi-cascade-sub は body 直下の独立要素なので個別に指定 */
-.cascade-menu:hover .cascade-item.selected:not(:hover),
-.ppi-cascade-menu:hover .ppi-cascade-item.selected:not(:hover),
-.ppi-cascade-sub:hover .ppi-cascade-item.selected:not(:hover) {
-  background: transparent;
-  color: inherit;
-  font-weight: normal;
-}
 
 /* ---- アイテム右側の補足テキスト（例: PPI値） ---- */
 .cascade-item-sub,
