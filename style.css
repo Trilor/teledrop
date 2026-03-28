@@ -810,7 +810,7 @@ body {
 }
 .cascade-item:hover,
 .ppi-cascade-item:hover {
-  background: var(--bg-hover-btn);
+  background: var(--border-muted);
   border-radius: 3px;
 }
 .cascade-item.selected,
