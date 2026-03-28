@@ -6050,7 +6050,7 @@ function updateSimSpeedBubble(slider) {
             / (parseFloat(slider.max)  - parseFloat(slider.min));
   bubble.style.setProperty('--pct', pct);
   const kmh = parseInt(slider.value, 10);
-  bubble.textContent = `${kmh} km/h (${kmhToPace(kmh)}/km)`;
+  bubble.textContent = `${kmh} km/h · ${kmhToPace(kmh)}/km`;
 }
 
 pcSimSpeedSlider.addEventListener('input', () => {

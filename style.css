@@ -4500,43 +4500,18 @@ label.setting-label {
 }
 .settings-sim-speed-ctrl {
   display: flex;
-  flex-direction: column;
-  gap: 4px;
-  padding-top: 32px; /* ツールチップバブルのスペース確保 */
+  align-items: center;
+  gap: 6px;
+  padding-top: 16px; /* バブルのスペース確保 */
 }
 .settings-sim-speed-ctrl .slider-bubble-wrap {
   position: relative;
+  flex: 1;
+  min-width: 0;
 }
-.settings-sim-speed-ctrl .ui-slider {
+.settings-sim-speed-ctrl .slider-bubble-wrap .ui-slider {
   width: 100%;
   display: block;
-}
-.settings-sim-speed-guide {
-  display: flex;
-  justify-content: space-between;
-  font-size: var(--font-xs);
-  color: var(--text-disabled);
-  padding: 2px 2px 0;
-}
-
-/* ツールチップスタイルのバブル（速度スライダー用） */
-.slider-bubble--tooltip {
-  background: #374151;
-  color: #fff;
-  padding: 3px 8px;
-  border-radius: 4px;
-  font-size: var(--font-xs);
-  font-weight: 500;
-  line-height: 1.5;
-}
-.slider-bubble--tooltip::after {
-  content: '';
-  position: absolute;
-  top: 100%;
-  left: 50%;
-  transform: translateX(-50%);
-  border: 4px solid transparent;
-  border-top-color: #374151;
 }
 
 /* 「または手動で調整」区切り線 */
