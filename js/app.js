@@ -6213,7 +6213,11 @@ function updateBirdAltBubble(slider) {
   const numEl = document.getElementById('pc-bird-alt-num');
   if (numEl) numEl.textContent = m;
   // シム実行中の鳥瞰モードならリアルタイム反映
-  if (pcSimState.active && pcSimState.viewMode === 'bird') pcSimState.birdAltM = m;
+  if (pcSimState.active && pcSimState.viewMode === 'bird') {
+    pcSimState.birdAltM = m;
+    // スライダー変更はローパスをバイパスして即時反映
+    pcSimState.birdFloorH = pcSimState.birdBaseTerrainH + pcSimState.birdAltM;
+  }
 }
 
 const birdAltSlider = document.getElementById('pc-bird-alt');
@@ -6717,14 +6721,30 @@ function pcSimLoop(timestamp) {
     pcSimState.smoothedSlopeAdj = 0;
   }
 
-  // ── bird mode: Q/E 高度制御 + 絶対高度維持 ──────────────────────────────
-  // 飛行高度 = 開始地点地形高 + birdAltM（絶対高度固定、地形に追従しない）
-  // Q=低下 / E=上昇。押さない限り高度は変化しない。
+  // ── bird mode: Q/E 高度制御 + 飛行基準高度更新 ──────────────────────────
+  // 通常: ローパスフィルタで地形変化に滑らかに追従
+  // Q/E 押下時: ローパスをバイパスしてレート速度で即時変更
   if (pcSimState.viewMode === 'bird') {
-    const BIRD_ALT_RATE = 30;  // Q/E 高度変化速度（m/s）
-    if (pcSimState.keys.KeyQ) pcSimState.birdAltM = Math.max(10,   pcSimState.birdAltM - BIRD_ALT_RATE * dt);
-    if (pcSimState.keys.KeyE) pcSimState.birdAltM = Math.min(5000, pcSimState.birdAltM + BIRD_ALT_RATE * dt);
-    pcSimState.birdFloorH = pcSimState.birdBaseTerrainH + pcSimState.birdAltM;
+    const BIRD_CLEARANCE_M = 10;  // 地形からの最低クリアランス（m）
+    const BIRD_FLOOR_TC    = 20;  // ローパス時定数（秒）
+    const BIRD_ALT_RATE    = 30;  // Q/E 高度変化速度（m/s）
+
+    const currentTerrain = map.queryTerrainElevation(
+      { lng: pcSimState.playerLng, lat: pcSimState.playerLat }, { exaggerated: false }
+    ) ?? pcSimState.cachedTerrainH;
+    const floorH = currentTerrain + BIRD_CLEARANCE_M;
+
+    if (pcSimState.keys.KeyQ || pcSimState.keys.KeyE) {
+      // Q/E: レートに従って birdAltM を変化させ、ローパスをバイパスして即時反映
+      if (pcSimState.keys.KeyQ) pcSimState.birdAltM = Math.max(10,   pcSimState.birdAltM - BIRD_ALT_RATE * dt);
+      if (pcSimState.keys.KeyE) pcSimState.birdAltM = Math.min(5000, pcSimState.birdAltM + BIRD_ALT_RATE * dt);
+      pcSimState.birdFloorH = Math.max(pcSimState.birdBaseTerrainH + pcSimState.birdAltM, floorH);
+    } else {
+      // 通常: 目標高度へローパスフィルタで追従
+      const targetH = pcSimState.birdBaseTerrainH + pcSimState.birdAltM;
+      const neededH = Math.max(targetH, floorH);
+      pcSimState.birdFloorH += (neededH - pcSimState.birdFloorH) * Math.min(1, dt / BIRD_FLOOR_TC);
+    }
   }
 
   // ── カメラを配置（プレイヤーを常に画面中央に） ───────────────────
