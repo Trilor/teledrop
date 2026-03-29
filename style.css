@@ -4985,22 +4985,27 @@ h1, h2, h3, h4,
 
 /* ---- サイドバー フローティング化 ---- */
 #sidebar {
-  padding: 12px !important;
-  gap: 8px !important;
+  padding: 0 !important;
+  gap: 0 !important;
+  filter: drop-shadow(6px 0 18px rgba(27,61,56,0.08)) !important;
 }
 #sidebar-icon-bar {
   height: 100% !important;
-  border-radius: 16px !important;
+  border-radius: 0 !important;
   border: 2px solid var(--border-light) !important;
-  box-shadow: 4px 4px 0px rgba(0,0,0,0.08) !important;
+  border-left: 0 !important;
+  border-right: 0 !important;
+  box-shadow: none !important;
   overflow: hidden !important;
   background: #ffffff !important;
 }
 #sidebar-panel {
+  width: 292px !important;
   height: 100% !important;
-  border-radius: 16px !important;
+  border-radius: 0 16px 16px 0 !important;
   border: 2px solid var(--border-light) !important;
-  box-shadow: 4px 4px 0px rgba(0,0,0,0.08) !important;
+  border-left: 1px solid var(--border-light) !important;
+  box-shadow: none !important;
   overflow: hidden !important;
   background: #ffffff !important;
 }
