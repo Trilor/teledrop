@@ -4220,6 +4220,7 @@ const CR_PALETTE = [
   { t: 0.83, r: 242, g: 138, b:   9 }, // #F28A09
   { t: 1.00, r: 242, g:  72, b:  11 }, // #F2480B
 ];
+const CR_PALETTE_GRADIENT = `linear-gradient(to right, ${CR_PALETTE.map(p => `rgb(${p.r},${p.g},${p.b}) ${(p.t * 100).toFixed(2)}%`).join(', ')})`;
 
 // バーのグラデーションを動的に更新する
 // min より左は最初の色、max より右は最後の色でベタ塗り、間は全パレットグラデーション
@@ -4256,26 +4257,13 @@ function updateGradientTrack() {
   track.style.background = gradient;
 
   // 選択範囲だけ、つまみと同じ太さのグラデーションバーを重ねる
-  const minEl = document.getElementById('cr-min-slider');
-  const maxEl = document.getElementById('cr-max-slider');
-  if (minEl && maxEl) {
+  if (selected) {
     const W = track.offsetWidth;
-    const thumbR = 7; // つまみの半径(px)
     const posMin = (L / 100) * W; // 左つまみ中心(トラック左端からpx)
     const posMax = (R / 100) * W; // 右つまみ中心
-    if (selected) {
-      selected.style.left = `${posMin}px`;
-      selected.style.width = `${Math.max(0, posMax - posMin)}px`;
-      selected.style.background = gradient;
-    }
-
-    // つまみにトラックと同じグラデーションを位置合わせして渡す
-    [minEl, maxEl].forEach((el, i) => {
-      const pos = i === 0 ? posMin : posMax;
-      el.style.setProperty('--cr-track-grad', gradient);
-      el.style.setProperty('--cr-bg-w',       `${W}px`);
-      el.style.setProperty('--cr-bg-x',       `${-(pos - thumbR)}px`);
-    });
+    selected.style.left = `${posMin}px`;
+    selected.style.width = `${Math.max(0, posMax - posMin)}px`;
+    selected.style.background = CR_PALETTE_GRADIENT;
   }
 }
 
@@ -4326,6 +4314,11 @@ function updateColorReliefSource() {
 
 // 双方向バインディング初期化
 (function initColorReliefSlider() {
+  const trackWrap  = document.querySelector('.cr-dual-track');
+  const selected   = document.getElementById('cr-selected-track');
+  const minHit     = document.getElementById('cr-selected-min-hit');
+  const maxHit     = document.getElementById('cr-selected-max-hit');
+  const moveHit    = document.getElementById('cr-selected-move-hit');
   const minSlider = document.getElementById('cr-min-slider');
   const maxSlider = document.getElementById('cr-max-slider');
   const minInput  = document.getElementById('cr-min-input');
@@ -4370,6 +4363,92 @@ function updateColorReliefSource() {
   if (maxInput) {
     maxInput.addEventListener('change', applyMaxInput);
     maxInput.addEventListener('keydown', (e) => { if (e.key === 'Enter') applyMaxInput(); });
+  }
+
+  if (trackWrap && selected && minHit && maxHit && moveHit) {
+    let dragMode = null;
+    let dragPointerId = null;
+    let dragStartX = 0;
+    let dragStartMin = 0;
+    let dragStartMax = 0;
+
+    function clampCrValues() {
+      const lo = parseFloat(minSlider.min);
+      const hi = parseFloat(minSlider.max);
+      if (dragMode === 'min') {
+        crMin = Math.max(lo, Math.min(crMin, crMax));
+      } else if (dragMode === 'max') {
+        crMax = Math.min(hi, Math.max(crMax, crMin));
+      } else if (dragMode === 'move') {
+        const span = dragStartMax - dragStartMin;
+        if (crMin < lo) {
+          crMin = lo;
+          crMax = lo + span;
+        }
+        if (crMax > hi) {
+          crMax = hi;
+          crMin = hi - span;
+        }
+      }
+    }
+
+    function onDragMove(clientX) {
+      const width = trackWrap.clientWidth || 1;
+      const scale = (parseFloat(minSlider.max) - parseFloat(minSlider.min)) / width;
+      const deltaValue = Math.round((clientX - dragStartX) * scale / 10) * 10;
+
+      if (dragMode === 'min') {
+        crMin = dragStartMin + deltaValue;
+      } else if (dragMode === 'max') {
+        crMax = dragStartMax + deltaValue;
+      } else if (dragMode === 'move') {
+        crMin = dragStartMin + deltaValue;
+        crMax = dragStartMax + deltaValue;
+      }
+      clampCrValues();
+      updateColorReliefUI();
+    }
+
+    function finishDrag() {
+      if (!dragMode) return;
+      dragMode = null;
+      dragPointerId = null;
+      trackWrap.classList.remove('cr-dragging');
+      selected.classList.remove('cr-dragging');
+      updateColorReliefSource();
+    }
+
+    function startDrag(mode, e) {
+      e.preventDefault();
+      dragMode = mode;
+      dragPointerId = e.pointerId;
+      dragStartX = e.clientX;
+      dragStartMin = crMin;
+      dragStartMax = crMax;
+      trackWrap.classList.add('cr-dragging');
+      selected.classList.add('cr-dragging');
+      e.currentTarget.setPointerCapture?.(e.pointerId);
+    }
+
+    [ [minHit, 'min'], [maxHit, 'max'], [moveHit, 'move'] ].forEach(([el, mode]) => {
+      el.addEventListener('pointerdown', (e) => startDrag(mode, e));
+    });
+
+    document.addEventListener('pointermove', (e) => {
+      if (!dragMode || e.pointerId !== dragPointerId) return;
+      onDragMove(e.clientX);
+    });
+    document.addEventListener('pointerup', (e) => {
+      if (e.pointerId !== dragPointerId) return;
+      finishDrag();
+    });
+    document.addEventListener('pointercancel', (e) => {
+      if (e.pointerId !== dragPointerId) return;
+      finishDrag();
+    });
+    selected.addEventListener('lostpointercapture', () => {
+      finishDrag();
+    });
   }
 
   // 初期状態を反映
