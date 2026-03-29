@@ -9220,11 +9220,21 @@ function makeCustomSelect(sel) {
     panel.style.minWidth = r.width + 'px';
     panel.classList.toggle('open-up', openUp);
     panel.classList.add('open');
+    panel.classList.remove('left');
     // 選択中の項目が見えるようにスクロール
     const selectedItem = panel.querySelector('.selected');
     if (selectedItem) selectedItem.scrollIntoView({ block: 'nearest' });
   }
   function closePanel() { panel.classList.remove('open', 'open-up'); }
+
+  // パネル外へ向かってアイテムを出た瞬間に .left を付与
+  panel.addEventListener('mouseout', e => {
+    if (!panel.contains(e.relatedTarget)) panel.classList.add('left');
+  });
+  // アイテムにホバーしたら .left を解除
+  panel.addEventListener('mouseover', e => {
+    if (e.target.closest('.cascade-item')) panel.classList.remove('left');
+  });
 
   // btn / panel の mousedown は document に伝播させない
   // （伝播すると document の closePanel が先に発火し、click のトグル判定がずれる）

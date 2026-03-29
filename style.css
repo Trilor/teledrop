@@ -366,25 +366,24 @@ body {
 /* パネル閉じるボタン */
 .sidebar-close-btn {
   margin-left: auto;
-  width: 28px;
-  height: 28px;
+  width: 24px;
+  height: 24px;
   border: none;
   background: transparent;
-  color: var(--text-sub);
+  color: var(--text-muted);
   font-size: var(--font-lg);
-  font-weight: var(--font-bold);
   line-height: 1;
   cursor: pointer;
-  border-radius: 4px;
+  border-radius: 50%;
   display: flex;
   align-items: center;
   justify-content: center;
   flex-shrink: 0;
-  transition: background var(--transition-fast), color var(--transition-fast);
+  transition: background var(--transition), color var(--transition);
 }
 .sidebar-close-btn:hover {
-  background: var(--shadow-sm);
-  color: #111;
+  background: var(--primary-light);
+  color: var(--primary);
 }
 
 /* ================================================================
@@ -826,18 +825,28 @@ body {
   justify-content: space-between;
   gap: 10px;
 }
-.cascade-item:hover,
-.ppi-cascade-item:hover {
-  background: var(--border-muted);
+/* ホバー中アイテムなし かつ パネルからマウスが出ていないとき、選択済みをハイライト */
+.cascade-menu:not(:has(.cascade-item:hover)):not(.left) .cascade-item.selected,
+.cascade-menu:not(:has(.ppi-cascade-item:hover)):not(.left) .ppi-cascade-item.selected {
+  background: var(--bg-hover-btn);
   border-radius: 3px;
 }
-.cascade-item.selected,
-.ppi-cascade-item.selected {
-  background: var(--bg-surface);
-  font-weight: 600;
-  outline: 1.5px solid var(--border-light);
-  outline-offset: -1.5px;
+.cascade-item:hover,
+.ppi-cascade-item:hover {
+  background: var(--bg-hover-btn);
   border-radius: 3px;
+}
+.cascade-item.selected::after,
+.ppi-cascade-item.selected::after {
+  content: '';
+  display: inline-block;
+  width: 12px;
+  height: 12px;
+  flex-shrink: 0;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 12 12'%3E%3Cpolyline points='2%2C6.5 5%2C9.5 10%2C2.5' fill='none' stroke='%232a9d8f' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E");
+  background-repeat: no-repeat;
+  background-position: center;
+  background-size: contain;
 }
 
 /* ---- アイテム右側の補足テキスト（例: PPI値） ---- */
