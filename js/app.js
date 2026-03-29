@@ -4225,6 +4225,7 @@ const CR_PALETTE = [
 // min より左は最初の色、max より右は最後の色でベタ塗り、間は全パレットグラデーション
 function updateGradientTrack() {
   const track     = document.querySelector('.cr-gradient-track');
+  const selected  = document.querySelector('.cr-selected-track');
   const minSlider = document.getElementById('cr-min-slider');
   if (!track || !minSlider) return;
 
@@ -4251,7 +4252,31 @@ function updateGradientTrack() {
   stops.push(`${c1} ${R.toFixed(2)}%`);
   stops.push(`${c1} 100%`);
 
-  track.style.background = `linear-gradient(to right, ${stops.join(', ')})`;
+  const gradient = `linear-gradient(to right, ${stops.join(', ')})`;
+  track.style.background = gradient;
+
+  // 選択範囲だけ、つまみと同じ太さのグラデーションバーを重ねる
+  const minEl = document.getElementById('cr-min-slider');
+  const maxEl = document.getElementById('cr-max-slider');
+  if (minEl && maxEl) {
+    const W = track.offsetWidth;
+    const thumbR = 7; // つまみの半径(px)
+    const posMin = (L / 100) * W; // 左つまみ中心(トラック左端からpx)
+    const posMax = (R / 100) * W; // 右つまみ中心
+    if (selected) {
+      selected.style.left = `${posMin}px`;
+      selected.style.width = `${Math.max(0, posMax - posMin)}px`;
+      selected.style.background = gradient;
+    }
+
+    // つまみにトラックと同じグラデーションを位置合わせして渡す
+    [minEl, maxEl].forEach((el, i) => {
+      const pos = i === 0 ? posMin : posMax;
+      el.style.setProperty('--cr-track-grad', gradient);
+      el.style.setProperty('--cr-bg-w',       `${W}px`);
+      el.style.setProperty('--cr-bg-x',       `${-(pos - thumbR)}px`);
+    });
+  }
 }
 
 // タイル再フェッチのデバウンスタイマー

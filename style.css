@@ -3937,32 +3937,47 @@ label.setting-label {
 .cr-dual-track {
   position: relative;
   width: 100%;
-  height: 25px;
-  overflow: visible; /* つまみが左右端を超えても表示できるよう */
+  height: 20px;
+  overflow: visible;
 }
 
 /* グラデーション背景バー（background は JS が動的に設定） */
 .cr-gradient-track {
   position: absolute;
-  top: 0;
+  top: 50%;
+  transform: translateY(-50%);
   left: 0;
   right: 0;
-  height: 7px;
-  border-radius: 0; /* 長方形 */
-  /* 初期フォールバック（JS 上書き前） */
+  height: 5px;
+  border-radius: 3px;
   background: linear-gradient(to right,
     #0006fb 0%, #0092fb 17%, #00e7fb 33%, #8af708 50%,
     #f2f90b 67%, #f28a09 83%, #f2480b 100%);
   pointer-events: none;
 }
 
-/* レンジ入力共通: バー下端(7px)の 2px 下(y=9)から開始し、つまみが端まで届くよう左右 -6px 拡張 */
+/* 左右つまみの間だけ重なる太い選択バー */
+.cr-selected-track {
+  position: absolute;
+  top: 50%;
+  transform: translateY(-50%);
+  left: 0;
+  width: 0;
+  height: 14px;
+  border-radius: 999px;
+  background: linear-gradient(to right,
+    #0006fb 0%, #0092fb 17%, #00e7fb 33%, #8af708 50%,
+    #f2f90b 67%, #f28a09 83%, #f2480b 100%);
+  pointer-events: none;
+}
+
+/* レンジ入力共通: 左右 -6px 拡張でつまみが端まで届くよう */
 .cr-range {
   position: absolute;
-  top: 9px;
+  top: 0;
   left: -6px;
   width: calc(100% + 12px);
-  height: 14px;
+  height: 100%;
   margin: 0;
   padding: 0;
   -webkit-appearance: none;
@@ -3970,7 +3985,6 @@ label.setting-label {
   background: transparent;
   pointer-events: none;
   outline: none;
-  /* Windows のシステムアクセントカラーが進捗フィルに適用されるのを防ぐ */
   accent-color: transparent;
   color: transparent;
 }
@@ -3980,30 +3994,17 @@ label.setting-label {
   -webkit-appearance: none;
   appearance: none;
   background: transparent;
-  height: 14px;
+  height: 100%;
   border: none;
-  color: transparent;
 }
 
-/* WebKit/Blink: 三角つまみ（バー下端の少し下に頂点）
-   input top = 9px, height = 14px → トラック中心 = 9 + 7 = 16px
-   thumb height = 11px → thumb top = 16 - 5.5 = 10.5px (先端) = バー下端(7px)の 3.5px 下 */
-.cr-range::-webkit-slider-thumb {
+/* WebKit: トラックを全高に（つまみがコンテナ中央に来る） */
+.cr-range::-webkit-slider-runnable-track {
   -webkit-appearance: none;
   appearance: none;
-  width: 12px;
-  height: 11px;
-  border-radius: 0;
-  background: #444;
+  background: transparent;
+  height: 20px;
   border: none;
-  box-shadow: none;
-  cursor: ew-resize;
-  pointer-events: auto;
-  clip-path: polygon(50% 0%, 0% 100%, 100% 100%);
-  transition: background var(--transition);
-}
-.cr-range::-webkit-slider-thumb:hover {
-  background: var(--primary, #2563eb);
 }
 
 /* Firefox: トラック非表示 */
@@ -4012,16 +4013,20 @@ label.setting-label {
   height: 100%;
 }
 
-/* Firefox: 三角つまみ */
-.cr-range::-moz-range-thumb {
-  width: 12px;
-  height: 11px;
-  border-radius: 0;
-  background: #444;
+/* Firefox: 位置合わせグラデーションつまみ */
+input[type=range].cr-range::-moz-range-thumb {
+  width: 14px;
+  height: 14px;
+  border-radius: 50%;
+  background-image: var(--cr-track-grad, linear-gradient(to right,
+    #0006fb 0%, #0092fb 17%, #00e7fb 33%, #8af708 50%,
+    #f2f90b 67%, #f28a09 83%, #f2480b 100%));
+  background-size: var(--cr-bg-w, 200px) 14px;
+  background-position: var(--cr-bg-x, 0) 0;
+  background-repeat: no-repeat;
   border: none;
   box-shadow: none;
   cursor: ew-resize;
-  clip-path: polygon(50% 0%, 0% 100%, 100% 100%);
 }
 
 /* 色別標高図カード: グラデーションサムネイル */
@@ -5085,17 +5090,35 @@ h1, h2, h3, h4,
 }
 
 /* ---- スライダーつまみ: シアン丸 ---- */
-input[type=range]::-webkit-slider-thumb {
+/* .cr-range を除外してグローバルを適用 */
+input[type=range]:not(.cr-range)::-webkit-slider-thumb {
   background: var(--primary) !important;
   border: 3px solid #ffffff !important;
   box-shadow: 0 0 0 2px var(--primary) !important;
   border-radius: 50% !important;
 }
-input[type=range]::-moz-range-thumb {
+input[type=range]:not(.cr-range)::-moz-range-thumb {
   background: var(--primary) !important;
   border: 3px solid #ffffff !important;
   box-shadow: 0 0 0 2px var(--primary) !important;
   border-radius: 50% !important;
+}
+/* .cr-range 専用つまみ（トラックと同じグラデーションを位置合わせ） */
+input[type=range].cr-range::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  width: 14px;
+  height: 14px;
+  border-radius: 50%;
+  background-image: var(--cr-track-grad, linear-gradient(to right,
+    #0006fb 0%, #0092fb 17%, #00e7fb 33%, #8af708 50%,
+    #f2f90b 67%, #f28a09 83%, #f2480b 100%));
+  background-size: var(--cr-bg-w, 200px) 14px;
+  background-position: var(--cr-bg-x, 0) 0;
+  background-repeat: no-repeat;
+  border: none;
+  box-shadow: none;
+  cursor: ew-resize;
+  pointer-events: auto;
 }
 
 /* ---- 各種フローティングパネル: ボーダー ---- */
