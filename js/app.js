@@ -9221,19 +9221,26 @@ function makeCustomSelect(sel) {
     panel.classList.toggle('open-up', openUp);
     panel.classList.add('open');
     panel.classList.remove('left');
+    hilEl = null;
     // 選択中の項目が見えるようにスクロール
     const selectedItem = panel.querySelector('.selected');
     if (selectedItem) selectedItem.scrollIntoView({ block: 'nearest' });
   }
   function closePanel() { panel.classList.remove('open', 'open-up'); }
 
-  // パネル外へ向かってアイテムを出た瞬間に .left を付与
-  panel.addEventListener('mouseout', e => {
-    if (!panel.contains(e.relatedTarget)) panel.classList.add('left');
-  });
-  // アイテムにホバーしたら .left を解除
+  // CSS :hover に依存せず JS でハイライトを管理
+  let hilEl = null;
   panel.addEventListener('mouseover', e => {
-    if (e.target.closest('.cascade-item')) panel.classList.remove('left');
+    const item = e.target.closest('.cascade-item');
+    if (!item || item === hilEl) return;
+    if (hilEl) hilEl.classList.remove('highlighted');
+    item.classList.add('highlighted');
+    hilEl = item;
+    panel.classList.remove('left');
+  });
+  panel.addEventListener('mouseleave', () => {
+    if (hilEl) { hilEl.classList.remove('highlighted'); hilEl = null; }
+    panel.classList.add('left');
   });
 
   // btn / panel の mousedown は document に伝播させない

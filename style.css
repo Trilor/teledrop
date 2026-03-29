@@ -825,14 +825,15 @@ body {
   justify-content: space-between;
   gap: 10px;
 }
-/* ホバー中アイテムなし かつ パネルからマウスが出ていないとき、選択済みをハイライト */
-.cascade-menu:not(:has(.cascade-item:hover)):not(.left) .cascade-item.selected,
-.cascade-menu:not(:has(.ppi-cascade-item:hover)):not(.left) .ppi-cascade-item.selected {
+/* ハイライト中アイテム（JS で .highlighted を付与） */
+.cascade-item.highlighted,
+.ppi-cascade-item.highlighted {
   background: var(--bg-hover-btn);
   border-radius: 3px;
 }
-.cascade-item:hover,
-.ppi-cascade-item:hover {
+/* ハイライトなし・パネル未離脱のとき、選択済みをハイライト */
+.cascade-menu:not(:has(.cascade-item.highlighted)):not(.left) .cascade-item.selected,
+.cascade-menu:not(:has(.ppi-cascade-item.highlighted)):not(.left) .ppi-cascade-item.selected {
   background: var(--bg-hover-btn);
   border-radius: 3px;
 }
