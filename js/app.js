@@ -4070,6 +4070,7 @@ function updateCsVisibility() {
   // スライダーはカード選択だけで表示（オーバーレイトグルのON/OFFに依存しない）
   const crCtrls = document.getElementById('color-relief-controls');
   if (crCtrls) crCtrls.style.display = (currentOverlay === 'color-relief' || currentOverlay === 'color-contour') ? '' : 'none';
+  if (currentOverlay === 'color-relief' || currentOverlay === 'color-contour') refreshColorReliefTrackLayout();
 
   // 色別等高線の表示制御（contourState.demMode に応じて排他表示）
   const showColorContour = overlay === 'color-contour';
@@ -4186,6 +4187,14 @@ map.on('zoomend', updateCsVisibility);
 // 現在の min/max 値
 let crMin = 0;
 let crMax = 500;
+
+function refreshColorReliefTrackLayout() {
+  const crCtrls = document.getElementById('color-relief-controls');
+  if (!crCtrls || crCtrls.style.display === 'none') return;
+  requestAnimationFrame(() => requestAnimationFrame(() => {
+    updateGradientTrack();
+  }));
+}
 
 // crMin/crMax をスライダーの range に収まるよう動的拡張し、全UIを同期
 function syncColorReliefUI() {
