@@ -4259,10 +4259,12 @@ function updateGradientTrack() {
   // 選択範囲だけ、つまみと同じ太さのグラデーションバーを重ねる
   if (selected) {
     const W = track.offsetWidth;
+    const selectedH = selected.offsetHeight || 14;
+    const radius = selectedH / 2;
     const posMin = (L / 100) * W; // 左つまみ中心(トラック左端からpx)
     const posMax = (R / 100) * W; // 右つまみ中心
-    selected.style.left = `${posMin}px`;
-    selected.style.width = `${Math.max(0, posMax - posMin)}px`;
+    selected.style.left = `${posMin - radius}px`;
+    selected.style.width = `${Math.max(selectedH, (posMax - posMin) + selectedH)}px`;
     selected.style.background = CR_PALETTE_GRADIENT;
   }
 }
