@@ -823,9 +823,8 @@ maplibregl.addProtocol('dem2relief', async (params, abortController) => {
         continue;
       }
 
-      // NumPNG → 標高（メートル）変換: 24bit 符号付き整数 × 0.01m
-      const bits24 = (r << 16) | (g << 8) | b;
-      const height = ((bits24 << 8) >> 8) * 0.01;
+      // NumPNG → 標高（メートル）変換は共通ヘルパーへ集約
+      const height = _getNumpngHeight(r, g, b, a);
 
       // 相対正規化: min〜max を 0.0〜1.0 にクランプ（範囲外は端の色で塗る）
       const t = Math.max(0, Math.min(1, (height - min) / range));
