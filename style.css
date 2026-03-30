@@ -1196,17 +1196,17 @@ body {
 .bm-cards {
   display: grid;
   grid-template-columns: repeat(4, 1fr);
-  gap: 6px;
+  gap: 2px;
   width: 100%;
 }
 /* オーバーレイカードはベースマップと同じ4列 */
 #overlay-cards.bm-cards {
   grid-template-columns: repeat(4, 1fr);
 }
-/* 正方形カード: 検索ボックスと同じ box-shadow スタイル */
+/* 正方形カード*/
 .bm-card {
   --bm-card-radius: 12px;
-  --bm-card-inner-radius: 10px;
+  --bm-card-inner-radius: 12px;
   --bm-card-stroke: var(--border-subtle);
   position: relative;
   display: block;
@@ -1234,38 +1234,36 @@ body {
 .bm-card:hover  { --bm-card-stroke: color-mix(in srgb, var(--primary) 50%, transparent); }
 .bm-card.active { --bm-card-stroke: var(--primary, #2563eb); }
 /* サムネイル: カード全面を覆う */
+/* サムネイル画像 */
 .bm-card-img {
-  position: absolute;
-  inset: -2px;
-  width: calc(100% + 4px);
-  height: calc(100% + 4px);
+  position: absolute; /* relativeからabsoluteに戻す */
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
   object-fit: contain;
-  display: block;
-  border-radius: var(--bm-card-radius);
+  border-radius: var(--bm-card-inner-radius);
 }
-/* ラベル: 画像下部に半透明の帯をオーバーレイ */
+
+/* ラベル */
 .bm-card-label {
   position: absolute;
-  bottom: -2px;
-  left: -2px;
-  right: -2px;
+  bottom: 0;
+  left: 0;
+  right: 0;
   min-height: 20px;
-  font-size: 10px;
+  font-size: 11px;
   padding: 0 5px;
-  text-align: center;
   color: var(--on-primary);
   background: var(--overlay-base);
   backdrop-filter: blur(2px);
   -webkit-backdrop-filter: blur(2px);
-  line-height: 1.0;
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
   display: flex;
   align-items: center;
   justify-content: center;
-  border-radius: 0 0 var(--bm-card-radius) var(--bm-card-radius);
+  border-radius: 0 0 var(--bm-card-inner-radius) var(--bm-card-inner-radius);
 }
+
 .bm-card.active .bm-card-label {
   background: color-mix(in srgb, var(--primary) 75%, transparent);
 }
@@ -5096,7 +5094,7 @@ h1, h2, h3, h4,
   box-shadow: none !important;
 }
 .bm-card:hover {
-  --bm-card-stroke: var(--primary-hover);
+  --bm-card-stroke: color-mix(in srgb, var(--primary) 50%, transparent);
 }
 .bm-card.active {
   --bm-card-stroke: var(--primary);
