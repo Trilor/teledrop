@@ -21,6 +21,81 @@ function _transparentPngBuffer() {
   return buf.buffer;
 }
 
+// 地域DEMのURL順序差異を吸収するための既知ルール。
+// 追加ソースで {z}/{y}/{x} が増えた場合はここへ足す。
+const _REGIONAL_DEM_ORDER_RULES = [
+  { pattern: /tiles\.gsj\.jp\/tiles\/elev\/hyogodem/i, order: 'yx' },
+];
+
+function _inferTileOrder(baseUrl) {
+  const hit = _REGIONAL_DEM_ORDER_RULES.find(rule => rule.pattern.test(baseUrl));
+  return hit?.order ?? 'xy';
+}
+
+function _parseProtocolTileRequest(paramsUrl, protocol) {
+  const rawUrl = paramsUrl.replace(new RegExp(`^${protocol}:\\/\\/`), 'https://');
+  const urlObj = new URL(rawUrl);
+  const m = urlObj.pathname.match(/^(.*)\/(\d+)\/(\d+)\/(\d+)\.(png|webp)$/);
+  if (!m) return null;
+
+  const [, basePath, z, a, b, ext] = m;
+  const baseUrl = `${urlObj.origin}${basePath}`;
+  const tileOrder = urlObj.searchParams.get('tileOrder') === 'yx'
+    ? 'yx'
+    : _inferTileOrder(baseUrl);
+  const tileX = tileOrder === 'yx' ? +b : +a;
+  const tileY = tileOrder === 'yx' ? +a : +b;
+
+  return {
+    rawUrl,
+    urlObj,
+    baseUrl,
+    tileOrder,
+    zoomLevel: +z,
+    tileX,
+    tileY,
+    ext,
+  };
+}
+
+function _calculateTilePosition(index, tileSize, buffer) {
+  const col = index % 3;
+  const row = Math.floor(index / 3);
+  if (index === 4) {
+    return { sx: 0, sy: 0, sWidth: tileSize, sHeight: tileSize, dx: buffer, dy: buffer };
+  }
+
+  const sx = col === 0 ? tileSize - buffer : 0;
+  const sWidth = col === 1 ? tileSize : buffer;
+  const dx = col === 2 ? tileSize + buffer : col * buffer;
+  const sy = row === 0 ? tileSize - buffer : 0;
+  const sHeight = row === 1 ? tileSize : buffer;
+  const dy = row === 2 ? tileSize + buffer : row * buffer;
+  return { sx, sy, sWidth, sHeight, dx, dy };
+}
+
+function _getNumpngHeight(r, g, b, a) {
+  const bits24 = r * 65536 + g * 256 + b;
+  if (bits24 === 8388608 || a === 0) return -99999;
+  return bits24 < 8388608 ? bits24 * 0.01 : (bits24 - 16777216) * 0.01;
+}
+
+function _calculatePixelResolution(tileSize, zoomLevel, tileY) {
+  const L = 85.05112878;
+  const y = 256 * tileY + 128;
+  const lat = (180 / Math.PI) * Math.asin(
+    Math.tanh((-Math.PI / (1 << (zoomLevel + 7))) * y + Math.atanh(Math.sin((L * Math.PI) / 180)))
+  );
+  return 156543.04 * Math.cos((lat * Math.PI) / 180) / (1 << zoomLevel) * (256 / tileSize);
+}
+
+function _calculateSlope(h00, h01, h10, pixelLength) {
+  if (h00 === -99999 || h01 === -99999 || h10 === -99999) return null;
+  const dx = h00 - h01;
+  const dy = h00 - h10;
+  return Math.atan(Math.sqrt(dx * dx + dy * dy) / pixelLength) * (180 / Math.PI);
+}
+
 /*
   ========================================================
   PMTiles プロトコルの登録（将来の自前データ配信に備えて）
@@ -135,17 +210,27 @@ async function fetchTerrainDemBitmap(z, x, y, signal) {
 /*
   ========================================================
   CS立体図用 DEM 合成（dem2cs:// から呼ばれる）
-  Q地図 > DEM10B > 地域DEM の優先順で合成。
+  Q地図 > DEM5A > DEM10B > 地域DEM の優先順で合成。
   湖水深合成は廃止（コメントアウト済み）。
   ========================================================
 */
-// regionalDemBase: 地域DEMのベースURL（dem2cs://地域層の場合のみ指定）
-// regionalDemExt : 地域DEMの拡張子（'png' または 'webp'）
+// regionalDemBase : 地域DEMのベースURL（dem2cs://地域層の場合のみ指定）
+// regionalDemExt  : 地域DEMの拡張子（'png' または 'webp'）
+// regionalDemOrder: 地域DEM URL の軸順序（'xy' または 'yx'）
 // demMode: null          → DEM10B + DEM5A + Q地図1m（z13-16用）
 //          'land'        → DEM10Bのみ（z≤10用）
 //          'land+dem5a'  → DEM10B + DEM5A（z11-12用）
 //          'dem5a'       → DEM5Aのみ
-async function fetchCompositeDemBitmap(z, x, y, signal, regionalDemBase = null, regionalDemExt = 'png', demMode = null) {
+async function fetchCompositeDemBitmap(
+  z,
+  x,
+  y,
+  signal,
+  regionalDemBase = null,
+  regionalDemExt = 'png',
+  demMode = null,
+  regionalDemOrder = 'xy'
+) {
   const useQ    = demMode === null; // Q地図: 全合成モードのみ使用
   const useS    = demMode === null || demMode === 'dem5a' || demMode === 'land+dem5a'; // DEM5A: 全合成 or 単独 or land+dem5a
   const useLand = demMode === null || demMode === 'land' || demMode === 'land+dem5a'; // DEM10B: 全合成 or 単独 or land+dem5a
@@ -155,7 +240,11 @@ async function fetchCompositeDemBitmap(z, x, y, signal, regionalDemBase = null, 
   // 湖水深タイルはコメントアウト（2026-03-23 廃止）
   // const lUrl  = `${LAKEDEPTH_BASE}/${z}/${x}/${y}.png`;
   // const lsUrl = `${LAKEDEPTH_STANDARD_BASE}/${z}/${x}/${y}.png`;
-  const rUrl    = (useQ && regionalDemBase) ? `${regionalDemBase}/${z}/${x}/${y}.${regionalDemExt}` : null;
+  const rUrl = (useQ && regionalDemBase)
+    ? regionalDemOrder === 'yx'
+      ? `${regionalDemBase}/${z}/${y}/${x}.${regionalDemExt}`
+      : `${regionalDemBase}/${z}/${x}/${y}.${regionalDemExt}`
+    : null;
 
   // Q地図1m 用タイムアウト付きシグナル（3秒）
   // Q地図1mの提供が不安定な場合でも他ソースで素早くCS立体図を返すため。
@@ -244,7 +333,7 @@ async function fetchCompositeDemBitmap(z, x, y, signal, regionalDemBase = null, 
 /*
   ========================================================
   NumPNG → Terrarium 変換プロトコル (gsjdem://)
-  fetchCompositeDemBitmap で Q地図 > DEM5A > 湖水深 の優先順に合成した
+  fetchCompositeDemBitmap で Q地図 > DEM5A > DEM10B の優先順に合成した
   NumPNG ビットマップを MapLibre が理解できる Terrarium 形式に変換して渡す。
   CS立体図・3D地形・gsjdem ベースのレイヤーすべてがこのプロトコルを経由する。
   ========================================================
@@ -360,16 +449,15 @@ function _csRampMid(min, max, c0, c1, c2, t) {
 
 maplibregl.addProtocol('dem2cs', async (params, abortController) => {
   try {
-  const url = params.url.replace('dem2cs://', 'https://');
-  const m = url.match(/\/(\d+)\/(\d+)\/(\d+)\.(png|webp)$/);
-  if (!m) return { data: null };
-  const zoomLevel = +m[1], tileX = +m[2], tileY = +m[3], ext = m[4];
+  const request = _parseProtocolTileRequest(params.url, 'dem2cs');
+  if (!request) return { data: _transparentPngBuffer() };
+  const { urlObj, baseUrl, tileOrder, zoomLevel, tileX, tileY, ext } = request;
+  const terrainScale = Math.max(parseFloat(urlObj.searchParams.get('terrainScale') ?? '1') || 1, 0.1);
+  const redAndBlueIntensity = Math.max(parseFloat(urlObj.searchParams.get('redBlueIntensity') ?? '1') || 1, 0.1);
 
-  // 地域DEM ベースURL の抽出（z/x/y より前のパス部分）
-  // 全国CS（QCHIZU_DEM_BASE）か地域DEMかを判定し、地域DEMの場合は優先ソースとして渡す
-  const baseUrl = url.replace(/\/\d+\/\d+\/\d+\.\w+$/, '');
   const regionalDemBase = (baseUrl === QCHIZU_DEM_BASE) ? null : baseUrl;
   const regionalDemExt  = regionalDemBase ? ext : null;
+  const regionalDemOrder = regionalDemBase ? tileOrder : 'xy';
 
   // ズーム別 DEMソース選択:
   //   z≤10: DEM10Bのみ（低ズームは解像度差が無意味・最軽量）
@@ -382,6 +470,7 @@ maplibregl.addProtocol('dem2cs', async (params, abortController) => {
   // z<17 では地域DEM を使わない（地域DEMは z≥17 の高ズームでのみ有効）
   const effectiveRegionalBase = zoomLevel >= 17 ? regionalDemBase : null;
   const effectiveRegionalExt  = effectiveRegionalBase ? regionalDemExt : null;
+  const effectiveRegionalOrder = effectiveRegionalBase ? regionalDemOrder : 'xy';
 
   // ── ① 9タイル全て並列fetch（地域DEM優先 → Q地図 → DEM10B の順で補完） ──
   // 各タイルを fetchCompositeDemBitmap で取得（地域DEM/Q地図優先・nodata はシームレスで補完）
@@ -392,31 +481,26 @@ maplibregl.addProtocol('dem2cs', async (params, abortController) => {
   ];
 
   const bitmaps = await Promise.all(neighborOffsets.map(([dx, dy]) =>
-    fetchCompositeDemBitmap(zoomLevel, tileX + dx, tileY + dy, abortController.signal, effectiveRegionalBase, effectiveRegionalExt, demMode)
+    fetchCompositeDemBitmap(
+      zoomLevel,
+      tileX + dx,
+      tileY + dy,
+      abortController.signal,
+      effectiveRegionalBase,
+      effectiveRegionalExt,
+      demMode,
+      effectiveRegionalOrder
+    )
   ));
   if (!bitmaps[4]) return { data: _transparentPngBuffer() }; // 中央タイルが取得できなければ透明タイルを返す
 
   // タイルサイズを中央タイルから動的検出（256px または 512px タイルに対応）
   const tileSize = bitmaps[4].width;
 
-  // ピクセル解像度（m/pixel）― qchizu-project/protocolUtils.calculatePixelResolution
-  // py は常に 256px タイル基準の座標系で計算し、pixelLength を (256/tileSize) で補正する
-  const L = 85.05112878;
-  const py = 256 * tileY + 128; // 256px タイル基準で固定（512px タイルでも地理座標は同一）
-  const lat = (180 / Math.PI) * Math.asin(
-    Math.tanh((-Math.PI / (1 << (zoomLevel + 7))) * py + Math.atanh(Math.sin(L * Math.PI / 180)))
-  );
-  const pixelLength = 156543.04 * Math.cos(lat * Math.PI / 180) / (1 << zoomLevel) * (256 / tileSize);
-
-  // NumPNG → 標高（GSJ/Q地図形式, u=0.01m）
-  const toHeight = (r, g, b, a) => {
-    const x = r * 65536 + g * 256 + b;
-    if (a === 0 || x === 8388608) return -99999;
-    return x < 8388608 ? x * 0.01 : (x - 16777216) * 0.01;
-  };
+  const pixelLength = _calculatePixelResolution(tileSize, zoomLevel, tileY);
 
   // ガウシアンパラメータ
-  const sigma = Math.min(Math.max(3 / pixelLength, 1.6), 7);
+  const sigma = Math.min(Math.max(3 / pixelLength, 1.6), 7) * terrainScale;
   const kernelRadius = Math.ceil(sigma * 3);
   const buffer = kernelRadius + 1;
   const mergedSize = tileSize + buffer * 2;
@@ -431,12 +515,7 @@ maplibregl.addProtocol('dem2cs', async (params, abortController) => {
     if (idx === 4) {
       sx = 0; sy = 0; sw = tileSize; sh = tileSize; dx = buffer; dy = buffer;
     } else {
-      sx = col === 0 ? tileSize - buffer : 0;
-      sw = col === 1 ? tileSize : buffer;
-      dx = col === 2 ? tileSize + buffer : col * buffer;
-      sy = row === 0 ? tileSize - buffer : 0;
-      sh = row === 1 ? tileSize : buffer;
-      dy = row === 2 ? tileSize + buffer : row * buffer;
+      ({ sx, sy, sWidth: sw, sHeight: sh, dx, dy } = _calculateTilePosition(idx, tileSize, buffer));
     }
     mc.drawImage(bmp, sx, sy, sw, sh, dx, dy, sw, sh);
     bmp.close();
@@ -447,7 +526,7 @@ maplibregl.addProtocol('dem2cs', async (params, abortController) => {
   const mergedHeights = new Float32Array(mergedSize * mergedSize);
   for (let i = 0; i < mergedHeights.length; i++) {
     const p = i * 4;
-    mergedHeights[i] = toHeight(mergedPx[p], mergedPx[p + 1], mergedPx[p + 2], mergedPx[p + 3]);
+    mergedHeights[i] = _getNumpngHeight(mergedPx[p], mergedPx[p + 1], mergedPx[p + 2], mergedPx[p + 3]);
   }
 
   // 中央タイルの無効値マスク — 無効ピクセルを透明にするためのアルファ値
@@ -487,8 +566,7 @@ maplibregl.addProtocol('dem2cs', async (params, abortController) => {
       const oi = row * tileSize + col;
       const mi = (row + buffer) * mergedSize + (col + buffer);
       const H00 = mergedHeights[mi], H01 = mergedHeights[mi + 1], H10 = mergedHeights[mi + mergedSize];
-      const ddx = H00 - H01, ddy = H00 - H10;
-      slopes[oi] = Math.atan(Math.sqrt(ddx * ddx + ddy * ddy) / pixelLength) * (180 / Math.PI);
+      slopes[oi] = _calculateSlope(H00, H01, H10, pixelLength) ?? 0;
       const si = (row + 1) * sw2 + (col + 1);
       const z2 = smoothed[si - sw2], z4 = smoothed[si - 1], z5 = smoothed[si],
             z6 = smoothed[si + 1],   z8 = smoothed[si + sw2];
@@ -500,8 +578,8 @@ maplibregl.addProtocol('dem2cs', async (params, abortController) => {
 
   // ── ⑥ CS立体図 5レイヤー合成（tf.tidy で中間テンソルを自動解放） ──
   const cc = pixelLength < 68
-    ? Math.max(pixelLength / 2, 1.1)
-    : 0.188 * Math.pow(pixelLength, 1.232);
+    ? Math.max(pixelLength / 2, 1.1) * Math.sqrt(terrainScale) * redAndBlueIntensity
+    : 0.188 * Math.pow(pixelLength, 1.232) * Math.sqrt(terrainScale) * redAndBlueIntensity;
 
   const csRittaizuTensor = tf.tidy(() => {
     const hCrop = hT.slice([buffer, buffer], [tileSize, tileSize]);
@@ -593,44 +671,6 @@ function _dem2reliefColor(t) {
   ========================================================
 */
 
-function _dem2slopeTilePosition(index, tileSize, buffer) {
-  const col = index % 3;
-  const row = Math.floor(index / 3);
-  if (index === 4) {
-    return { sx: 0, sy: 0, sWidth: tileSize, sHeight: tileSize, dx: buffer, dy: buffer };
-  }
-
-  const sx = col === 0 ? tileSize - buffer : 0;
-  const sWidth = col === 1 ? tileSize : buffer;
-  const dx = col === 2 ? tileSize + buffer : col * buffer;
-  const sy = row === 0 ? tileSize - buffer : 0;
-  const sHeight = row === 1 ? tileSize : buffer;
-  const dy = row === 2 ? tileSize + buffer : row * buffer;
-  return { sx, sy, sWidth, sHeight, dx, dy };
-}
-
-function _dem2slopeHeight(r, g, b, a) {
-  const bits24 = r * 65536 + g * 256 + b;
-  if (bits24 === 8388608 || a === 0) return -99999;
-  return bits24 < 8388608 ? bits24 * 0.01 : (bits24 - 16777216) * 0.01;
-}
-
-function _dem2slopePixelResolution(tileSize, zoomLevel, tileY) {
-  const L = 85.05112878;
-  const y = 256 * tileY + 128;
-  const lat = (180 / Math.PI) * Math.asin(
-    Math.tanh((-Math.PI / (1 << (zoomLevel + 7))) * y + Math.atanh(Math.sin((L * Math.PI) / 180)))
-  );
-  return 156543.04 * Math.cos((lat * Math.PI) / 180) / (1 << zoomLevel) * (256 / tileSize);
-}
-
-function _dem2slopeValue(h00, h01, h10, pixelLength) {
-  if (h00 === -99999 || h01 === -99999 || h10 === -99999) return null;
-  const dx = h00 - h01;
-  const dy = h00 - h10;
-  return Math.atan(Math.sqrt(dx * dx + dy * dy) / pixelLength) * (180 / Math.PI);
-}
-
 function _dem2slopeColor(slope, mode = 'color') {
   if (mode === 'gray') {
     const alpha = Math.min(Math.max(slope * 3, 0), 255);
@@ -645,25 +685,23 @@ function _dem2slopeColor(slope, mode = 'color') {
 
 maplibregl.addProtocol('dem2slope', async (params, abortController) => {
   try {
-    const rawUrl = params.url.replace(/^dem2slope:\/\//, 'https://');
-    const urlObj = new URL(rawUrl);
+    const request = _parseProtocolTileRequest(params.url, 'dem2slope');
+    if (!request) return { data: _transparentPngBuffer() };
+    const { urlObj, baseUrl, tileOrder, zoomLevel, tileX, tileY, ext } = request;
     const mode = urlObj.searchParams.get('mode') === 'gray' ? 'gray' : 'color';
-
-    const m = urlObj.pathname.match(/\/(\d+)\/(\d+)\/(\d+)\.\w+/);
-    if (!m) return { data: _transparentPngBuffer() };
-    const zoomLevel = +m[1];
-    const tileX = +m[2];
-    const tileY = +m[3];
+    const regionalDemBase = (baseUrl === QCHIZU_DEM_BASE) ? null : baseUrl;
+    const regionalDemExt = regionalDemBase ? ext : null;
+    const regionalDemOrder = regionalDemBase ? tileOrder : 'xy';
 
     const demMode = zoomLevel <= 10 ? 'land'
                   : zoomLevel <= 13 ? 'land+dem5a'
                   : null;
 
     const [center, right, down, downRight] = await Promise.all([
-      fetchCompositeDemBitmap(zoomLevel, tileX, tileY, abortController.signal, null, 'png', demMode),
-      fetchCompositeDemBitmap(zoomLevel, tileX + 1, tileY, abortController.signal, null, 'png', demMode),
-      fetchCompositeDemBitmap(zoomLevel, tileX, tileY + 1, abortController.signal, null, 'png', demMode),
-      fetchCompositeDemBitmap(zoomLevel, tileX + 1, tileY + 1, abortController.signal, null, 'png', demMode),
+      fetchCompositeDemBitmap(zoomLevel, tileX, tileY, abortController.signal, regionalDemBase, regionalDemExt, demMode, regionalDemOrder),
+      fetchCompositeDemBitmap(zoomLevel, tileX + 1, tileY, abortController.signal, regionalDemBase, regionalDemExt, demMode, regionalDemOrder),
+      fetchCompositeDemBitmap(zoomLevel, tileX, tileY + 1, abortController.signal, regionalDemBase, regionalDemExt, demMode, regionalDemOrder),
+      fetchCompositeDemBitmap(zoomLevel, tileX + 1, tileY + 1, abortController.signal, regionalDemBase, regionalDemExt, demMode, regionalDemOrder),
     ]);
     if (!center) return { data: _transparentPngBuffer() };
 
@@ -680,7 +718,7 @@ maplibregl.addProtocol('dem2slope', async (params, abortController) => {
       { bmp: downRight, index: 8 },
     ].forEach(({ bmp, index }) => {
       if (!bmp) return;
-      const { sx, sy, sWidth, sHeight, dx, dy } = _dem2slopeTilePosition(index, tileSize, buffer);
+      const { sx, sy, sWidth, sHeight, dx, dy } = _calculateTilePosition(index, tileSize, buffer);
       mergedCtx.drawImage(bmp, sx, sy, sWidth, sHeight, dx, dy, sWidth, sHeight);
       bmp.close();
     });
@@ -692,32 +730,32 @@ maplibregl.addProtocol('dem2slope', async (params, abortController) => {
 
     const mergedImageData = mergedCtx.getImageData(0, 0, mergedSize, mergedSize);
     const data = mergedImageData.data;
-    const pixelLength = _dem2slopePixelResolution(tileSize, zoomLevel, tileY);
+    const pixelLength = _calculatePixelResolution(tileSize, zoomLevel, tileY);
 
     for (let row = 0; row < tileSize; row++) {
       for (let col = 0; col < tileSize; col++) {
         const mergedIndex = ((row + buffer) * mergedSize + (col + buffer)) * 4;
         const outputIndex = (row * tileSize + col) * 4;
 
-        const h00 = _dem2slopeHeight(
+        const h00 = _getNumpngHeight(
           data[mergedIndex],
           data[mergedIndex + 1],
           data[mergedIndex + 2],
           data[mergedIndex + 3]
         );
-        const h01 = _dem2slopeHeight(
+        const h01 = _getNumpngHeight(
           data[mergedIndex + 4],
           data[mergedIndex + 5],
           data[mergedIndex + 6],
           data[mergedIndex + 7]
         );
-        const h10 = _dem2slopeHeight(
+        const h10 = _getNumpngHeight(
           data[mergedIndex + mergedSize * 4],
           data[mergedIndex + mergedSize * 4 + 1],
           data[mergedIndex + mergedSize * 4 + 2],
           data[mergedIndex + mergedSize * 4 + 3]
         );
-        const slope = _dem2slopeValue(h00, h01, h10, pixelLength);
+        const slope = _calculateSlope(h00, h01, h10, pixelLength);
 
         if (slope == null) {
           out[outputIndex] = 0;
