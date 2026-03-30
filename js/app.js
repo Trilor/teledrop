@@ -620,6 +620,23 @@ map.on('load', async () => {
     paint: { 'raster-opacity': 0, 'raster-fade-duration': 0, 'raster-opacity-transition': { duration: 0, delay: 0 } },
   }, map.getLayer('contour-regular-dem1a') ? 'contour-regular-dem1a' : undefined);
 
+  // 傾斜量図（dem2slope://プロトコル）
+  map.addSource('slope-relief', {
+    type: 'raster',
+    tiles: [`dem2slope://${QCHIZU_DEM_BASE.replace(/^https?:\/\//, '')}/{z}/{x}/{y}.webp`],
+    tileSize: 512,
+    minzoom: 5,
+    maxzoom: 15,
+    attribution: '',
+  });
+  map.addLayer({
+    id: 'slope-relief-layer',
+    type: 'raster',
+    source: 'slope-relief',
+    layout: { visibility: 'visible' },
+    paint: { 'raster-opacity': 0, 'raster-fade-duration': 0, 'raster-opacity-transition': { duration: 0, delay: 0 } },
+  }, map.getLayer('contour-regular-dem1a') ? 'contour-regular-dem1a' : undefined);
+
   // CS立体図（ブラウザ生成・Q地図DEMから動的生成）
   map.addSource('cs-relief', {
     type: 'raster',
@@ -1077,8 +1094,8 @@ async function loadKmz(file) {
     });
     // レイヤーをオーバーレイ（等高線・CS立体図）の直下に挿入する
     // オーバーレイが存在しない場合はGPXの直下、GPXもなければ最前面に移動する
-    const _kmzOverlayAnchor1 = ['color-contour-regular', 'contour-regular', 'color-relief-layer', 'cs-relief-layer']
-      .find(id => map.getLayer(id));
+    const _kmzOverlayAnchor1 = ['color-contour-regular', 'contour-regular', 'color-relief-layer', 'slope-relief-layer', 'cs-relief-layer']
+        .find(id => map.getLayer(id));
     if (_kmzOverlayAnchor1) {
       map.moveLayer(layerId, _kmzOverlayAnchor1);
     } else if (map.getLayer('gpx-track-outline')) {
@@ -1251,8 +1268,8 @@ async function loadImageWithJgw(imageFile, jgwText, crsValue) {
   });
 
   // オーバーレイ（等高線・CS立体図）の直下に挿入する（KMZ と同じ扱い）
-  const _kmzOverlayAnchor2 = ['color-contour-regular', 'contour-regular', 'color-relief-layer', 'cs-relief-layer']
-    .find(id => map.getLayer(id));
+  const _kmzOverlayAnchor2 = ['color-contour-regular', 'contour-regular', 'color-relief-layer', 'slope-relief-layer', 'cs-relief-layer']
+      .find(id => map.getLayer(id));
   if (_kmzOverlayAnchor2) {
     map.moveLayer(layerId, _kmzOverlayAnchor2);
   } else if (map.getLayer('gpx-track-outline')) {
@@ -1443,8 +1460,8 @@ function addImageLayerToMap(sourceId, layerId, imageUrl, coordinates, opacity) {
   });
   // オーバーレイ（色別等高線・色別標高図・CS立体図）の下、ベースマップの上に配置する
   // → オーバーレイが常に地図画像より前面に表示される
-  const overlayAnchor = ['color-contour-regular', 'color-relief-layer', 'cs-relief-layer']
-    .find(id => map.getLayer(id));
+  const overlayAnchor = ['color-contour-regular', 'color-relief-layer', 'slope-relief-layer', 'cs-relief-layer']
+      .find(id => map.getLayer(id));
   if (overlayAnchor) {
     map.moveLayer(layerId, overlayAnchor);
   } else if (map.getLayer('gpx-track-outline')) {
@@ -4079,6 +4096,11 @@ function updateCsVisibility() {
     const crOpacity = showColorRelief ? parseFloat(document.getElementById('slider-cs').value) : 0;
     map.setPaintProperty('color-relief-layer', 'raster-opacity', crOpacity);
   }
+  const showSlopeRelief = overlay === 'slope';
+  if (map.getLayer('slope-relief-layer')) {
+    const slopeOpacity = showSlopeRelief ? parseFloat(document.getElementById('slider-cs').value) : 0;
+    map.setPaintProperty('slope-relief-layer', 'raster-opacity', slopeOpacity);
+  }
   // スライダーはカード選択だけで表示（オーバーレイトグルのON/OFFに依存しない）
   const crCtrls = document.getElementById('color-relief-controls');
   if (crCtrls) crCtrls.style.display = (currentOverlay === 'color-relief' || currentOverlay === 'color-contour') ? '' : 'none';
@@ -4100,8 +4122,8 @@ function updateCsVisibility() {
       (ccBaseVis === 'visible' && contourState.demMode === 'dem1a') ? 'visible' : 'none');
   });
 
-  // CS立体図: color-relief 選択時は非表示
-  const csOverlay = (showColorRelief || showColorContour) ? 'none' : overlay;
+  // CS立体図: 他の生成系オーバーレイ選択時は非表示
+  const csOverlay = (showColorRelief || showColorContour || showSlopeRelief) ? 'none' : overlay;
   const csKey = csOverlay !== 'none' ? csOverlay
               : basemap.startsWith('cs-') ? basemap
               : null;
@@ -4167,7 +4189,7 @@ function isCsLayerVisible() {
 }
 
 function isGeneratingLayer() {
-  return isCsLayerVisible() || currentOverlay === 'color-relief';
+  return isCsLayerVisible() || currentOverlay === 'color-relief' || currentOverlay === 'slope';
 }
 
 map.on('movestart', () => {
@@ -4182,8 +4204,8 @@ document.getElementById('overlay-cards').addEventListener('click', (e) => {
   card.classList.add('active');
   currentOverlay = card.dataset.key;
   updateCsVisibility();
-  // CS立体図・色別標高図選択時はローディング表示（idle で非表示）
-  if (currentOverlay === 'cs' || currentOverlay === 'color-relief') showMapLoading();
+  // CS立体図・生成系オーバーレイ選択時はローディング表示（idle で非表示）
+  if (currentOverlay === 'cs' || currentOverlay === 'color-relief' || currentOverlay === 'slope') showMapLoading();
   else hideMapLoading();
   // 色別標高図選択時はタイルを即座にリクエスト（visibility:none 中はMapLibreがフェッチしないため）
   if (currentOverlay === 'color-relief') applyColorReliefTiles();
@@ -4558,7 +4580,10 @@ sliderCs.addEventListener('input', () => {
   if (currentOverlay === 'color-relief' && map.getLayer('color-relief-layer')) {
     map.setPaintProperty('color-relief-layer', 'raster-opacity', v);
   }
-});
+  if (currentOverlay === 'slope' && map.getLayer('slope-relief-layer')) {
+    map.setPaintProperty('slope-relief-layer', 'raster-opacity', v);
+  }
+  });
 
 
 // ---- deck.gl 遅延ロード（PLATEAU LOD2 選択時のみ読み込む）----
