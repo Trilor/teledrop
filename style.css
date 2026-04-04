@@ -1281,15 +1281,17 @@ body {
 /* bm-row のflex/column を上書き: ベースマップと同じ4列グリッドを流用 */
 .setting-row.layer-pair-row {
   display: grid;
-  grid-template-columns: repeat(4, 1fr);
+  /* minmax(0, 1fr): コンテンツ幅に引きずられず4列を常に均等固定 */
+  grid-template-columns: repeat(4, minmax(0, 1fr));
   gap: 2px;
 }
-/* 各カードの列（タイトル＋カード） */
+/* 各カードの列（カード＋プルダウン） */
 .layer-card-wrapper {
   display: flex;
   flex-direction: column;
   align-items: stretch;
   gap: 2px;
+  min-width: 0; /* グリッドセルからのはみ出しを防止 */
 }
 .layer-card-title {
   font-size: var(--font-sm);
@@ -1309,13 +1311,20 @@ body {
 /* カード下セレクト（等高線・磁北線・3D地形・3D建物） */
 .layer-card-wrapper .custom-select-wrap.layer-card-select {
   display: flex;
+  width: 100%;
+  min-width: 0; /* テキスト幅でラッパーが広がるのを防止 */
 }
 .layer-card-wrapper .custom-select-wrap.layer-card-select > .cascade-btn {
+  flex: 1;
+  min-width: 0;
   min-height: 20px !important;
   font-size: var(--font-xs) !important;
   padding: 0 var(--chevron-pad-r) 1px 5px !important;
   border-radius: 4px !important;
   text-align: center;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .bm-thumb-actions {
