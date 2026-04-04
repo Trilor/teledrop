@@ -456,52 +456,40 @@ Oシミュレーターモードの仮想ジョイスティック（左手移動�
         <!-- グループ: 地形・ナビ -->
         <div class="settings-group">
           <div class="settings-group-title">地形・ナビ</div>
-          <div class="setting-row toggle-left">
-            <div class="setting-left">
-              <label for="chk-contour" class="setting-label">等高線</label>
-              <label class="toggle-switch">
-                <input type="checkbox" id="chk-contour" checked />
-                <span class="toggle-slider"></span>
-              </label>
-            </div>
-            <div class="setting-right">
-              <select id="sel-contour-interval" class="setting-select">
-                <option value="1">1 m</option>
-                <option value="2">2 m</option>
-                <option value="2.5">2.5 m</option>
-                <option value="5" selected>5 m</option>
-                <option value="10">10 m</option>
-              </select>
-            </div>
-          </div>
-          <div class="setting-row toggle-left">
-            <div class="setting-left">
-              <label for="sel-contour-dem" class="setting-label">DEMソース</label>
-            </div>
-            <div class="setting-right">
-              <select id="sel-contour-dem" class="setting-select">
-                <option value="q1m" selected>Q地図 1m</option>
-                <option value="dem5a">DEM5A 5m</option>
-                <option value="dem1a" style="display:none">地理院 DEM1A 1m</option>
-              </select>
+          <!-- 等高線タイルカード -->
+          <div class="setting-row bm-row">
+            <span class="setting-label">等高線</span>
+            <div class="bm-cards layer-cards">
+              <div class="bm-card active" id="contour-card">
+                <img class="bm-card-img" id="contour-card-img" src="assets/thumbnails/contour-1m.png" alt="">
+                <select id="sel-contour-combined" class="bm-card-select">
+                  <option value="q1m-1">Q 1m</option>
+                  <option value="q1m-2">Q 2m</option>
+                  <option value="q1m-2.5">Q 2.5m</option>
+                  <option value="q1m-5" selected>Q 5m</option>
+                  <option value="dem5a-1">DEM5A 1m</option>
+                  <option value="dem5a-2">DEM5A 2m</option>
+                  <option value="dem5a-2.5">DEM5A 2.5m</option>
+                  <option value="dem5a-5">DEM5A 5m</option>
+                  <option value="dem5a-10">DEM5A 10m</option>
+                </select>
+              </div>
             </div>
           </div>
-          <div class="setting-row toggle-left">
-            <div class="setting-left">
-              <label for="chk-magnetic-north" class="setting-label">磁北線</label>
-              <label class="toggle-switch">
-                <input type="checkbox" id="chk-magnetic-north" checked />
-                <span class="toggle-slider"></span>
-              </label>
-            </div>
-            <div class="setting-right">
-              <select id="sel-magnetic-north-interval" class="setting-select">
-                <option value="120">120 m</option>
-                <option value="150">150 m</option>
-                <option value="250">250 m</option>
-                <option value="300" selected>300 m</option>
-                <option value="500">500 m</option>
-              </select>
+          <!-- 磁北線タイルカード -->
+          <div class="setting-row bm-row">
+            <span class="setting-label">磁北線</span>
+            <div class="bm-cards layer-cards">
+              <div class="bm-card active" id="magnetic-card">
+                <img class="bm-card-img" src="assets/thumbnails/magnetic-north.png" alt="">
+                <select id="sel-magnetic-combined" class="bm-card-select">
+                  <option value="120">120m</option>
+                  <option value="150">150m</option>
+                  <option value="250">250m</option>
+                  <option value="300" selected>300m</option>
+                  <option value="500">500m</option>
+                </select>
+              </div>
             </div>
           </div>
           <div class="setting-row toggle-left">

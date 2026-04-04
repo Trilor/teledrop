@@ -5070,9 +5070,9 @@ sliderExaggeration.addEventListener('input', () => {
   map.setTerrain({ source: 'terrain-dem', exaggeration: v });
 });
 
-// ---- 等高線 チェックボックス ----
-const chkContour = document.getElementById('chk-contour');
-const selContour = document.getElementById('sel-contour-interval');
+// ---- 等高線 タイルカード ----
+const contourCard = document.getElementById('contour-card');
+const selContourCombined = document.getElementById('sel-contour-combined');
 
 // ユーザーが手動で選んだ等高線間隔（m）。zoom > 15（16以上）のときに使用する。
 let userContourInterval = 5;
@@ -5123,7 +5123,7 @@ function applyContourInterval(intervalM) {
   if (hasDem1a)  { map.getSource('contour-source-dem1a').setTiles([]); map.getSource('contour-source-dem1a').setTiles([newUrlDem1a]); }
   // if (hasLake)   map.getSource('contour-source-lake').setTiles([newUrlLake]);
   // 初期 visibility:none で追加されるため、ここで visible に設定する（フリック防止のため none は経由しない）
-  if (chkContour.checked) setAllContourVisibility(map, 'visible');
+  if (contourCard.classList.contains('active')) setAllContourVisibility(map, 'visible');
   // マップがアイドル状態でもレンダーループを確実に起動してタイル再描画を促す
   map.triggerRepaint();
   lastAppliedContourInterval = intervalM;
@@ -5131,7 +5131,7 @@ function applyContourInterval(intervalM) {
 
 // moveend 時に zoom に応じた間隔へ自動切り替え＆セレクト表示を更新
 function updateContourAutoInterval() {
-  if (!chkContour.checked) return;
+  if (!contourCard.classList.contains('active')) return;
 
   const z = map.getZoom();
 
@@ -5155,54 +5155,54 @@ function updateContourAutoInterval() {
   }
 }
 
-chkContour.addEventListener('change', () => {
-  const vis = chkContour.checked ? 'visible' : 'none';
+// ---- 等高線カード クリックでトグル ----
+contourCard.addEventListener('click', (e) => {
+  // セレクト（カスタムセレクトのボタン含む）のクリックはトグルしない
+  if (e.target.closest('.custom-select-wrap') || e.target.closest('select')) return;
+  const isActive = contourCard.classList.toggle('active');
+  const vis = isActive ? 'visible' : 'none';
   setAllContourVisibility(map, vis);
-  selContour.disabled = !chkContour.checked;
-  selContour._csSync?.();
-  document.querySelector('label[for="chk-contour"]').classList.toggle('disabled', !chkContour.checked);
 });
 
-// ---- 等高線 間隔セレクト ----
-selContour.addEventListener('change', () => {
-  const val = parseFloat(selContour.value);
-  if (val) {
-    userContourInterval = val;
-    applyContourInterval(val);
+// ---- 等高線 統合セレクト（DEMソース + 間隔） ----
+selContourCombined.addEventListener('change', () => {
+  const v = selContourCombined.value; // e.g. "q1m-5", "dem5a-2.5"
+  const [src, ivStr] = v.split('-');
+  const iv = parseFloat(ivStr);
+  // DEMソース切り替え
+  contourState.demMode = src === 'dem5a' ? 'dem5a' : 'q1m';
+  // サムネイル切り替え
+  const thumb = document.getElementById('contour-card-img');
+  if (thumb) thumb.src = src === 'dem5a' ? 'assets/thumbnails/contour-5m.png' : 'assets/thumbnails/contour-1m.png';
+  // 等高線間隔を更新
+  if (iv) {
+    userContourInterval = iv;
+    applyContourInterval(iv);
   }
-});
-
-
-// ---- 等高線 DEMソース切り替え ----
-const selContourDem = document.getElementById('sel-contour-dem');
-selContourDem.addEventListener('change', () => {
-  contourState.demMode = selContourDem.value; // 'q1m' / 'dem5a' / 'dem1a'
-  if (chkContour.checked) {
+  if (contourCard.classList.contains('active')) {
     setAllContourVisibility(map, 'visible');
   }
   // 色別等高線オーバーレイ選択中の場合はソース切り替えに追従
   if (currentOverlay === 'color-contour') updateCsVisibility();
-  // 地形は常に全ソース合成のため DEMソース切り替えに連動しない
 });
 
-// ---- 磁北線 チェックボックス + セレクト ----
-const chkMagneticNorth = document.getElementById('chk-magnetic-north');
-const selMagneticNorth = document.getElementById('sel-magnetic-north-interval');
+// ---- 磁北線 タイルカード ----
+const magneticCard = document.getElementById('magnetic-card');
+const selMagneticCombined = document.getElementById('sel-magnetic-combined');
 
-chkMagneticNorth.addEventListener('change', () => {
-  const vis = chkMagneticNorth.checked ? 'visible' : 'none';
-  selMagneticNorth.disabled = !chkMagneticNorth.checked;
-  selMagneticNorth._csSync?.();
-  document.querySelector('label[for="chk-magnetic-north"]').classList.toggle('disabled', !chkMagneticNorth.checked);
+// ---- 磁北線カード クリックでトグル ----
+magneticCard.addEventListener('click', (e) => {
+  if (e.target.closest('.custom-select-wrap') || e.target.closest('select')) return;
+  const isActive = magneticCard.classList.toggle('active');
   if (map.getLayer('magnetic-north-layer')) {
-    map.setLayoutProperty('magnetic-north-layer', 'visibility', vis);
+    map.setLayoutProperty('magnetic-north-layer', 'visibility', isActive ? 'visible' : 'none');
   }
 });
 
-selMagneticNorth.addEventListener('change', () => {
-  const val = parseInt(selMagneticNorth.value, 10);
+// ---- 磁北線 間隔セレクト ----
+selMagneticCombined.addEventListener('change', () => {
+  const val = parseInt(selMagneticCombined.value, 10);
   if (val) {
-    // value='' の先頭オプション（auto表示）以外を選んだ場合はユーザー設定として保存
     userMagneticInterval = val;
   }
   updateMagneticNorth();
@@ -7387,7 +7387,7 @@ function syncReadmapOriLibre() {
     const newUrl = buildContourTileUrl(lastAppliedContourInterval);
     if (newUrl) pcSimState.readMap.getSource('contour-source').setTiles([newUrl]);
   }
-  const contourVis = chkContour.checked ? 'visible' : 'none';
+  const contourVis = contourCard.classList.contains('active') ? 'visible' : 'none';
   for (const id of contourLayerIds) {
     if (!pcSimState.readMap.getLayer(id)) continue;
     // symbol レイヤー（数値ラベル）は常に非表示
@@ -7396,7 +7396,7 @@ function syncReadmapOriLibre() {
   }
 
   // ── 磁北線: ソース・レイヤーを初回追加してから GeoJSON を同期 ──
-  const magnVis = chkMagneticNorth.checked ? 'visible' : 'none';
+  const magnVis = magneticCard.classList.contains('active') ? 'visible' : 'none';
   if (!pcSimState.readMap.getSource('magnetic-north')) {
     pcSimState.readMap.addSource('magnetic-north', {
       type: 'geojson',
@@ -8473,7 +8473,7 @@ const _PREVIEW_RASTER_STYLE = {
 // OriLibre の場合は oriLibreCachedStyle に既に含まれているため不要。
 function _addPreviewContourAndNorth(m) {
   // 等高線
-  if (chkContour.checked && contourState.q1mSource) {
+  if (contourCard.classList.contains('active') && contourState.q1mSource) {
     const iv  = getEffectiveContourInterval();
     const url = contourState.demMode === 'dem5a' ? buildSeamlessContourTileUrl(iv)
               : contourState.demMode === 'dem1a' ? buildDem1aContourTileUrl(iv)
@@ -8489,7 +8489,7 @@ function _addPreviewContourAndNorth(m) {
     }
   }
   // 磁北線
-  if (chkMagneticNorth.checked && _lastMagneticNorthData.features.length > 0) {
+  if (magneticCard.classList.contains('active') && _lastMagneticNorthData.features.length > 0) {
     m.addSource('prev-magnetic-north', { type: 'geojson', data: _lastMagneticNorthData });
     m.addLayer({ id: 'prev-magnetic-north-layer', type: 'line', source: 'prev-magnetic-north',
       paint: { 'line-color': '#0055cc', 'line-width': 0.8, 'line-opacity': 1.0 } });
