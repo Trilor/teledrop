@@ -1304,10 +1304,7 @@ body {
   width: 100%;
   aspect-ratio: 1 / 1;
 }
-/* 非アクティブ時は半透明 */
-.layer-pair-row .bm-card:not(.active) {
-  opacity: 0.45;
-}
+/* 非アクティブ時はベースマップカードと同じスタイル（border-subtleの枠線のみ） */
 /* カード下セレクト（等高線・磁北線・3D地形・3D建物） */
 .layer-card-wrapper .custom-select-wrap.layer-card-select {
   display: flex;
