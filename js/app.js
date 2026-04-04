@@ -4075,9 +4075,12 @@ function updatePlateauAttribution() {
   const buildingOn = document.getElementById('building3d-card')?.classList.contains('active') ?? false;
   const mode       = document.getElementById('sel-building')?.value ?? 'plateau';
   const plateauLink = ' | <a href="https://www.mlit.go.jp/plateau/open-data/" target="_blank">国土交通省3D都市モデルPLATEAU</a>';
+  const selCity = document.getElementById('sel-plateau-city');
+  const cityLabel = selCity?.options[selCity.selectedIndex]?.textContent ?? '';
   attrEl.innerHTML = !buildingOn ? ''
-    : mode === 'plateau'     ? plateauLink + '（<a href="https://github.com/shiwaku/mlit-plateau-bldg-pmtiles" target="_blank">shiwaku</a>加工）'
-    : mode === 'plateau-lod2' ? plateauLink + '（京都市左京区 LOD2 2024）'
+    : mode === 'plateau'          ? plateauLink + '（<a href="https://github.com/shiwaku/mlit-plateau-bldg-pmtiles" target="_blank">shiwaku</a>加工）'
+    : mode === 'plateau-lod2-api' ? plateauLink + (cityLabel ? `（${cityLabel} LOD2）` : '（LOD2）')
+    : mode === 'plateau-lod3-api' ? plateauLink + (cityLabel ? `（${cityLabel} LOD3）` : '（LOD3）')
     : '';
 }
 
@@ -4885,12 +4888,98 @@ sliderCs.addEventListener('input', () => {
   });
 
 
-// ---- deck.gl 遅延ロード（PLATEAU LOD2 選択時のみ読み込む）----
+// ---- deck.gl 遅延ロード（PLATEAU LOD2/LOD3 選択時のみ読み込む）----
 // deck.gl v9 は luma.gl v9 の頂点属性バリデーション (size: 1) で PLATEAU b3dm が読めない
 // ため、安定動作する v8.9 系を使用する。
-const PLATEAU_LOD2_URL =
-  'https://assets.cms.plateau.reearth.io/assets/e9/114ee3-8a65-4d3f-8494-11e8ffcf3dc5' +
-  '/26100_kyoto-shi_city_2024_citygml_1_op_bldg_3dtiles_26103_sakyo-ku_lod2/tileset.json';
+
+// ---- PLATEAU 公式 API から建物モデルデータを動的取得 ----
+// API: https://api.plateauview.mlit.go.jp/datacatalog/plateau-datasets?type=bldg&format=3dtiles
+// キャッシュしてセッション中の重複リクエストを防ぐ
+const PLATEAU_API_URL = 'https://api.plateauview.mlit.go.jp/datacatalog/plateau-datasets?type=bldg&format=3dtiles';
+let _plateauApiCache = null; // { lod2: [...], lod3: [...] } | null
+
+async function _fetchPlateauDatasets() {
+  if (_plateauApiCache) return _plateauApiCache;
+  const res = await fetch(PLATEAU_API_URL);
+  if (!res.ok) throw new Error('PLATEAU API fetch failed: ' + res.status);
+  const json = await res.json();
+  const datasets = json.datasets ?? json; // レスポンス形式に応じて対応
+  // LOD2・LOD3 に分類。APIの lod フィールドは文字列 "2" / "3" のケースがある
+  const lod2 = datasets.filter(d => String(d.lod) === '2');
+  const lod3 = datasets.filter(d => String(d.lod) === '3');
+  _plateauApiCache = { lod2, lod3 };
+  return _plateauApiCache;
+}
+
+// 都道府県プルダウンを都市ピッカーに反映
+function _buildPlateauPrefOptions(datasets) {
+  const selPref = document.getElementById('sel-plateau-pref');
+  const selCity = document.getElementById('sel-plateau-city');
+  // 都道府県リストを重複除去（pref_code 順でソート）
+  const prefs = [...new Map(datasets.map(d => [d.pref_code, { code: d.pref_code, name: d.pref }])).values()]
+    .sort((a, b) => a.code.localeCompare(b.code));
+  selPref.innerHTML = '<option value="">都道府県を選択</option>';
+  prefs.forEach(p => {
+    const opt = document.createElement('option');
+    opt.value = p.code;
+    opt.textContent = p.name;
+    selPref.appendChild(opt);
+  });
+  selPref._csRefresh?.();
+  selCity.innerHTML = '<option value="">市区町村を選択</option>';
+  selCity.disabled = true;
+  selCity._csRefresh?.();
+}
+
+// 都道府県選択時に市区町村を絞り込む
+function _buildPlateauCityOptions(datasets, prefCode) {
+  const selCity = document.getElementById('sel-plateau-city');
+  const cities = datasets
+    .filter(d => d.pref_code === prefCode)
+    .sort((a, b) => (a.city_code ?? '').localeCompare(b.city_code ?? ''));
+  selCity.innerHTML = '<option value="">市区町村を選択</option>';
+  cities.forEach(d => {
+    const opt = document.createElement('option');
+    opt.value = d.url;
+    const label = d.ward ? `${d.city} ${d.ward}` : d.city;
+    opt.textContent = `${label}（${d.year}年）`;
+    selCity.appendChild(opt);
+  });
+  selCity.disabled = false;
+  selCity._csRefresh?.();
+}
+
+// 都市ピッカーの表示/非表示を切り替えて都道府県リストを構築
+async function _showPlateauCityPicker(lod) {
+  const picker = document.getElementById('plateau-city-picker');
+  picker.style.display = '';
+  try {
+    const cache = await _fetchPlateauDatasets();
+    const datasets = lod === 2 ? cache.lod2 : cache.lod3;
+    _buildPlateauPrefOptions(datasets);
+    // 都道府県セレクトのchangeハンドラーを付け替え
+    const selPref = document.getElementById('sel-plateau-pref');
+    selPref.onchange = () => {
+      if (!selPref.value) return;
+      const datasets2 = lod === 2 ? _plateauApiCache.lod2 : _plateauApiCache.lod3;
+      _buildPlateauCityOptions(datasets2, selPref.value);
+    };
+    // 市区町村選択 → 即時表示
+    const selCity = document.getElementById('sel-plateau-city');
+    selCity.onchange = () => {
+      if (selCity.value && document.getElementById('building3d-card')?.classList.contains('active')) {
+        _applyDeckTile3D(selCity.value);
+      }
+    };
+  } catch (e) {
+    console.error('PLATEAU API 取得失敗:', e);
+  }
+}
+
+function _hidePlateauCityPicker() {
+  const picker = document.getElementById('plateau-city-picker');
+  picker.style.display = 'none';
+}
 
 let _deckOverlay = null; // deck.MapboxOverlay インスタンス（初回のみ生成）
 
@@ -4918,20 +5007,22 @@ function _initDeckOverlay() {
   map.addControl(_deckOverlay);
 }
 
-async function _applyDeckLod2(visible) {
-  if (!visible) {
+// 指定 tileset.json URL の PLATEAU 3D Tiles を deck.gl で表示する汎用関数
+// （LOD2・LOD3 共用。visible=false で非表示）
+async function _applyDeckTile3D(tilesetUrl) {
+  if (!tilesetUrl) {
     _deckOverlay?.setProps({ layers: [] });
     return;
   }
-  showMapLoading(); // ロード開始時にくるくるを表示
+  showMapLoading();
   try {
     await _loadDeckGl();
     _initDeckOverlay();
     _deckOverlay.setProps({
       layers: [
         new deck.Tile3DLayer({
-          id: 'plateau-lod2',
-          data: PLATEAU_LOD2_URL,
+          id: 'plateau-lod',
+          data: tilesetUrl,
           loader: window.loaders?.Tiles3DLoader,
           opacity: 0.8,
           pointSize: 1,
@@ -4940,8 +5031,6 @@ async function _applyDeckLod2(visible) {
             scenegraph: { _lighting: 'flat' },
           },
           onTilesetLoad: (tileset) => {
-            // tileset.json 解析完了後も個別タイル(b3dm)が生成中のため
-            // isLoaded が true になるまで rAF でポーリングし続ける
             const waitUntilLoaded = () => {
               if (tileset.isLoaded) { hideMapLoading(); return; }
               requestAnimationFrame(waitUntilLoaded);
@@ -4960,12 +5049,16 @@ async function _applyDeckLod2(visible) {
     });
   } catch (e) {
     hideMapLoading();
-    console.error('PLATEAU LOD2 の表示に失敗:', e);
+    console.error('PLATEAU 3D Tiles の表示に失敗:', e);
   }
 }
 
 // ---- 3D建物レイヤー切替 ----
-/* 建物モード: 'ofm'（OpenFreeMap） | 'plateau'（PLATEAU LOD1 全国） | 'plateau-lod2'（PLATEAU LOD2 3D Tiles）
+/* 建物モード:
+   'ofm'              OpenFreeMap（MapLibre fill-extrusion）
+   'plateau'          PLATEAU LOD1 全国（MapLibre fill-extrusion）
+   'plateau-lod2-api' PLATEAU LOD2 API動的取得（deck.gl Tile3DLayer）
+   'plateau-lod3-api' PLATEAU LOD3 API動的取得（deck.gl Tile3DLayer）
    3D地形の ON/OFF とは独立して制御可能。 */
 const BUILDING_CFG = {
   ofm: {
@@ -4986,18 +5079,26 @@ async function updateBuildingLayer() {
   const mode       = document.getElementById('sel-building')?.value ?? 'plateau';
   const buildingOn = document.getElementById('building3d-card')?.classList.contains('active') ?? true;
 
-  const selBuilding = document.getElementById('sel-building');
-
   // 既存 MapLibre レイヤーを一旦削除
   if (map.getLayer('building-3d')) map.removeLayer('building-3d');
 
-  // LOD2 モード: deck.gl Tile3DLayer で表示
-  if (mode === 'plateau-lod2') {
-    await _applyDeckLod2(buildingOn);
+  // PLATEAU LOD2/LOD3 API モード: 都市ピッカーを表示して deck.gl で描画
+  if (mode === 'plateau-lod2-api' || mode === 'plateau-lod3-api') {
+    const lod = mode === 'plateau-lod2-api' ? 2 : 3;
+    await _showPlateauCityPicker(lod);
+    if (!buildingOn) {
+      _deckOverlay?.setProps({ layers: [] });
+    } else {
+      // 既に都市が選択済みなら再表示
+      const selCity = document.getElementById('sel-plateau-city');
+      if (selCity?.value) _applyDeckTile3D(selCity.value);
+    }
     updatePlateauAttribution();
     return;
   }
-  // LOD2 以外: deck.gl レイヤーをクリア
+
+  // API モード以外: 都市ピッカーを非表示・deck.gl レイヤーをクリア
+  _hidePlateauCityPicker();
   _deckOverlay?.setProps({ layers: [] });
 
   if (!buildingOn) { updatePlateauAttribution(); return; }

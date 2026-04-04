@@ -1305,6 +1305,20 @@ body {
   aspect-ratio: 1 / 1;
 }
 /* 非アクティブ時はベースマップカードと同じスタイル（border-subtleの枠線のみ） */
+/* PLATEAU 都市ピッカー（LOD2/LOD3選択時にカード下に表示） */
+#plateau-city-picker {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  width: 100%;
+  min-width: 0;
+}
+/* ピッカー内のセレクトも同じスタイルを継承 */
+#plateau-city-picker .custom-select-wrap.layer-card-select,
+#plateau-city-picker select.layer-card-select {
+  width: 100%;
+  min-width: 0;
+}
 /* カード下セレクト（等高線・磁北線・3D地形・3D建物） */
 .layer-card-wrapper .custom-select-wrap.layer-card-select {
   display: flex;
