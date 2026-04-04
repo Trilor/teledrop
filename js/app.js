@@ -4223,6 +4223,21 @@ document.getElementById('overlay-cards').addEventListener('click', (e) => {
 // ズーム17の境界を跨いだとき 0.5m ↔ 1m を自動切替
 map.on('zoomend', updateCsVisibility);
 
+// ---- deck.gl 建物レイヤー: ズーム16未満で非表示、16以上で復帰 ----
+map.on('zoomend', () => {
+  const mode = document.getElementById('sel-building')?.value ?? '';
+  if (mode !== 'plateau-lod2-api' && mode !== 'plateau-lod3-api') return;
+  if (!document.getElementById('building3d-card')?.classList.contains('active')) return;
+  const selCity = document.getElementById('sel-plateau-city');
+  if (!selCity?.value) return;
+  if (map.getZoom() < 16) {
+    _deckOverlay?.setProps({ layers: [] });
+  } else {
+    // 既にレイヤーが存在する場合は再生成しない
+    if (!_deckOverlay?.props?.layers?.length) _applyDeckTile3D(selCity.value);
+  }
+});
+
 
 // ---- 色別標高図 デュアルレンジスライダー ----
 // 現在の min/max 値
@@ -4968,7 +4983,11 @@ async function _showPlateauCityPicker(lod) {
     const selCity = document.getElementById('sel-plateau-city');
     selCity.onchange = () => {
       if (selCity.value && document.getElementById('building3d-card')?.classList.contains('active')) {
-        _applyDeckTile3D(selCity.value);
+        if (map.getZoom() >= 16) {
+          _applyDeckTile3D(selCity.value);
+        } else {
+          _deckOverlay?.setProps({ layers: [] });
+        }
       }
     };
   } catch (e) {
@@ -5111,7 +5130,7 @@ async function updateBuildingLayer() {
     type: 'fill-extrusion',
     source: cfg.source,
     'source-layer': cfg.sourceLayer,
-    minzoom: 14,
+    minzoom: 16,
     paint: {
       'fill-extrusion-height':  cfg.height,
       'fill-extrusion-base':    cfg.base,
