@@ -1332,7 +1332,7 @@ body {
   font-size: var(--font-xs) !important;
   padding: 0 var(--chevron-pad-r) 1px 5px !important;
   border-radius: 4px !important;
-  text-align: center;
+  text-align: left;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
