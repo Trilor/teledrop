@@ -1278,18 +1278,17 @@ body {
 }
 
 /* ---- レイヤートグルカード（等高線・磁北線）横並びレイアウト ---- */
-/* bm-row の flex-direction:column を上書きして横並びにする */
+/* bm-row のflex/column を上書き: ベースマップと同じ4列グリッドを流用 */
 .setting-row.layer-pair-row {
-  flex-direction: row;
-  align-items: flex-start;
-  gap: 4px;
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 2px;
 }
 /* 各カードの列（タイトル＋カード） */
 .layer-card-wrapper {
-  flex: 1;
   display: flex;
   flex-direction: column;
-  align-items: center;
+  align-items: stretch;
   gap: 2px;
 }
 .layer-card-title {
@@ -1298,10 +1297,10 @@ body {
   text-align: center;
   white-space: nowrap;
 }
-/* カード: 幅はwrapper全幅、高さはベースマップ4列の1枠と同じ（= 幅の1/2） */
+/* カード: ベースマップと同じ正方形 */
 .layer-pair-row .bm-card {
   width: 100%;
-  aspect-ratio: 2 / 1;
+  aspect-ratio: 1 / 1;
 }
 /* 非アクティブ時は半透明 */
 .layer-pair-row .bm-card:not(.active) {
