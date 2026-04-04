@@ -456,67 +456,57 @@ Oシミュレーターモードの仮想ジョイスティック（左手移動�
         <!-- グループ: 地形・ナビ -->
         <div class="settings-group">
           <div class="settings-group-title">地形・ナビ</div>
-          <!-- 等高線・磁北線タイルカード（横並び） -->
+          <!-- 地形・ナビ タイルカード（4列グリッド） -->
           <div class="setting-row bm-row layer-pair-row">
             <div class="layer-card-wrapper">
-              <span class="layer-card-title">等高線</span>
               <div class="bm-card active" id="contour-card">
-                <img class="bm-card-img" id="contour-card-img" src="assets/thumbnails/contour-1m.png" alt="">
-                <div class="bm-card-label-group">
-                  <select id="sel-contour-dem" class="bm-card-select">
-                    <option value="q1m" selected>Q地図 1m</option>
-                    <option value="dem5a">DEM5A</option>
-                  </select>
-                  <select id="sel-contour-interval" class="bm-card-select">
-                    <option value="1">1m</option>
-                    <option value="2">2m</option>
-                    <option value="2.5">2.5m</option>
-                    <option value="5" selected>5m</option>
-                    <option value="10">10m</option>
-                  </select>
-                </div>
+                <img class="bm-card-img" id="contour-card-img" src="assets/thumbnails/contour.png" alt="">
+                <div class="bm-card-label">等高線</div>
               </div>
+              <select id="sel-contour-dem" class="layer-card-select">
+                <option value="q1m" selected>Q地図 1m</option>
+                <option value="dem5a">DEM5A</option>
+              </select>
+              <select id="sel-contour-interval" class="layer-card-select">
+                <option value="1">1m</option>
+                <option value="2">2m</option>
+                <option value="2.5">2.5m</option>
+                <option value="5" selected>5m</option>
+                <option value="10">10m</option>
+              </select>
             </div>
             <div class="layer-card-wrapper">
-              <span class="layer-card-title">磁北線</span>
               <div class="bm-card active" id="magnetic-card">
                 <img class="bm-card-img" src="assets/thumbnails/magnetic-north.png" alt="">
-                <div class="bm-card-label-group">
-                  <select id="sel-magnetic-combined" class="bm-card-select">
-                    <option value="120">120m</option>
-                    <option value="150">150m</option>
-                    <option value="250">250m</option>
-                    <option value="300" selected>300m</option>
-                    <option value="500">500m</option>
-                  </select>
-                </div>
+                <div class="bm-card-label">磁北線</div>
               </div>
+              <select id="sel-magnetic-combined" class="layer-card-select">
+                <option value="120">120m</option>
+                <option value="150">150m</option>
+                <option value="250">250m</option>
+                <option value="300" selected>300m</option>
+                <option value="500">500m</option>
+              </select>
             </div>
-          </div>
-          <div class="setting-row toggle-left">
-            <div class="setting-left">
-              <label for="chk-exaggeration" class="setting-label">3D地形</label>
-              <label class="toggle-switch">
-                <input type="checkbox" id="chk-exaggeration" checked />
-                <span class="toggle-slider"></span>
-              </label>
+            <div class="layer-card-wrapper">
+              <div class="bm-card active" id="terrain3d-card">
+                <img class="bm-card-img" src="assets/thumbnails/3d-terrain.png" alt="">
+                <div class="bm-card-label">3D地形</div>
+              </div>
+              <select id="sel-terrain-exaggeration" class="layer-card-select">
+                <option value="1" selected>×1</option>
+                <option value="1.5">×1.5</option>
+                <option value="2">×2</option>
+                <option value="3">×3</option>
+                <option value="5">×5</option>
+              </select>
             </div>
-            <div class="setting-right">
-              <input type="range" id="slider-exaggeration" min="0.5" max="3" step="0.1" value="1.0"
-                class="ui-slider" />
-              <span class="opacity-val" id="val-exaggeration">1.0×</span>
-            </div>
-          </div>
-          <div class="setting-row toggle-left">
-            <div class="setting-left">
-              <label for="chk-building" class="setting-label">3D建物</label>
-              <label class="toggle-switch">
-                <input type="checkbox" id="chk-building" checked />
-                <span class="toggle-slider"></span>
-              </label>
-            </div>
-            <div class="setting-right">
-              <select id="sel-building" class="setting-select">
+            <div class="layer-card-wrapper">
+              <div class="bm-card active" id="building3d-card">
+                <img class="bm-card-img" src="assets/thumbnails/3d-building.png" alt="">
+                <div class="bm-card-label">3D建物</div>
+              </div>
+              <select id="sel-building" class="layer-card-select">
                 <option value="plateau" selected>PLATEAU</option>
                 <option value="plateau-lod2">PLATEAU LOD2</option>
                 <option value="ofm">OpenFreeMap</option>

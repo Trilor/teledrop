@@ -4072,7 +4072,7 @@ function updatePlateauAttribution() {
     attrEl.id = 'plateau-attr';
     attrInner.appendChild(attrEl);
   }
-  const buildingOn = document.getElementById('chk-building')?.checked ?? false;
+  const buildingOn = document.getElementById('building3d-card')?.classList.contains('active') ?? false;
   const mode       = document.getElementById('sel-building')?.value ?? 'plateau';
   const plateauLink = ' | <a href="https://www.mlit.go.jp/plateau/open-data/" target="_blank">国土交通省3D都市モデルPLATEAU</a>';
   attrEl.innerHTML = !buildingOn ? ''
@@ -4984,7 +4984,7 @@ const BUILDING_CFG = {
 
 async function updateBuildingLayer() {
   const mode       = document.getElementById('sel-building')?.value ?? 'plateau';
-  const buildingOn = document.getElementById('chk-building')?.checked ?? true;
+  const buildingOn = document.getElementById('building3d-card')?.classList.contains('active') ?? true;
 
   // トグルオフ時はプルダウンを無効化
   const selBuilding = document.getElementById('sel-building');
@@ -5025,24 +5025,24 @@ async function updateBuildingLayer() {
 }
 
 document.getElementById('sel-building').addEventListener('change', updateBuildingLayer);
-document.getElementById('chk-building').addEventListener('change', updateBuildingLayer);
 
-// ---- 地形誇張 チェックボックス + スライダー ----
-const chkExaggeration = document.getElementById('chk-exaggeration');
-const sliderExaggeration = document.getElementById('slider-exaggeration');
-const valExaggeration = document.getElementById('val-exaggeration');
-updateSliderGradient(sliderExaggeration);
+// ---- 3D建物カード クリックでトグル ----
+const building3dCard = document.getElementById('building3d-card');
+building3dCard.addEventListener('click', (e) => {
+  if (e.target.closest('.custom-select-wrap') || e.target.closest('select')) return;
+  building3dCard.classList.toggle('active');
+  updateBuildingLayer();
+});
 
-// チェックOFF → setTerrain(null) で地形を完全に平坦化（傾けても立体にならない）
-// チェックON  → setTerrain でスライダー値の誇張率を復元
-chkExaggeration.addEventListener('change', () => {
-  const isOn = chkExaggeration.checked;
-  sliderExaggeration.disabled = !isOn;
-  document.querySelector('label[for="chk-exaggeration"]').classList.toggle('disabled', !isOn);
-  valExaggeration.textContent = parseFloat(sliderExaggeration.value).toFixed(1) + '×';
-  updateSliderGradient(sliderExaggeration);
+// ---- 3D地形カード クリックでトグル + 誇張率セレクト ----
+const terrain3dCard = document.getElementById('terrain3d-card');
+const selTerrainExaggeration = document.getElementById('sel-terrain-exaggeration');
+
+terrain3dCard.addEventListener('click', (e) => {
+  if (e.target.closest('.custom-select-wrap') || e.target.closest('select')) return;
+  const isOn = terrain3dCard.classList.toggle('active');
   if (isOn) {
-    map.setTerrain({ source: 'terrain-dem', exaggeration: parseFloat(sliderExaggeration.value) });
+    map.setTerrain({ source: 'terrain-dem', exaggeration: parseFloat(selTerrainExaggeration.value) });
   } else {
     map.setTerrain(null);
   }
@@ -5054,20 +5054,10 @@ chkExaggeration.addEventListener('change', () => {
   });
 });
 
-sliderExaggeration.addEventListener('input', () => {
-  let v = parseFloat(sliderExaggeration.value);
-  // キリのいい倍率に吸い付く
-  if (v >= 0.9 && v <= 1.1) {
-    v = 1.0;
-  } else if (v >= 1.9 && v <= 2.1) {
-    v = 2.0;
-  } else if (v >= 2.9) {
-    v = 3.0;
+selTerrainExaggeration.addEventListener('change', () => {
+  if (terrain3dCard.classList.contains('active')) {
+    map.setTerrain({ source: 'terrain-dem', exaggeration: parseFloat(selTerrainExaggeration.value) });
   }
-  sliderExaggeration.value = String(v);
-  valExaggeration.textContent = v.toFixed(1) + '×';
-  updateSliderGradient(sliderExaggeration);
-  map.setTerrain({ source: 'terrain-dem', exaggeration: v });
 });
 
 // ---- 等高線 タイルカード ----
@@ -5168,11 +5158,6 @@ contourCard.addEventListener('click', (e) => {
 // ---- 等高線 DEMソースセレクト ----
 selContourDem.addEventListener('change', () => {
   contourState.demMode = selContourDem.value; // 'q1m' / 'dem5a'
-  // サムネイル切り替え
-  const thumb = document.getElementById('contour-card-img');
-  if (thumb) thumb.src = selContourDem.value === 'dem5a'
-    ? 'assets/thumbnails/contour-5m.png'
-    : 'assets/thumbnails/contour-1m.png';
   if (contourCard.classList.contains('active')) {
     setAllContourVisibility(map, 'visible');
   }
@@ -6170,9 +6155,7 @@ sliderCs.value = CS_INITIAL_OPACITY;
 updateSliderGradient(sliderCs); // 値変更後に再計算
 
 
-sliderExaggeration.value = TERRAIN_EXAGGERATION;
-valExaggeration.textContent = TERRAIN_EXAGGERATION.toFixed(1) + '×';
-updateSliderGradient(sliderExaggeration); // 値変更後に再計算
+// 3D地形初期倍率をセレクトに反映（TERRAIN_EXAGGERATION = 1.0 なので ×1 がデフォルト選択済み）
 
 
 /* ================================================================

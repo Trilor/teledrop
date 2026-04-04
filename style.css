@@ -1306,46 +1306,16 @@ body {
 .layer-pair-row .bm-card:not(.active) {
   opacity: 0.45;
 }
-/* カード内ラベルグループ: 絶対配置コンテナ（1段・2段共通） */
-.bm-card-label-group {
-  position: absolute;
-  bottom: 1px;
-  left: 1px;
-  right: 1px;
-  z-index: 2;
-  display: flex;
-  flex-direction: column;
-}
-/* カード内セレクト: .bm-card-label と同じ見た目 */
-.bm-card-label-group .custom-select-wrap.bm-card-select {
+/* カード下セレクト（等高線・磁北線・3D地形・3D建物） */
+.layer-card-wrapper .custom-select-wrap.layer-card-select {
   display: flex;
 }
-.bm-card-label-group .custom-select-wrap.bm-card-select > .cascade-btn {
+.layer-card-wrapper .custom-select-wrap.layer-card-select > .cascade-btn {
   min-height: 20px !important;
   font-size: var(--font-xs) !important;
   padding: 0 var(--chevron-pad-r) 1px 5px !important;
-  color: var(--on-primary) !important;
-  background-color: var(--overlay-base) !important;
-  background-image: var(--chevron-down) !important;
-  backdrop-filter: blur(2px);
-  -webkit-backdrop-filter: blur(2px);
-  border: none !important;
-  border-radius: 0 !important;
+  border-radius: 4px !important;
   text-align: center;
-}
-/* 最後のセレクトのみ下角丸 */
-.bm-card-label-group .custom-select-wrap.bm-card-select:last-child > .cascade-btn {
-  border-radius: 0 0 calc(var(--bm-card-radius, 12px) - 1px) calc(var(--bm-card-radius, 12px) - 1px) !important;
-}
-/* 2段目との仕切り線 */
-.bm-card-label-group .custom-select-wrap.bm-card-select:not(:last-child) > .cascade-btn {
-  border-bottom: 1px solid rgba(255,255,255,0.2) !important;
-}
-.bm-card.active .bm-card-label-group .custom-select-wrap.bm-card-select > .cascade-btn {
-  background-color: color-mix(in srgb, var(--primary) 75%, transparent) !important;
-}
-.bm-card-label-group .custom-select-wrap.bm-card-select > .cascade-btn:hover {
-  background-color: color-mix(in srgb, var(--primary) 85%, transparent) !important;
 }
 
 .bm-thumb-actions {
