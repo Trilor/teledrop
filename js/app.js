@@ -4986,10 +4986,7 @@ async function updateBuildingLayer() {
   const mode       = document.getElementById('sel-building')?.value ?? 'plateau';
   const buildingOn = document.getElementById('building3d-card')?.classList.contains('active') ?? true;
 
-  // トグルオフ時はプルダウンを無効化
   const selBuilding = document.getElementById('sel-building');
-  selBuilding.disabled = !buildingOn;
-  selBuilding._csSync?.();
 
   // 既存 MapLibre レイヤーを一旦削除
   if (map.getLayer('building-3d')) map.removeLayer('building-3d');
