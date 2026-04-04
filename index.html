@@ -462,30 +462,34 @@ Oシミュレーターモードの仮想ジョイスティック（左手移動�
               <span class="layer-card-title">等高線</span>
               <div class="bm-card active" id="contour-card">
                 <img class="bm-card-img" id="contour-card-img" src="assets/thumbnails/contour-1m.png" alt="">
-                <select id="sel-contour-combined" class="bm-card-select">
-                  <option value="q1m-1">Q 1m</option>
-                  <option value="q1m-2">Q 2m</option>
-                  <option value="q1m-2.5">Q 2.5m</option>
-                  <option value="q1m-5" selected>Q 5m</option>
-                  <option value="dem5a-1">DEM5A 1m</option>
-                  <option value="dem5a-2">DEM5A 2m</option>
-                  <option value="dem5a-2.5">DEM5A 2.5m</option>
-                  <option value="dem5a-5">DEM5A 5m</option>
-                  <option value="dem5a-10">DEM5A 10m</option>
-                </select>
+                <div class="bm-card-label-group">
+                  <select id="sel-contour-dem" class="bm-card-select">
+                    <option value="q1m" selected>Q地図 1m</option>
+                    <option value="dem5a">DEM5A</option>
+                  </select>
+                  <select id="sel-contour-interval" class="bm-card-select">
+                    <option value="1">1m</option>
+                    <option value="2">2m</option>
+                    <option value="2.5">2.5m</option>
+                    <option value="5" selected>5m</option>
+                    <option value="10">10m</option>
+                  </select>
+                </div>
               </div>
             </div>
             <div class="layer-card-wrapper">
               <span class="layer-card-title">磁北線</span>
               <div class="bm-card active" id="magnetic-card">
                 <img class="bm-card-img" src="assets/thumbnails/magnetic-north.png" alt="">
-                <select id="sel-magnetic-combined" class="bm-card-select">
-                  <option value="120">120m</option>
-                  <option value="150">150m</option>
-                  <option value="250">250m</option>
-                  <option value="300" selected>300m</option>
-                  <option value="500">500m</option>
-                </select>
+                <div class="bm-card-label-group">
+                  <select id="sel-magnetic-combined" class="bm-card-select">
+                    <option value="120">120m</option>
+                    <option value="150">150m</option>
+                    <option value="250">250m</option>
+                    <option value="300" selected>300m</option>
+                    <option value="500">500m</option>
+                  </select>
+                </div>
               </div>
             </div>
           </div>

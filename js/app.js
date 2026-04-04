@@ -5072,7 +5072,8 @@ sliderExaggeration.addEventListener('input', () => {
 
 // ---- 等高線 タイルカード ----
 const contourCard = document.getElementById('contour-card');
-const selContourCombined = document.getElementById('sel-contour-combined');
+const selContourDem      = document.getElementById('sel-contour-dem');
+const selContourInterval = document.getElementById('sel-contour-interval');
 
 // ユーザーが手動で選んだ等高線間隔（m）。zoom > 15（16以上）のときに使用する。
 let userContourInterval = 5;
@@ -5164,26 +5165,28 @@ contourCard.addEventListener('click', (e) => {
   setAllContourVisibility(map, vis);
 });
 
-// ---- 等高線 統合セレクト（DEMソース + 間隔） ----
-selContourCombined.addEventListener('change', () => {
-  const v = selContourCombined.value; // e.g. "q1m-5", "dem5a-2.5"
-  const [src, ivStr] = v.split('-');
-  const iv = parseFloat(ivStr);
-  // DEMソース切り替え
-  contourState.demMode = src === 'dem5a' ? 'dem5a' : 'q1m';
+// ---- 等高線 DEMソースセレクト ----
+selContourDem.addEventListener('change', () => {
+  contourState.demMode = selContourDem.value; // 'q1m' / 'dem5a'
   // サムネイル切り替え
   const thumb = document.getElementById('contour-card-img');
-  if (thumb) thumb.src = src === 'dem5a' ? 'assets/thumbnails/contour-5m.png' : 'assets/thumbnails/contour-1m.png';
-  // 等高線間隔を更新
-  if (iv) {
-    userContourInterval = iv;
-    applyContourInterval(iv);
-  }
+  if (thumb) thumb.src = selContourDem.value === 'dem5a'
+    ? 'assets/thumbnails/contour-5m.png'
+    : 'assets/thumbnails/contour-1m.png';
   if (contourCard.classList.contains('active')) {
     setAllContourVisibility(map, 'visible');
   }
   // 色別等高線オーバーレイ選択中の場合はソース切り替えに追従
   if (currentOverlay === 'color-contour') updateCsVisibility();
+});
+
+// ---- 等高線 間隔セレクト ----
+selContourInterval.addEventListener('change', () => {
+  const iv = parseFloat(selContourInterval.value);
+  if (iv) {
+    userContourInterval = iv;
+    applyContourInterval(iv);
+  }
 });
 
 // ---- 磁北線 タイルカード ----

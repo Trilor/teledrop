@@ -1306,15 +1306,21 @@ body {
 .layer-pair-row .bm-card:not(.active) {
   opacity: 0.45;
 }
-/* カード内セレクト: .bm-card-label と同じ見た目にする */
-.custom-select-wrap.bm-card-select {
-  position: absolute !important;
+/* カード内ラベルグループ: 絶対配置コンテナ（1段・2段共通） */
+.bm-card-label-group {
+  position: absolute;
   bottom: 1px;
   left: 1px;
   right: 1px;
   z-index: 2;
+  display: flex;
+  flex-direction: column;
 }
-.custom-select-wrap.bm-card-select > .cascade-btn {
+/* カード内セレクト: .bm-card-label と同じ見た目 */
+.bm-card-label-group .custom-select-wrap.bm-card-select {
+  display: flex;
+}
+.bm-card-label-group .custom-select-wrap.bm-card-select > .cascade-btn {
   min-height: 20px !important;
   font-size: var(--font-xs) !important;
   padding: 0 var(--chevron-pad-r) 1px 5px !important;
@@ -1324,13 +1330,21 @@ body {
   backdrop-filter: blur(2px);
   -webkit-backdrop-filter: blur(2px);
   border: none !important;
-  border-radius: 0 0 calc(var(--bm-card-radius, 12px) - 1px) calc(var(--bm-card-radius, 12px) - 1px) !important;
+  border-radius: 0 !important;
   text-align: center;
 }
-.bm-card.active .custom-select-wrap.bm-card-select > .cascade-btn {
+/* 最後のセレクトのみ下角丸 */
+.bm-card-label-group .custom-select-wrap.bm-card-select:last-child > .cascade-btn {
+  border-radius: 0 0 calc(var(--bm-card-radius, 12px) - 1px) calc(var(--bm-card-radius, 12px) - 1px) !important;
+}
+/* 2段目との仕切り線 */
+.bm-card-label-group .custom-select-wrap.bm-card-select:not(:last-child) > .cascade-btn {
+  border-bottom: 1px solid rgba(255,255,255,0.2) !important;
+}
+.bm-card.active .bm-card-label-group .custom-select-wrap.bm-card-select > .cascade-btn {
   background-color: color-mix(in srgb, var(--primary) 75%, transparent) !important;
 }
-.custom-select-wrap.bm-card-select > .cascade-btn:hover {
+.bm-card-label-group .custom-select-wrap.bm-card-select > .cascade-btn:hover {
   background-color: color-mix(in srgb, var(--primary) 85%, transparent) !important;
 }
 
@@ -2564,7 +2578,8 @@ label.setting-label {
 }
 
 /* ベーススタイルは「共通パネルプルダウン」セクションで定義済み */
-#sel-contour-combined,
+#sel-contour-dem,
+#sel-contour-interval,
 #sel-magnetic-combined {
   flex: 1;
   padding: 3px var(--chevron-pad-r) 3px 6px;
