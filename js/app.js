@@ -9420,18 +9420,35 @@ document.getElementById('import-decide-btn').addEventListener('click', () => {
     infoEl.textContent = `出力: ${outW}×${outH} px\n範囲: ${groundW}×${groundH} m`;
   }
 
-  // 印刷パネルのアクティブ状態を監視してフレームの表示/非表示を切り替える
+  // 印刷モードが有効かどうか判定（パネルが active かつサイドバーが開いている）
+  function isPrintPanelVisible() {
+    const printPanel = document.getElementById('panel-print');
+    const sbPanel    = document.getElementById('sidebar-panel');
+    return printPanel?.classList.contains('active') && !sbPanel?.classList.contains('sb-hidden');
+  }
+
+  function syncFrameVisibility() {
+    if (isPrintPanelVisible()) {
+      frameOverlay.classList.add('visible');
+      updatePrintFrame();
+      updateInfo();
+    } else {
+      frameOverlay.classList.remove('visible');
+    }
+  }
+
+  // panel-print の active クラス変化を監視
   const printPanel = document.getElementById('panel-print');
   if (printPanel) {
-    new MutationObserver(() => {
-      if (printPanel.classList.contains('active')) {
-        frameOverlay.classList.add('visible');
-        updatePrintFrame();
-        updateInfo();
-      } else {
-        frameOverlay.classList.remove('visible');
-      }
-    }).observe(printPanel, { attributes: true, attributeFilter: ['class'] });
+    new MutationObserver(syncFrameVisibility)
+      .observe(printPanel, { attributes: true, attributeFilter: ['class'] });
+  }
+
+  // サイドバーパネルの sb-hidden クラス変化を監視（パネルを閉じたときに印刷モード解除）
+  const sbPanel = document.getElementById('sidebar-panel');
+  if (sbPanel) {
+    new MutationObserver(syncFrameVisibility)
+      .observe(sbPanel, { attributes: true, attributeFilter: ['class'] });
   }
 
   // マップ移動・ズームでフレームを更新
