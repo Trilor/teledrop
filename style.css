@@ -3262,7 +3262,7 @@ label.setting-label {
 
 /* 独自の出典コントロール */
 #custom-attrib-control {
-  position: absolute;
+  position: fixed;
   right: var(--control-edge-gap);
   bottom: var(--control-edge-gap);
   z-index: 20;
@@ -3278,18 +3278,12 @@ body.map-overlays-ready #custom-attrib-control {
   border: var(--control-border);
   border-radius: var(--control-radius);
   box-shadow: var(--control-shadow);
-  overflow: hidden;
 }
 #custom-attrib-toggle:hover {
   background: var(--control-hover-bg);
   color: var(--control-text-hover);
 }
-#custom-attrib-toggle svg {
-  width: 14px;
-  height: 14px;
-  display: block;
-  pointer-events: none;
-}
+#custom-attrib-toggle svg { width: 14px; height: 14px; }
 #custom-attrib-panel {
   position: fixed;
   left: calc(var(--sidebar-w, 0px) + var(--control-edge-gap));
@@ -3302,21 +3296,14 @@ body.map-overlays-ready #custom-attrib-control {
   font-size: var(--font-sm);
   line-height: 1.45;
   padding: 6px 10px;
-  box-sizing: border-box;
   background: var(--control-bg);
   border: var(--control-border);
   border-radius: var(--control-radius);
   box-shadow: var(--control-shadow);
 }
-#custom-attrib-inner span + span::before {
-  content: " | ";
-}
-#custom-attrib-inner a {
-  color: var(--control-text);
-}
-#custom-attrib-inner a:hover {
-  color: var(--control-text-hover);
-}
+#custom-attrib-inner span + span::before { content: " | "; }
+#custom-attrib-inner a { color: inherit; }
+#custom-attrib-inner a:hover { color: var(--control-text-hover); }
 
 /* 縮尺コントロール: 左下に配置（検索ボックスとの重なりを回避） */
 #scale-ctrl-container {
@@ -3927,7 +3914,6 @@ body.map-overlays-ready #scale-ctrl-container {
   }
 
   #custom-attrib-control {
-    right: var(--control-edge-gap);
     bottom: calc(54px + env(safe-area-inset-bottom, 0px) + var(--control-edge-gap));
   }
   #custom-attrib-panel {
