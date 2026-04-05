@@ -3227,7 +3227,6 @@ label.setting-label {
 
 /* 地図コントロール群 */
 .maplibregl-ctrl-bottom-right {
-  left: var(--sidebar-w, 296px) !important;
   right: var(--control-edge-gap) !important;
   bottom: var(--control-edge-gap) !important;
   z-index: 20 !important;
