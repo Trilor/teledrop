@@ -3635,66 +3635,56 @@ label.setting-label {
 }
 
 /* ============================================================
-   印刷・エクスポートダイアログ
+   印刷・エクスポートパネル
    ============================================================ */
-#print-overlay {
-  display: none;
+
+
+/* 地図上の印刷範囲フレームオーバーレイ */
+#print-frame-overlay {
   position: fixed;
-  inset: 0;
-  z-index: 50;
-  background: var(--overlay-mid);
-  align-items: center;
-  justify-content: center;
+  top: 0;
+  left: var(--sidebar-w, 0px);
+  right: 0;
+  bottom: 0;
+  pointer-events: none;
+  z-index: 400;
+  display: none;
 }
-#print-overlay.visible { display: flex; }
+#print-frame-overlay.visible { display: block; }
+.pf-mask {
+  position: absolute;
+  background: rgba(0, 0, 0, 0.38);
+}
+#pf-top    { top: 0; left: 0; right: 0; }
+#pf-bottom { bottom: 0; left: 0; right: 0; }
+#pf-left   { top: 0; bottom: 0; left: 0; }
+#pf-right  { top: 0; bottom: 0; right: 0; }
+#pf-box {
+  position: absolute;
+  outline: 2px solid rgba(255, 255, 255, 0.9);
+  box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.45);
+}
 
-/* モーダル本体: サイズのみ個別定義（装飾は .modal-wrapper で共通管理） */
-#print-modal-wrapper {
-  width: min(92vw, 1040px);
-  height: min(88vh, 720px);
+/* パネル内の情報テキスト */
+.print-panel-info {
+  font-size: var(--font-xs);
+  color: var(--text-muted);
+  white-space: pre-line;
+  line-height: 1.6;
+  padding: 2px 12px 8px;
 }
 
-#print-modal-body {
-  flex: 1;
-  display: flex;
-  overflow: hidden;
-  min-height: 0;
-}
-#print-preview-map {
-  flex: 1;
-  min-width: 0;
-  position: relative;
-  background: var(--border-input);
-}
-#print-controls {
-  width: 200px;
-  flex-shrink: 0;
-  background: var(--bg-subtle);
-  color: var(--text-main);
-  padding: 14px 12px;
-  overflow-y: auto;
-  display: flex;
-  flex-direction: column;
-  gap: 14px;
-  font-size: var(--font-base);
-  border-left: 1px solid var(--border-muted);
-}
-#print-modal-footer {
-  display: flex;
-  justify-content: flex-end;
-  align-items: center;
-  gap: 8px;
-  padding: 8px 12px;
-  background: var(--bg-select);
-  flex-shrink: 0;
-  border-top: 1px solid var(--border-muted);
+/* エクスポートボタン */
+.print-panel-actions {
+  padding: 4px 12px 16px;
 }
 #print-export-btn {
+  width: 100%;
   background: var(--primary);
   color: var(--on-primary);
   border: none;
-  border-radius: 3px;
-  padding: 6px 20px;
+  border-radius: 6px;
+  padding: 8px 0;
   font-size: var(--font-base);
   font-weight: var(--font-bold);
   font-family: inherit;
@@ -3703,20 +3693,8 @@ label.setting-label {
 }
 #print-export-btn:hover { background: var(--primary-hover); }
 #print-export-btn:disabled { background: var(--text-disabled); cursor: not-allowed; }
-#print-cancel-btn {
-  background: var(--bg-surface);
-  color: var(--text-sub);
-  border: 1px solid var(--border-input);
-  border-radius: 3px;
-  padding: 6px 14px;
-  font-size: var(--font-base);
-  font-family: inherit;
-  cursor: pointer;
-  transition: background var(--transition);
-}
-#print-cancel-btn:hover { background: var(--bg-select); color: var(--text-main); }
 
-/* maplibre-gl-export のドロップダウンパネルを非表示（独自ダイアログに置換） */
+/* maplibre-gl-export のドロップダウンパネルを非表示（独自実装に置換） */
 .maplibregl-export-list { display: none !important; }
 
 /* ============================================================

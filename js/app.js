@@ -227,9 +227,10 @@ class PrintButtonControl {
     btn.title = '印刷・エクスポート';
     btn.setAttribute('aria-label', '印刷・エクスポート');
     // アイコンは CSS background-image で設定（@watergis/maplibre-gl-export MIT ライセンスより流用）
-    // クリック時に独自印刷モーダルを開く（initPrintDialog の openDialog を呼ぶ）
+    // クリック時に左サイドバーの印刷パネルを開く
     btn.addEventListener('click', () => {
-      document.getElementById('print-overlay').dispatchEvent(new CustomEvent('open-print-dialog'));
+      const printNavBtn = document.querySelector('.sidebar-nav-btn[data-panel="print"]');
+      if (printNavBtn) printNavBtn.click();
     });
     this._container.appendChild(btn);
     return this._container;
@@ -9341,7 +9342,7 @@ document.getElementById('import-decide-btn').addEventListener('click', () => {
 // ============================================================
 // 印刷・エクスポートダイアログ
 // 右上の maplibre-gl-export ボタンをクリックしたとき、
-// 独自ダイアログを表示して PNG / JPEG / PDF を出力する。
+// 左パネル + 地図フレームオーバーレイで PNG / JPEG / PDF を出力する。
 // ============================================================
 (function initPrintDialog() {
   // 用紙サイズ定義（縦向き基準: [width_mm, height_mm]）
@@ -9350,12 +9351,6 @@ document.getElementById('import-decide-btn').addEventListener('click', () => {
     B2: [515, 728], B3: [364, 515], B4: [257, 364], B5: [182, 257],
   };
 
-  let printPreviewMap = null;  // 印刷プレビュー用 MapLibre インスタンス
-  let _dialogOpen = false;
-
-  const overlay        = document.getElementById('print-overlay');
-  const closeBtn       = document.getElementById('print-overlay-close-btn');
-  const cancelBtn      = document.getElementById('print-cancel-btn');
   const exportBtn      = document.getElementById('print-export-btn');
   const selPaper       = document.getElementById('print-paper-size');
   const selOrientation = document.getElementById('print-orientation');
@@ -9363,8 +9358,14 @@ document.getElementById('import-decide-btn').addEventListener('click', () => {
   const selFormat      = document.getElementById('print-format');
   const selDpi         = document.getElementById('print-dpi');
   const infoEl         = document.getElementById('print-info');
+  const frameOverlay   = document.getElementById('print-frame-overlay');
+  const pfTop          = document.getElementById('pf-top');
+  const pfBottom       = document.getElementById('pf-bottom');
+  const pfLeft         = document.getElementById('pf-left');
+  const pfRight        = document.getElementById('pf-right');
+  const pfBox          = document.getElementById('pf-box');
 
-  if (!overlay) return; // HTML が存在しない場合はスキップ
+  if (!exportBtn || !frameOverlay) return;
 
   // 向きを考慮した用紙寸法 [width_mm, height_mm] を返す
   function getPaperDim() {
@@ -9380,100 +9381,69 @@ document.getElementById('import-decide-btn').addEventListener('click', () => {
     return Math.log2(156543.03392 * Math.cos(lat * Math.PI / 180) * dpi / (0.0254 * scale));
   }
 
-  // プレビューマップ中心から印刷範囲の GeoJSON ポリゴンを計算して更新
-  function updateRectangle() {
-    if (!printPreviewMap) return;
+  // 地図上の印刷範囲フレームをピクセル単位で更新
+  function updatePrintFrame() {
+    if (!frameOverlay.classList.contains('visible')) return;
     const [pw_mm, ph_mm] = getPaperDim();
     const scale = parseInt(selScale.value, 10);
-    const c = printPreviewMap.getCenter();
-    const groundW = (pw_mm / 1000) * scale;  // 印刷幅（地上m）
-    const groundH = (ph_mm / 1000) * scale;  // 印刷高（地上m）
-    const dLng = groundW / (111320 * Math.cos(c.lat * Math.PI / 180));
-    const dLat = groundH / 110540;
-    const coords = [[
-      [c.lng - dLng/2, c.lat + dLat/2],
-      [c.lng + dLng/2, c.lat + dLat/2],
-      [c.lng + dLng/2, c.lat - dLat/2],
-      [c.lng - dLng/2, c.lat - dLat/2],
-      [c.lng - dLng/2, c.lat + dLat/2],
-    ]];
-    const src = printPreviewMap.getSource('print-area');
-    if (src) src.setData({ type: 'FeatureCollection', features: [{ type: 'Feature', geometry: { type: 'Polygon', coordinates: coords } }] });
+    const zoom  = map.getZoom();
+    const lat   = map.getCenter().lat;
+    const metersPerPx = 40075016.686 * Math.cos(lat * Math.PI / 180) / (256 * Math.pow(2, zoom));
+    const fW = (pw_mm / 1000 * scale) / metersPerPx;
+    const fH = (ph_mm / 1000 * scale) / metersPerPx;
+    const mapEl = map.getContainer();
+    const mapW  = mapEl.offsetWidth;
+    const mapH  = mapEl.offsetHeight;
+    const l  = Math.max(0, Math.round((mapW - fW) / 2));
+    const t  = Math.max(0, Math.round((mapH - fH) / 2));
+    const bW = Math.round(Math.min(fW, mapW));
+    const bH = Math.round(Math.min(fH, mapH));
+    pfTop.style.height    = t + 'px';
+    pfBottom.style.height = t + 'px';
+    pfLeft.style.width    = l + 'px';
+    pfRight.style.width   = l + 'px';
+    pfBox.style.left   = l + 'px';
+    pfBox.style.top    = t + 'px';
+    pfBox.style.width  = bW + 'px';
+    pfBox.style.height = bH + 'px';
   }
 
   // 出力サイズ情報を更新
   function updateInfo() {
     const [pw_mm, ph_mm] = getPaperDim();
-    const dpi = parseInt(selDpi.value, 10);
+    const dpi   = parseInt(selDpi.value, 10);
     const scale = parseInt(selScale.value, 10);
-    const outW = Math.round(pw_mm / 25.4 * dpi);
-    const outH = Math.round(ph_mm / 25.4 * dpi);
+    const outW  = Math.round(pw_mm / 25.4 * dpi);
+    const outH  = Math.round(ph_mm / 25.4 * dpi);
     const groundW = Math.round((pw_mm / 1000) * scale);
     const groundH = Math.round((ph_mm / 1000) * scale);
     infoEl.textContent = `出力: ${outW}×${outH} px\n範囲: ${groundW}×${groundH} m`;
   }
 
-  // ダイアログを開く
-  function openDialog() {
-    if (_dialogOpen) return;
-    _dialogOpen = true;
-    overlay.classList.add('visible');
-
-    if (!printPreviewMap) {
-      // 現在のスタイルを取得（地形は除去して 2D 表示）
-      const rawStyle = map.getStyle();
-      const previewStyle = { ...rawStyle, terrain: undefined };
-
-      printPreviewMap = new maplibregl.Map({
-        container: 'print-preview-map',
-        style: previewStyle,
-        center: map.getCenter(),
-        zoom: Math.max(map.getZoom() - 1, 8),
-        bearing: 0,
-        pitch: 0,
-        interactive: true,
-        attributionControl: false,
-        preserveDrawingBuffer: false,
-      });
-
-      printPreviewMap.on('load', () => {
-        // 印刷範囲を表す GeoJSON ソース・レイヤーを追加
-        printPreviewMap.addSource('print-area', {
-          type: 'geojson',
-          data: { type: 'FeatureCollection', features: [] },
-        });
-        // 半透明の塗り
-        printPreviewMap.addLayer({
-          id: 'print-area-fill',
-          type: 'fill',
-          source: 'print-area',
-          paint: { 'fill-color': 'rgba(255,255,255,0.08)' },
-        });
-        // 赤の破線枠
-        printPreviewMap.addLayer({
-          id: 'print-area-line',
-          type: 'line',
-          source: 'print-area',
-          paint: { 'line-color': '#dd0000', 'line-width': 2, 'line-dasharray': [4, 2] },
-        });
-        updateRectangle();
-      });
-
-      // プレビューマップが移動するたびに矩形を再描画（常に中心に表示）
-      printPreviewMap.on('move', updateRectangle);
-    } else {
-      // 再度開いたときはメインマップの中心に合わせる
-      printPreviewMap.setCenter(map.getCenter());
-      updateRectangle();
-    }
-    updateInfo();
+  // 印刷パネルのアクティブ状態を監視してフレームの表示/非表示を切り替える
+  const printPanel = document.getElementById('panel-print');
+  if (printPanel) {
+    new MutationObserver(() => {
+      if (printPanel.classList.contains('active')) {
+        frameOverlay.classList.add('visible');
+        updatePrintFrame();
+        updateInfo();
+      } else {
+        frameOverlay.classList.remove('visible');
+      }
+    }).observe(printPanel, { attributes: true, attributeFilter: ['class'] });
   }
 
-  // ダイアログを閉じる
-  function closeDialog() {
-    _dialogOpen = false;
-    overlay.classList.remove('visible');
-  }
+  // マップ移動・ズームでフレームを更新
+  map.on('move', updatePrintFrame);
+  map.on('zoom', updatePrintFrame);
+  window.addEventListener('resize', updatePrintFrame);
+
+  // 設定変更時の更新
+  [selPaper, selOrientation, selScale].forEach(el => {
+    el.addEventListener('change', () => { updatePrintFrame(); updateInfo(); });
+  });
+  selDpi.addEventListener('change', updateInfo);
 
   // エクスポート実行
   async function execExport() {
@@ -9484,7 +9454,6 @@ document.getElementById('import-decide-btn').addEventListener('click', () => {
     const outW  = Math.round(pw_mm / 25.4 * dpi);
     const outH  = Math.round(ph_mm / 25.4 * dpi);
 
-    // 大きすぎる場合は警告
     if (outW > 8192 || outH > 8192) {
       alert(`出力サイズ ${outW}×${outH}px は大きすぎます。\nDPI または用紙サイズを小さくしてください。`);
       return;
@@ -9495,18 +9464,16 @@ document.getElementById('import-decide-btn').addEventListener('click', () => {
     showMapLoading();
 
     try {
-      // エクスポート時の中心はプレビューマップの中心を使用
-      const center = printPreviewMap ? printPreviewMap.getCenter() : map.getCenter();
+      // エクスポート時の中心はメインマップの中心を使用
+      const center = map.getCenter();
       const zoom   = calcExportZoom(dpi, scale, center.lat);
 
-      // 隠しコンテナを生成（画面外に配置）
       const container = document.createElement('div');
       container.style.cssText =
         `position:fixed;left:-${outW + 100}px;top:0;width:${outW}px;height:${outH}px;visibility:hidden;`;
       document.body.appendChild(container);
 
-      // 現在のスタイルをそのまま利用（地形のみ除去して平面化）
-      const rawStyle   = map.getStyle();
+      const rawStyle    = map.getStyle();
       const exportStyle = { ...rawStyle, terrain: undefined };
 
       const exportMap = new maplibregl.Map({
@@ -9528,7 +9495,6 @@ document.getElementById('import-decide-btn').addEventListener('click', () => {
         setTimeout(resolve, 30000);
       });
 
-      // マップ canvas → 出力 canvas（DPR 補正）
       const srcCanvas = exportMap.getCanvas();
       const outCanvas = document.createElement('canvas');
       outCanvas.width  = outW;
@@ -9580,27 +9546,7 @@ document.getElementById('import-decide-btn').addEventListener('click', () => {
     doc.save('map_export.pdf');
   }
 
-  // 独自 PrintButtonControl からのカスタムイベントでダイアログを開く
-  overlay.addEventListener('open-print-dialog', openDialog);
-
-  // コントロール変更時の更新
-  [selPaper, selOrientation, selScale].forEach(el => {
-    el.addEventListener('change', updateRectangle);
-  });
-  [selPaper, selOrientation, selScale, selDpi].forEach(el => {
-    el.addEventListener('change', updateInfo);
-  });
-
-  // ダイアログ操作イベント
-  closeBtn.addEventListener('click', closeDialog);
-  cancelBtn.addEventListener('click', closeDialog);
-  overlay.addEventListener('click', (e) => { if (e.target === overlay) closeDialog(); });
   exportBtn.addEventListener('click', execExport);
-  document.addEventListener('keydown', (e) => {
-    if (e.key === 'Escape' && _dialogOpen) closeDialog();
-  });
-
-  // 初期情報表示
   updateInfo();
 })();
 
