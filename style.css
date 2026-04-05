@@ -733,12 +733,11 @@ body {
   border-bottom: 1px solid #e0e0e0;
 }
 .settings-group-title {
-  font-size: var(--font-xs);
+  font-size: var(--font-sm);
   font-weight: var(--font-bold);
-  color: var(--text-disabled);
-  letter-spacing: 0.1em;
-  text-transform: uppercase;
-  padding: 8px 12px 4px;
+  color: var(--text-sub);
+  letter-spacing: 0.03em;
+  padding: 10px 12px 4px;
   user-select: none;
 }
 
