@@ -115,7 +115,7 @@
   --control-radius: 10px;
   --control-shadow: none;
   --control-hover-bg: var(--primary-light);
-  --control-edge-gap: 12px;
+  --control-edge-gap: 8px;
   --control-stack-gap: 8px;
   --control-icon-btn-size: 29px;
   --control-icon-radius: var(--control-radius);
