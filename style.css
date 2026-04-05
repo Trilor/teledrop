@@ -3226,76 +3226,61 @@ label.setting-label {
 }
 
 /* 地図コントロール群 */
-.maplibregl-ctrl-bottom-right,
-.maplibregl-ctrl-top-right {
+.maplibregl-ctrl-bottom-right {
+  left: var(--sidebar-w, 296px) !important;
+}
+.maplibregl-ctrl-top-right,
+.maplibregl-ctrl-bottom-right {
   z-index: 20 !important;
 }
 .maplibregl-ctrl-bottom-left {
   z-index: 20 !important;
 }
-/* コントロールボタン共通レイアウト */
-.maplibregl-ctrl-group button,
-#custom-attrib-toggle {
-  width: var(--control-icon-btn-size);
-  height: var(--control-icon-btn-size);
-  margin: 0;
-  padding: 0;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  appearance: none !important;
-  -webkit-appearance: none !important;
-  outline: none !important;
-  background: var(--control-bg);
-  color: var(--control-text);
-  cursor: pointer;
+/* 出典テキスト: 全幅まで使ってから折り返し */
+.maplibregl-ctrl-attrib-inner {
+  white-space: normal !important;
 }
-/* group ボタンは wrapper が border/shadow を持つためリセット */
-.maplibregl-ctrl-group button {
-  border: 0;
-  box-shadow: none !important;
-  background-image: none !important;
+.maplibregl-ctrl-attrib {
+  background: var(--control-bg) !important;
+  border-radius: var(--control-radius) !important;
+  border: var(--control-border) !important;
+  box-shadow: var(--control-shadow) !important;
+}
+.maplibregl-ctrl-attrib-button {
+  width: var(--control-icon-btn-size) !important;
+  height: var(--control-icon-btn-size) !important;
+}
+.maplibregl-ctrl-attrib-button:hover {
+  background: var(--control-hover-bg) !important;
+}
+/*
+  展開時: (i)ボタンを position:absolute; bottom:0; right:0 で右下に固定。
+  コンテナは bottom-right アンカーなので bottom:0/right:0 = 画面座標不変。
+  inner に padding-right を付けてテキストとボタンが重ならないようにする。
+*/
+.maplibregl-ctrl-attrib.maplibregl-compact-show {
+  padding: 2px 0 2px 8px;
+}
+.maplibregl-ctrl-attrib.maplibregl-compact-show .maplibregl-ctrl-attrib-inner {
+  padding-right: 32px;
+}
+.maplibregl-ctrl-attrib.maplibregl-compact-show .maplibregl-ctrl-attrib-button {
+  top: auto;
+  bottom: 0;
 }
 
-#custom-attrib-toggle:hover {
-  background: var(--control-hover-bg);
-  color: var(--control-text-hover);
-}
-#custom-attrib-panel {
-  position: fixed;
-  left: calc(var(--sidebar-w, 0px) + var(--control-edge-gap));
-  right: calc(var(--control-icon-btn-size) + var(--control-edge-gap) + var(--control-stack-gap));
-  bottom: var(--control-edge-gap);
-}
-#custom-attrib-inner {
-  white-space: normal;
-  color: var(--control-text);
-  font-size: var(--font-sm);
-  line-height: 1.45;
-  padding: 6px 10px;
-  background: var(--control-bg);
-  border: var(--control-border);
-  border-radius: var(--control-radius);
-  box-shadow: var(--control-shadow);
-}
-#custom-attrib-inner span + span::before { content: " | "; }
-#custom-attrib-inner a { color: inherit; }
-#custom-attrib-inner a:hover { color: var(--control-text-hover); }
-
-/* 縮尺コントロール: 左下に配置（検索ボックスとの重なりを回避） */
+/* 縮尺コントロール: 左下に配置（検索ボックスとの重なりを回避）
+   出典が閉じているとき: (i) マークと同じ高さ（bottom: 10px）
+   出典が開いているとき: JS が .above-attrib を付与し出典の上に移動 */
 #scale-ctrl-container {
   position: absolute;
-  left: calc(var(--sidebar-w, 296px) + var(--control-edge-gap));
-  bottom: var(--control-edge-gap);
+  left: calc(var(--sidebar-w, 296px) + 10px);
+  bottom: 10px;
   z-index: 19;
-  opacity: 0;
-  pointer-events: none;
-  transition: bottom 0.2s ease, opacity 0.12s ease;
+  transition: bottom 0.2s ease;
 }
-
-body.map-overlays-ready #scale-ctrl-container {
-  opacity: 1;
-  pointer-events: auto;
+#scale-ctrl-container.above-attrib {
+  bottom: calc(var(--attrib-h, 40px) + 14px);
 }
 
 /* スマホ向けパネル最適化 */
@@ -3890,10 +3875,8 @@ body.map-overlays-ready #scale-ctrl-container {
     bottom: calc(54px + env(safe-area-inset-bottom, 0px) + var(--control-edge-gap));
   }
 
-  #custom-attrib-panel {
-    left: var(--control-edge-gap);
-    right: calc(var(--control-icon-btn-size) + var(--control-edge-gap) + var(--control-stack-gap));
-    bottom: calc(54px + env(safe-area-inset-bottom, 0px) + var(--control-edge-gap));
+  #scale-ctrl-container.above-attrib {
+    bottom: calc(54px + env(safe-area-inset-bottom, 0px) + var(--attrib-h, 40px) + 14px);
   }
 }
 
