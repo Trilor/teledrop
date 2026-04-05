@@ -107,6 +107,19 @@
   --shadow-md: rgba(0,0,0,0.10);  /* 中シャドウ */
   --shadow-lg: rgba(0,0,0,0.12);   /* 大パネルシャドウ */
 
+  /* ===== 地図コントロール共通 ===== */
+  --control-bg: var(--bg-surface);
+  --control-text: var(--text-sub);
+  --control-text-hover: var(--text-main);
+  --control-border: 1.5px solid var(--border-light);
+  --control-radius: 10px;
+  --control-shadow: none;
+  --control-hover-bg: var(--primary-light);
+  --control-edge-gap: 12px;
+  --control-stack-gap: 8px;
+  --control-icon-btn-size: 29px;
+  --control-icon-radius: var(--control-radius);
+
   /* ===== オーバーレイ（スクリム・モーダル背景） ===== */
   --overlay-light: rgba(0,0,0,0.45); /* 薄いスクリム */
   --overlay-base:  rgba(0,0,0,0.5);  /* 標準スクリム */
@@ -273,7 +286,7 @@ body {
   height: 56px;
   border: none;
   background: transparent;
-  color: var(--text-sub);
+  color: var(--text-main);
   border-radius: 0;
   cursor: pointer;
   display: flex;
@@ -311,10 +324,10 @@ body {
 /* アクティブ時: 左アクセントバー + プライマリカラー */
 .sidebar-nav-btn.active {
   background: var(--primary-light);
-  color: var(--primary);
+  color: var(--text-main);
 }
 .sidebar-nav-btn.active .nav-label {
-  color: var(--primary);
+  color: var(--text-main);
 }
 /* 左端の縦アクセントバー */
 .sidebar-nav-btn.active::before {
@@ -2328,22 +2341,23 @@ label.setting-label {
   top: 50%;
   transform: translateY(-50%);
   pointer-events: none;
-  color: var(--text-muted);
+  color: var(--control-text);
 }
 #unified-search-input {
   width: 100%;
   box-sizing: border-box;
   padding: 6px 26px 6px 30px;
-  border: none;
-  border-radius: 4px;
+  border: var(--control-border);
+  border-radius: var(--control-radius);
   font-size: var(--font-base);
-  color: var(--text-main);
-  background: var(--bg-surface);
-  box-shadow: 0 0 0 2px var(--shadow-xs);
+  color: var(--control-text);
+  background: var(--control-bg);
+  box-shadow: var(--control-shadow);
   outline: none;
 }
 #unified-search-input:focus {
-  box-shadow: 0 0 0 2px var(--primary);
+  border-color: var(--primary) !important;
+  box-shadow: var(--control-shadow);
 }
 #unified-search-clear {
   position: absolute;
@@ -2354,12 +2368,12 @@ label.setting-label {
   border: none;
   padding: 2px;
   cursor: pointer;
-  color: var(--text-disabled);
+  color: var(--text-muted);
   line-height: 0;
   border-radius: 50%;
   transition: color 0.15s, background 0.15s;
 }
-#unified-search-clear:hover { color: var(--text-sub); background: var(--bg-hover-btn); }
+#unified-search-clear:hover { color: var(--control-text-hover); background: var(--control-hover-bg); }
 #unified-search-msg {
   font-size: var(--font-xs);
   color: var(--text-muted);
@@ -2368,11 +2382,12 @@ label.setting-label {
 }
 #unified-search-results {
   margin-top: 4px;
-  border-radius: 4px;
+  border: var(--control-border);
+  border-radius: var(--control-radius);
   overflow-y: auto;
   max-height: 280px;
-  background: var(--bg-surface);
-  box-shadow: 0 0 0 2px var(--shadow-xs);
+  background: var(--control-bg);
+  box-shadow: var(--control-shadow);
 }
 #unified-search-results:empty {
   display: none;
@@ -3210,34 +3225,95 @@ label.setting-label {
   body { height: 100dvh; }
 }
 
-/* MapLibre 出典コンテナ: 左端をサイドバー幅に合わせてシフト
-   max-width ではなくコンテナごと移動するので確実に重ならない */
+/* 地図コントロール群 */
 .maplibregl-ctrl-bottom-right {
   left: var(--sidebar-w, 296px) !important;
+  right: var(--control-edge-gap) !important;
+  bottom: var(--control-edge-gap) !important;
+  z-index: 20 !important;
 }
-/* 出典テキスト: 全幅まで使ってから折り返し */
-.maplibregl-ctrl-attrib-inner {
-  white-space: normal !important;
+.maplibregl-ctrl-top-right,
+.maplibregl-ctrl-bottom-left {
+  z-index: 20 !important;
 }
-.maplibregl-ctrl-attrib {
-  background: var(--bg-surface) !important;
-  border-radius: 4px !important;
-  box-shadow: 0 0 0 2px var(--shadow-xs) !important;
+.maplibregl-ctrl-group button,
+#custom-attrib-toggle {
+  width: var(--control-icon-btn-size);
+  height: var(--control-icon-btn-size);
+  margin: 0;
+  padding: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  appearance: none !important;
+  -webkit-appearance: none !important;
+  outline: none !important;
+  box-shadow: none !important;
+  background-image: none !important;
+  background: var(--control-bg);
+  color: var(--control-text);
+  border: 0;
+  cursor: pointer;
 }
-/*
-  展開時: (i)ボタンを position:absolute; bottom:0; right:0 で右下に固定。
-  コンテナは bottom-right アンカーなので bottom:0/right:0 = 画面座標不変。
-  inner に padding-right を付けてテキストとボタンが重ならないようにする。
-*/
-.maplibregl-ctrl-attrib.maplibregl-compact-show {
-  padding: 2px 0 2px 8px; /* 右側は inner の padding-right に委ねる */
+
+/* 独自の出典コントロール */
+#custom-attrib-control {
+  position: absolute;
+  right: var(--control-edge-gap);
+  bottom: var(--control-edge-gap);
+  z-index: 20;
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 0.12s ease;
 }
-.maplibregl-ctrl-attrib.maplibregl-compact-show .maplibregl-ctrl-attrib-inner {
-  padding-right: 32px; /* ボタン 24px + 余白 8px */
+body.map-overlays-ready #custom-attrib-control {
+  opacity: 1;
+  pointer-events: auto;
 }
-.maplibregl-ctrl-attrib.maplibregl-compact-show .maplibregl-ctrl-attrib-button {
-  top: auto;
-  bottom: 0; /* position:absolute のまま右下固定 */
+#custom-attrib-toggle {
+  border: var(--control-border) !important;
+  border-radius: var(--control-radius) !important;
+  box-shadow: var(--control-shadow) !important;
+  background: var(--control-bg) !important;
+  overflow: hidden;
+}
+#custom-attrib-toggle:hover {
+  background: var(--control-hover-bg) !important;
+  color: var(--control-text-hover) !important;
+}
+#custom-attrib-toggle svg {
+  width: 14px;
+  height: 14px;
+  display: block;
+  pointer-events: none;
+}
+#custom-attrib-panel {
+  position: absolute;
+  right: 0;
+  bottom: calc(var(--control-icon-btn-size) + var(--control-stack-gap));
+  min-width: 220px;
+  max-width: min(420px, calc(100vw - var(--sidebar-w, 296px) - 24px));
+}
+#custom-attrib-inner {
+  white-space: normal;
+  color: var(--control-text);
+  font-size: var(--font-sm);
+  line-height: 1.45;
+  padding: 6px 10px;
+  box-sizing: border-box;
+  background: var(--control-bg);
+  border: var(--control-border);
+  border-radius: var(--control-radius);
+  box-shadow: var(--control-shadow);
+}
+#custom-attrib-inner span + span::before {
+  content: " | ";
+}
+#custom-attrib-inner a {
+  color: var(--control-text);
+}
+#custom-attrib-inner a:hover {
+  color: var(--control-text-hover);
 }
 
 /* 縮尺コントロール: 左下に配置（検索ボックスとの重なりを回避）
@@ -3246,13 +3322,19 @@ label.setting-label {
 #scale-ctrl-container {
   position: absolute;
   left: calc(var(--sidebar-w, 296px) + 10px); /* 左パネル右端から10px */
-  bottom: 10px;
+  bottom: var(--control-edge-gap);
   z-index: 19;
-  transition: bottom 0.2s ease;
+  opacity: 0;
+  pointer-events: none;
+  transition: bottom 0.2s ease, opacity 0.12s ease;
 }
 /* 出典が開いたとき: --attrib-h（ResizeObserver が常時更新）分だけ上に逃げる */
 #scale-ctrl-container.above-attrib {
-  bottom: calc(var(--attrib-h, 40px) + 14px);
+  bottom: calc(var(--attrib-h, 40px) + var(--control-edge-gap) + var(--control-stack-gap));
+}
+body.map-overlays-ready #scale-ctrl-container {
+  opacity: 1;
+  pointer-events: auto;
 }
 .scale-ctrl-select {
   height: 29px;           /* 全画面ボタンと同じ高さ */
@@ -3643,11 +3725,11 @@ label.setting-label {
 #print-frame-overlay {
   position: fixed;
   top: 0;
-  left: var(--sidebar-w, 0px);
+  left: 0;
   right: 0;
   bottom: 0;
   pointer-events: none;
-  z-index: 400;
+  z-index: 5;
   display: none;
 }
 #print-frame-overlay.visible { display: block; }
@@ -3858,10 +3940,17 @@ label.setting-label {
   /* 縮尺: ボトムナビの上・モバイルは sidebar-w=0 なので左端に 10px 余白 */
   #scale-ctrl-container {
     left: 10px;
-    bottom: calc(54px + env(safe-area-inset-bottom, 0px) + 10px);
+    bottom: calc(54px + env(safe-area-inset-bottom, 0px) + var(--control-edge-gap));
   }
   #scale-ctrl-container.above-attrib {
-    bottom: calc(54px + env(safe-area-inset-bottom, 0px) + var(--attrib-h, 40px) + 14px);
+    bottom: calc(54px + env(safe-area-inset-bottom, 0px) + var(--attrib-h, 40px) + var(--control-edge-gap) + var(--control-stack-gap));
+  }
+  #custom-attrib-control {
+    right: var(--control-edge-gap);
+    bottom: calc(54px + env(safe-area-inset-bottom, 0px) + var(--control-edge-gap));
+  }
+  #custom-attrib-panel {
+    max-width: min(420px, calc(100vw - 20px));
   }
 }
 
@@ -4929,21 +5018,6 @@ input[type=range].cr-range::-moz-range-thumb {
 }
 .pause-hud-btn--danger:hover { background: rgba(185, 40, 40, 0.92); }
 
-/* ---- 印刷・エクスポート カスタムコントロールボタン ----
-   アイコン: @watergis/maplibre-gl-export (MIT License) より流用 */
-.print-ctrl-btn {
-  width: 29px;
-  height: 29px;
-  background-image: url("data:image/svg+xml;charset=UTF-8,%3Csvg xmlns='http://www.w3.org/2000/svg' height='512' width='512' fill='%23333' viewBox='0 0 512 512'%3E%3Cpath d='m422.5 99v-24c0-41.355-33.645-75-75-75h-184c-41.355 0-75 33.645-75 75v24z'/%3E%3Cpath d='m118.5 319v122 26 15c0 16.568 13.431 30 30 30h214c16.569 0 30-13.432 30-30v-15-26-122zm177 128h-80c-8.284 0-15-6.716-15-15s6.716-15 15-15h80c8.284 0 15 6.716 15 15s-6.716 15-15 15zm0-64h-80c-8.284 0-15-6.716-15-15s6.716-15 15-15h80c8.284 0 15 6.716 15 15s-6.716 15-15 15z'/%3E%3Cpath d='m436.5 129h-361c-41.355 0-75 33.645-75 75v120c0 41.355 33.645 75 75 75h13v-80h-9c-8.284 0-15-6.716-15-15s6.716-15 15-15h24 304 24c8.284 0 15 6.716 15 15s-6.716 15-15 15h-9v80h14c41.355 0 75-33.645 75-75v-120c0-41.355-33.645-75-75-75zm-309 94h-48c-8.284 0-15-6.716-15-15s6.716-15 15-15h48c8.284 0 15 6.716 15 15s-6.716 15-15 15z'/%3E%3C/svg%3E");
-  background-position: center;
-  background-repeat: no-repeat;
-  background-size: 70%;
-  border: none;
-  cursor: pointer;
-  padding: 0;
-}
-.print-ctrl-btn:hover { background-color: rgba(0,0,0,0.05); }
-
 /* ================================================================
    CustomSelect — JS が生成するカスタムドロップダウンのスタイル
    ネイティブ <select> の open 状態はブラウザ制御のため CSS で変更不可。
@@ -4990,17 +5064,24 @@ input[type=range].cr-range::-moz-range-thumb {
 .custom-select-wrap[data-select-id="speed-select"] { flex-shrink: 0; }
 
 /* ---- .scale-ctrl-select 専用: 地図コントロール外観をボタンに適用 ---- */
-.custom-select-wrap.scale-ctrl-select { height: 29px; }
+.custom-select-wrap.scale-ctrl-select { height: 27px; }
 .custom-select-wrap.scale-ctrl-select > .cascade-btn {
   height: 100%;
-  background-color: var(--bg-surface);
-  border: none;
-  box-shadow: 0 0 0 2px var(--shadow-xs);
-  border-radius: 4px;
+  min-height: 27px !important;
+  background-color: var(--control-bg);
+  color: var(--control-text);
+  border: var(--control-border);
+  box-shadow: var(--control-shadow);
+  border-radius: var(--control-radius);
   padding: 0 var(--chevron-pad-r) 0 8px;
+  padding-top: 0 !important;
+  padding-bottom: 0 !important;
+  line-height: 1.1;
+  cursor: pointer;
 }
 .custom-select-wrap.scale-ctrl-select > .cascade-btn:hover {
-  background-color: var(--primary-light);
+  background-color: var(--control-hover-bg);
+  color: var(--control-text-hover);
 }
 
 /* ---- .export-dialog-input 専用: 印刷ダイアログ外観をボタンに適用 ---- */
@@ -5071,13 +5152,13 @@ h1, h2, h3, h4,
   border-radius: 9999px !important;
   padding-left: 18px !important;
   padding-right: 18px !important;
-  border: 2px solid var(--border-light) !important;
-  box-shadow: none !important;
+  border: var(--control-border) !important;
+  box-shadow: var(--control-shadow) !important;
   font-weight: 500;
 }
 #unified-search-input:focus {
   border-color: var(--primary) !important;
-  box-shadow: none !important;
+  box-shadow: var(--control-shadow) !important;
 }
 #place-search-input,
 .catalog-search-wrap input {
@@ -5150,14 +5231,24 @@ h1, h2, h3, h4,
   border-radius: 50% !important;
 }
 .maplibregl-ctrl-group {
-  border-radius: 14px !important;
-  border: 2px solid var(--border-light) !important;
-  box-shadow: none !important;
-  background: #ffffff !important;
+  border-radius: var(--control-radius) !important;
+  border: var(--control-border) !important;
+  box-shadow: var(--control-shadow) !important;
+  background: var(--control-bg) !important;
   overflow: hidden;
 }
 .maplibregl-ctrl-group button + button {
   border-top: 1px solid var(--border-subtle) !important;
+}
+.maplibregl-ctrl-group button {
+  background: var(--control-bg) !important;
+  color: var(--control-text) !important;
+  width: var(--control-icon-btn-size);
+  height: var(--control-icon-btn-size);
+}
+.maplibregl-ctrl-group button:hover {
+  background: var(--control-hover-bg) !important;
+  color: var(--control-text-hover) !important;
 }
 
 /* ---- スライダーつまみ: シアン丸 ---- */
@@ -5201,9 +5292,9 @@ input[type=range].cr-range::-webkit-slider-thumb {
 }
 
 .custom-select-wrap.scale-ctrl-select > .cascade-btn {
-  border-radius: 10px !important;
-  border: 1.5px solid var(--border-light) !important;
-  box-shadow: none !important;
+  border-radius: var(--control-radius) !important;
+  border: var(--control-border) !important;
+  box-shadow: var(--control-shadow) !important;
   font-weight: 600;
 }
 
