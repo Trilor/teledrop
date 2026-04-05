@@ -3333,20 +3333,6 @@ body.map-overlays-ready #scale-ctrl-container {
   opacity: 1;
   pointer-events: auto;
 }
-.scale-ctrl-select {
-  height: var(--control-icon-btn-size);
-  box-sizing: border-box;
-  padding: 0 var(--chevron-pad-r) 0 8px;
-  /* 地図コントロール独自外観: 白地・影・ボーダーなしで select{} を上書き */
-  background-color: var(--bg-surface);
-  border: none;
-  border-radius: 4px;
-  font-size: var(--font-sm);
-  box-shadow: 0 0 0 2px var(--shadow-xs);
-}
-.scale-ctrl-select:hover {
-  background-color: var(--primary-light);
-}
 
 /* スマホ向けパネル最適化 */
 @media (max-width: 600px) {
@@ -5070,13 +5056,12 @@ input[type=range].cr-range::-moz-range-thumb {
   min-height: var(--control-icon-btn-size) !important;
   background-color: var(--control-bg);
   color: var(--control-text);
-  border: var(--control-border);
-  box-shadow: var(--control-shadow);
-  border-radius: var(--control-radius);
+  border: var(--control-border) !important;
+  box-shadow: var(--control-shadow) !important;
+  border-radius: var(--control-radius) !important;
   padding: 0 var(--chevron-pad-r) 0 8px;
-  padding-top: 0 !important;
-  padding-bottom: 0 !important;
   line-height: 1.1;
+  font-weight: 600;
   cursor: pointer;
 }
 .custom-select-wrap.scale-ctrl-select > .cascade-btn:hover {
@@ -5291,12 +5276,6 @@ input[type=range].cr-range::-webkit-slider-thumb {
   border-radius: 8px !important;
 }
 
-.custom-select-wrap.scale-ctrl-select > .cascade-btn {
-  border-radius: var(--control-radius) !important;
-  border: var(--control-border) !important;
-  box-shadow: var(--control-shadow) !important;
-  font-weight: 600;
-}
 
 /* ---- 設定セクション見出し ---- */
 .settings-section-heading {
