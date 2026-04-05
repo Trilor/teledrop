@@ -4986,10 +4986,14 @@ async function _autoShowPlateauByPosition(lod) {
     const cache = await _fetchPlateauDatasets();
     const datasets = lod === 2 ? cache.lod2 : cache.lod3;
 
-    // ③ city_code マッチング
-    // 完全一致 → 政令市の区コード末尾を 0 に変換して市コードで照合
+    // ③ city_code / ward_code マッチング
+    // 優先順位:
+    //   1. city_code が完全一致（市単位データ）
+    //   2. ward_code が完全一致（政令市の区単位データ、例: 京都市左京区）
+    //   3. city_code が市コード（区コード末尾を0）と一致かつ ward なし（市単位フォールバック）
     const entry = datasets.find(d => String(d.city_code) === muniCd)
-               ?? datasets.find(d => String(d.city_code) === muniCd.slice(0, 4) + '0');
+               ?? datasets.find(d => d.ward_code && String(d.ward_code) === muniCd)
+               ?? datasets.find(d => String(d.city_code) === muniCd.slice(0, 4) + '0' && !d.ward);
 
     if (!entry) {
       if (_plateauCurrentCityCode !== null) {
