@@ -3243,7 +3243,7 @@ label.setting-label {
   box-shadow: var(--control-shadow) !important;
   background: var(--control-bg) !important;
 }
-.maplibregl-ctrl-attrib-button:hover {
+.maplibregl-ctrl-attrib.maplibregl-compact:not(.maplibregl-compact-show) .maplibregl-ctrl-attrib-button:hover {
   background: var(--control-hover-bg) !important;
 }
 .maplibregl-ctrl-attrib-inner {
