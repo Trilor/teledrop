@@ -5993,6 +5993,10 @@ function updateSidebarWidth() {
   const sidebar = document.getElementById('sidebar');
   const w = sidebar ? sidebar.offsetWidth : 296;
   document.documentElement.style.setProperty('--sidebar-w', w + 'px');
+  // MapLibre が top-right コンテナにインラインスタイルで top/right を書き込むため CSS 変数で上書き
+  const gap = getComputedStyle(document.documentElement).getPropertyValue('--control-edge-gap').trim();
+  const topRight = document.querySelector('.maplibregl-ctrl-top-right');
+  if (topRight) { topRight.style.top = gap; topRight.style.right = gap; }
 }
 
 document.querySelectorAll('.sidebar-nav-btn').forEach(btn => {
