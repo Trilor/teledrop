@@ -134,44 +134,51 @@ const map = new maplibregl.Map({
   hash: true,
 });
 
-// 出典表示（customAttribution で固定表示、都道府県別CS出典は updateRegionalAttribution で追記）
-map.addControl(new maplibregl.AttributionControl({
-  compact: true,
-  customAttribution:
-    '<a href="https://www.geospatial.jp/ckan/dataset/qchizu_94dem_99gsi" target="_blank" rel="noopener">Q地図1mDEM</a>' +
-    '/<a href="https://maps.gsi.go.jp/development/ichiran.html#dem" target="_blank" rel="noopener">地理院DEM5A</a>' +
-    '/<a href="https://maps.gsi.go.jp/development/ichiran.html#dem" target="_blank" rel="noopener">地理院DEM10B</a>' +
-    'を加工して作成 | ' +
-    '<a href="https://www.ngdc.noaa.gov/geomag/WMM/" target="_blank" rel="noopener">WMM/NOAA</a>' +
-    'を加工して作成',
-}), 'bottom-right');
+const STATIC_ATTRIBUTION_HTML =
+  '<a href="https://www.geospatial.jp/ckan/dataset/qchizu_94dem_99gsi" target="_blank" rel="noopener">Q地図1mDEM</a>' +
+  '/<a href="https://maps.gsi.go.jp/development/ichiran.html#dem" target="_blank" rel="noopener">地理院DEM5A</a>' +
+  '/<a href="https://maps.gsi.go.jp/development/ichiran.html#dem" target="_blank" rel="noopener">地理院DEM10B</a>' +
+  'を加工して作成 | ' +
+  '<a href="https://www.ngdc.noaa.gov/geomag/WMM/" target="_blank" rel="noopener">WMM/NOAA</a>' +
+  'を加工して作成';
 
-// 出典パネルの開閉に応じて縮尺コントロールを移動（重なり防止）
-// MutationObserver: compact-show クラスの変化（開閉）を検知して .above-attrib を付与
-// ResizeObserver  : 出典の高さ変化（テキスト量・折り返し）を常時追従して --attrib-h を更新
-{
-  requestAnimationFrame(() => {
-    const attribEl = document.querySelector('.maplibregl-ctrl-attrib');
-    const scaleEl  = document.getElementById('scale-ctrl-container');
-    if (!attribEl || !scaleEl) return;
-
-    const updateHeight = () => {
-      document.documentElement.style.setProperty(
-        '--attrib-h', attribEl.getBoundingClientRect().height + 'px'
-      );
-    };
-
-    // 開閉クラスの変化に反応して .above-attrib を付与/除去
-    new MutationObserver(() => {
-      const open = attribEl.classList.contains('maplibregl-compact-show');
-      scaleEl.classList.toggle('above-attrib', open);
-    }).observe(attribEl, { attributes: true, attributeFilter: ['class'] });
-
-    // 出典の高さが変わるたびに --attrib-h を更新（開閉中・テキスト変化時どちらも追従）
-    new ResizeObserver(updateHeight).observe(attribEl);
-    updateHeight(); // 初期値を即適用
-  });
+function getCustomAttributionInner() {
+  return document.getElementById('custom-attrib-inner');
 }
+
+function setupCustomAttribution() {
+  const control = document.getElementById('custom-attrib-control');
+  const panel = document.getElementById('custom-attrib-panel');
+  const toggle = document.getElementById('custom-attrib-toggle');
+  if (!control || !panel || !toggle) return;
+
+  const syncSidebarWidth = () => {
+    const mobile = window.matchMedia('(max-width: 768px)').matches;
+    const sidebar = document.getElementById('sidebar');
+    const sidebarWidth = (!mobile && sidebar) ? sidebar.offsetWidth : 0;
+    document.documentElement.style.setProperty('--sidebar-w', `${sidebarWidth}px`);
+  };
+
+  const setOpen = (open) => {
+    panel.hidden = !open;
+    toggle.setAttribute('aria-expanded', open ? 'true' : 'false');
+  };
+
+  window.addEventListener('resize', syncSidebarWidth);
+  toggle.addEventListener('click', (e) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setOpen(panel.hidden);
+  });
+  control.addEventListener('click', (e) => e.stopPropagation());
+  map.on('click', () => { if (!panel.hidden) setOpen(false); });
+
+  syncSidebarWidth();
+  setOpen(false);
+  document.body.classList.add('map-overlays-ready');
+}
+
+setupCustomAttribution();
 
 /*
   ========================================================
@@ -209,35 +216,6 @@ map.addControl(new maplibregl.GeolocateControl({
 }),
   'top-right'
 );
-
-
-/*
-  ========================================================
-  印刷・エクスポートボタン（独自 MapLibre カスタムコントロール）
-  クリックすると独自の印刷モーダルを開く。
-  ========================================================
-*/
-class PrintButtonControl {
-  onAdd() {
-    this._container = document.createElement('div');
-    this._container.className = 'maplibregl-ctrl maplibregl-ctrl-group';
-    const btn = document.createElement('button');
-    btn.className = 'maplibregl-ctrl-icon print-ctrl-btn';
-    btn.type = 'button';
-    btn.title = '印刷・エクスポート';
-    btn.setAttribute('aria-label', '印刷・エクスポート');
-    // アイコンは CSS background-image で設定（@watergis/maplibre-gl-export MIT ライセンスより流用）
-    // クリック時に左サイドバーの印刷パネルを開く
-    btn.addEventListener('click', () => {
-      const printNavBtn = document.querySelector('.sidebar-nav-btn[data-panel="print"]');
-      if (printNavBtn) printNavBtn.click();
-    });
-    this._container.appendChild(btn);
-    return this._container;
-  }
-  onRemove() { this._container.remove(); }
-}
-map.addControl(new PrintButtonControl(), 'top-right');
 
 
 /*
@@ -742,14 +720,10 @@ map.on('load', async () => {
   // 起動時は zoom イベントが発火しないため、load 完了後に一度だけ初期化する
   updateContourAutoInterval();
 
-  // 初期ベースマップ（OriLibre）の出典を表示
-  // MapLibreはsource追加のたびに .maplibregl-ctrl-attrib-inner を書き換えるため
-  // MutationObserver で監視し、書き換えられるたびに先頭スパンを再挿入する
-  (function retryInitAttr(attempts) {
-    if (!initAttributionObserver() && attempts > 0) {
-      setTimeout(() => retryInitAttr(attempts - 1), 300);
-    }
-  })(15);
+  // 初期出典を custom attribution パネルへ反映
+  updateBasemapAttribution();
+  updateRegionalAttribution();
+  updatePlateauAttribution();
 
   // ④ Globe投影（ズーム7以下で地球が球体に見える広域表示）
   // MapLibre v5 以降で利用可能。高ズームではメルカトルに自動移行する。
@@ -3990,52 +3964,29 @@ function updateMagneticNorth() {
 // 要素を lazy に取得し、ビューポートと bounds が重なる都道府県のみ出典を表示する。
 // map.on('load') の外で定義することで chkCs ハンドラーからも呼び出せる。
 let _lastAttrKey = null; // bounds+zoom のキャッシュ（変化がなければ更新をスキップ）
-// ベースマップ切替時に出典の先頭を更新する（OriLibreのみリンクを表示）
-// MapLibreが出典テキストを書き換えるたびに先頭スパンを再挿入するObserver
-let _attrObserver = null;
 
-function updateBasemapAttribution() {
-  const attrInner = document.querySelector('.maplibregl-ctrl-attrib-inner');
-  if (!attrInner) return;
-  let attrEl = document.getElementById('basemap-attr');
+function ensureAttributionSection(id) {
+  const attrInner = getCustomAttributionInner();
+  if (!attrInner) return null;
+  let attrEl = document.getElementById(id);
   if (!attrEl) {
     attrEl = document.createElement('span');
-    attrEl.id = 'basemap-attr';
-    attrInner.insertBefore(attrEl, attrInner.firstChild);
-  } else if (attrEl.parentNode !== attrInner) {
-    // MapLibreの書き換えで別の場所に移動した場合は先頭に戻す
-    attrInner.insertBefore(attrEl, attrInner.firstChild);
+    attrEl.id = id;
+    attrInner.appendChild(attrEl);
   }
-  const attr = BASEMAPS[currentBasemap]?.attr;
-  attrEl.innerHTML = attr ? attr + ' | ' : '';
+  return attrEl;
 }
 
-function initAttributionObserver() {
-  const attrInner = document.querySelector('.maplibregl-ctrl-attrib-inner');
-  if (!attrInner) return false; // DOM未準備
-  if (_attrObserver) _attrObserver.disconnect();
-  _attrObserver = new MutationObserver(() => {
-    // 監視を一時停止してDOM操作し、無限ループを防ぐ
-    _attrObserver.disconnect();
-    updateBasemapAttribution();
-    updatePlateauAttribution();
-    _attrObserver.observe(attrInner, { childList: true, subtree: true });
-  });
-  _attrObserver.observe(attrInner, { childList: true, subtree: true });
-  updateBasemapAttribution();
-  updatePlateauAttribution();
-  return true;
+function updateBasemapAttribution() {
+  const attrEl = ensureAttributionSection('basemap-attr');
+  if (!attrEl) return;
+  const attr = BASEMAPS[currentBasemap]?.attr;
+  attrEl.innerHTML = [attr, STATIC_ATTRIBUTION_HTML].filter(Boolean).join(' | ');
 }
 
 function updateRegionalAttribution() {
-  let attrEl = document.getElementById('regional-cs-attr');
-  if (!attrEl) {
-    const attrInner = document.querySelector('.maplibregl-ctrl-attrib-inner');
-    if (!attrInner) return;
-    attrEl = document.createElement('span');
-    attrEl.id = 'regional-cs-attr';
-    attrInner.appendChild(attrEl);
-  }
+  const attrEl = ensureAttributionSection('regional-cs-attr');
+  if (!attrEl) return;
   const _csOverlay  = currentOverlay;
   const _csBasemap  = currentBasemap;
   const _csKey      = _csOverlay !== 'none' ? _csOverlay : _csBasemap;
@@ -4061,21 +4012,15 @@ function updateRegionalAttribution() {
     )
     .map(l => l.attribution)
     .join(' | ');
-  attrEl.innerHTML = html ? ' | ' + html : '';
+  attrEl.innerHTML = html || '';
 }
 
 function updatePlateauAttribution() {
-  let attrEl = document.getElementById('plateau-attr');
-  if (!attrEl) {
-    const attrInner = document.querySelector('.maplibregl-ctrl-attrib-inner');
-    if (!attrInner) return;
-    attrEl = document.createElement('span');
-    attrEl.id = 'plateau-attr';
-    attrInner.appendChild(attrEl);
-  }
+  const attrEl = ensureAttributionSection('plateau-attr');
+  if (!attrEl) return;
   const buildingOn = document.getElementById('building3d-card')?.classList.contains('active') ?? false;
   const mode       = document.getElementById('sel-building')?.value ?? 'plateau';
-  const plateauLink = ' | <a href="https://www.mlit.go.jp/plateau/open-data/" target="_blank">国土交通省3D都市モデルPLATEAU</a>';
+  const plateauLink = '<a href="https://www.mlit.go.jp/plateau/open-data/" target="_blank">国土交通省3D都市モデルPLATEAU</a>';
   const areaLabel = document.getElementById('plateau-area-label')?.textContent ?? '';
   attrEl.innerHTML = !buildingOn ? ''
     : mode === 'plateau'          ? plateauLink + '（<a href="https://github.com/shiwaku/mlit-plateau-bldg-pmtiles" target="_blank">shiwaku</a>加工）'
@@ -5290,35 +5235,47 @@ document.getElementById('sel-building').addEventListener('change', updateBuildin
 
 // ---- 3D建物カード クリックでトグル ----
 const building3dCard = document.getElementById('building3d-card');
-building3dCard.addEventListener('click', (e) => {
-  if (e.target.closest('.custom-select-wrap') || e.target.closest('select')) return;
-  building3dCard.classList.toggle('active');
-  updateBuildingLayer();
-});
-
-// ---- 3D地形カード クリックでトグル + 誇張率セレクト ----
-const terrain3dCard = document.getElementById('terrain3d-card');
-const selTerrainExaggeration = document.getElementById('sel-terrain-exaggeration');
-
-terrain3dCard.addEventListener('click', (e) => {
-  if (e.target.closest('.custom-select-wrap') || e.target.closest('select')) return;
-  const isOn = terrain3dCard.classList.toggle('active');
-  if (isOn) {
-    map.setTerrain({ source: 'terrain-dem', exaggeration: parseFloat(selTerrainExaggeration.value) });
-  } else {
-    map.setTerrain(null);
-  }
+function syncTerrainRasterOpacity() {
   // 地形 ON/OFF で raster-opacity の補正有無が変わるため、全KMZレイヤーを再適用する
   kmzLayers.forEach(entry => {
     if (map.getLayer(entry.layerId)) {
       map.setPaintProperty(entry.layerId, 'raster-opacity', toRasterOpacity(entry.opacity));
     }
   });
+}
+
+async function setBuilding3dEnabled(enabled, { updateCard = true } = {}) {
+  if (updateCard) building3dCard.classList.toggle('active', !!enabled);
+  await updateBuildingLayer();
+}
+
+building3dCard.addEventListener('click', (e) => {
+  if (e.target.closest('.custom-select-wrap') || e.target.closest('select')) return;
+  void setBuilding3dEnabled(!building3dCard.classList.contains('active'), { updateCard: true });
+});
+
+// ---- 3D地形カード クリックでトグル + 誇張率セレクト ----
+const terrain3dCard = document.getElementById('terrain3d-card');
+const selTerrainExaggeration = document.getElementById('sel-terrain-exaggeration');
+
+function setTerrain3dEnabled(enabled, { updateCard = true } = {}) {
+  if (updateCard) terrain3dCard.classList.toggle('active', !!enabled);
+  if (enabled) {
+    map.setTerrain({ source: 'terrain-dem', exaggeration: parseFloat(selTerrainExaggeration.value) });
+  } else {
+    map.setTerrain(null);
+  }
+  syncTerrainRasterOpacity();
+}
+
+terrain3dCard.addEventListener('click', (e) => {
+  if (e.target.closest('.custom-select-wrap') || e.target.closest('select')) return;
+  setTerrain3dEnabled(!terrain3dCard.classList.contains('active'), { updateCard: true });
 });
 
 selTerrainExaggeration.addEventListener('change', () => {
   if (terrain3dCard.classList.contains('active')) {
-    map.setTerrain({ source: 'terrain-dem', exaggeration: parseFloat(selTerrainExaggeration.value) });
+    setTerrain3dEnabled(true, { updateCard: false });
   }
 });
 
@@ -9360,6 +9317,34 @@ document.getElementById('import-decide-btn').addEventListener('click', () => {
   const infoEl         = document.getElementById('print-info');
   const frameOverlay   = document.getElementById('print-frame-overlay');
   const frameSvg       = document.getElementById('print-frame-svg');
+  const printModeState = {
+    active: false,
+    prevTerrainEnabled: false,
+    prevBuildingEnabled: false,
+    prevProjectionType: null,
+    prevRenderWorldCopies: null,
+    prevMinZoom: null,
+    dragPitchWasEnabled: null,
+    touchPitchWasEnabled: null,
+    dragRotateWasEnabled: null,
+    scrollZoomWasEnabled: null,
+    doubleClickZoomWasEnabled: null,
+    touchZoomRotateWasEnabled: null,
+    usedDragRotateFallback: false,
+    wheelHandler: null,
+    dblClickHandler: null,
+    rotateMouseDownHandler: null,
+    rotateMouseMoveHandler: null,
+    rotateMouseUpHandler: null,
+    rotateContextMenuHandler: null,
+    isRotating: false,
+    rotateStartBearing: 0,
+    rotateStartAngle: 0,
+    suppressContextMenuOnce: false,
+    frameAnchorPx: null,
+    frameRefreshRaf: 0,
+    frameInsetLeft: 0,
+  };
 
   if (!exportBtn || !frameOverlay) return;
 
@@ -9377,9 +9362,14 @@ document.getElementById('import-decide-btn').addEventListener('click', () => {
     return Math.log2(156543.03392 * Math.cos(lat * Math.PI / 180) * dpi / (0.0254 * scale));
   }
 
-  // 地図上の印刷範囲フレームを SVG で描画（開発用切り取りツールと同方式）
-  function updatePrintFrame() {
-    if (!frameOverlay.classList.contains('visible')) return;
+  function getPrintFrameInsetLeft() {
+    if (window.matchMedia('(max-width: 768px)').matches) return 0;
+    const sidebar = document.getElementById('sidebar');
+    return sidebar ? sidebar.offsetWidth : 0;
+  }
+
+  function getPrintFrameLayout() {
+    printModeState.frameInsetLeft = getPrintFrameInsetLeft();
     const [pw_mm, ph_mm] = getPaperDim();
     const scale = parseInt(selScale.value, 10);
     const zoom  = map.getZoom();
@@ -9387,13 +9377,26 @@ document.getElementById('import-decide-btn').addEventListener('click', () => {
     const metersPerPx = 40075016.686 * Math.cos(lat * Math.PI / 180) / (256 * Math.pow(2, zoom));
     const fW = (pw_mm / 1000 * scale) / metersPerPx;
     const fH = (ph_mm / 1000 * scale) / metersPerPx;
-    // overlay 要素自身の幅・高さ（position:fixed; left:sidebar-w; right:0 のため、サイドバー除外済み）
-    const ovW = frameOverlay.offsetWidth;
+    // overlay は画面全体だが、フレームはサイドバー右側の地図表示領域に固定する
+    const ovW = Math.max(0, frameOverlay.offsetWidth - printModeState.frameInsetLeft);
     const ovH = frameOverlay.offsetHeight;
-    const x = Math.max(0, Math.round((ovW - fW) / 2));
+    const x = Math.max(printModeState.frameInsetLeft, Math.round(printModeState.frameInsetLeft + (ovW - fW) / 2));
     const y = Math.max(0, Math.round((ovH - fH) / 2));
     const bW = Math.round(Math.min(fW, ovW));
     const bH = Math.round(Math.min(fH, ovH));
+    return {
+      x, y, bW, bH, ovW, ovH,
+      anchorPx: [x + bW / 2, y + bH / 2],
+    };
+  }
+
+  // 地図上の印刷範囲フレームを SVG で描画（開発用切り取りツールと同方式）
+  function updatePrintFrame() {
+    if (!frameOverlay.classList.contains('visible')) return;
+    const { x, y, bW, bH, anchorPx } = getPrintFrameLayout();
+    const [anchorX, anchorY] = anchorPx;
+    const crossSize = 10;
+    printModeState.frameAnchorPx = anchorPx;
     // SVG hole-mask: 全面 rect に穴を開けて均一なマスクを実現
     frameSvg.innerHTML = `
       <defs>
@@ -9404,7 +9407,19 @@ document.getElementById('import-decide-btn').addEventListener('click', () => {
       </defs>
       <rect width="100%" height="100%" fill="rgba(0,0,0,0.38)" mask="url(#pf-hole)"/>
       <rect x="${x}" y="${y}" width="${bW}" height="${bH}"
-            fill="none" stroke="rgba(255,255,255,0.9)" stroke-width="2"/>`;
+            fill="none" stroke="rgba(0,0,0,0.45)" stroke-width="4"/>
+      <rect x="${x}" y="${y}" width="${bW}" height="${bH}"
+            fill="none" stroke="rgba(255,255,255,0.9)" stroke-width="2"/>
+      <line x1="${anchorX - crossSize}" y1="${anchorY}" x2="${anchorX + crossSize}" y2="${anchorY}"
+            stroke="rgba(0,0,0,0.45)" stroke-width="4" stroke-linecap="round"/>
+      <line x1="${anchorX - crossSize}" y1="${anchorY}" x2="${anchorX + crossSize}" y2="${anchorY}"
+            stroke="rgba(255,255,255,0.95)" stroke-width="2" stroke-linecap="round"/>
+      <line x1="${anchorX}" y1="${anchorY - crossSize}" x2="${anchorX}" y2="${anchorY + crossSize}"
+            stroke="rgba(0,0,0,0.45)" stroke-width="4" stroke-linecap="round"/>
+      <line x1="${anchorX}" y1="${anchorY - crossSize}" x2="${anchorX}" y2="${anchorY + crossSize}"
+            stroke="rgba(255,255,255,0.95)" stroke-width="2" stroke-linecap="round"/>
+      <circle cx="${anchorX}" cy="${anchorY}" r="3.5" fill="rgba(0,0,0,0.45)"/>
+      <circle cx="${anchorX}" cy="${anchorY}" r="2.5" fill="rgba(255,255,255,0.98)"/>`;
   }
 
   // 出力サイズ情報を更新
@@ -9419,6 +9434,22 @@ document.getElementById('import-decide-btn').addEventListener('click', () => {
     infoEl.textContent = `出力: ${outW}×${outH} px\n範囲: ${groundW}×${groundH} m`;
   }
 
+  function schedulePrintFrameRefresh() {
+    if (!isPrintPanelVisible()) return;
+    if (printModeState.frameRefreshRaf) cancelAnimationFrame(printModeState.frameRefreshRaf);
+    printModeState.frameRefreshRaf = requestAnimationFrame(() => {
+      printModeState.frameRefreshRaf = requestAnimationFrame(() => {
+        printModeState.frameRefreshRaf = 0;
+        map.resize();
+        if (printModeState.active && map.setMinZoom) {
+          map.setMinZoom(getPrintModeMinZoom());
+        }
+        updatePrintFrame();
+        updateInfo();
+      });
+    });
+  }
+
   // 印刷モードが有効かどうか判定（パネルが active かつサイドバーが開いている）
   function isPrintPanelVisible() {
     const printPanel = document.getElementById('panel-print');
@@ -9426,38 +9457,281 @@ document.getElementById('import-decide-btn').addEventListener('click', () => {
     return printPanel?.classList.contains('active') && !sbPanel?.classList.contains('sb-hidden');
   }
 
-  function syncFrameVisibility() {
+  function lockPrintPitchControls() {
+    printModeState.dragPitchWasEnabled  = map.dragPitch?.isEnabled?.() ?? null;
+    printModeState.touchPitchWasEnabled = map.touchPitch?.isEnabled?.() ?? null;
+    printModeState.dragRotateWasEnabled = map.dragRotate?.isEnabled?.() ?? null;
+    printModeState.usedDragRotateFallback = !map.dragPitch?.disable && !!map.dragRotate?.disable;
+
+    if (map.dragPitch?.disable) map.dragPitch.disable();
+    else if (map.dragRotate?.disable) map.dragRotate.disable();
+
+    if (map.touchPitch?.disable) map.touchPitch.disable();
+  }
+
+  function unlockPrintPitchControls() {
+    if (map.dragPitch?.enable && printModeState.dragPitchWasEnabled) map.dragPitch.enable();
+    if (map.touchPitch?.enable && printModeState.touchPitchWasEnabled) map.touchPitch.enable();
+    if (printModeState.usedDragRotateFallback && map.dragRotate?.enable && printModeState.dragRotateWasEnabled) {
+      map.dragRotate.enable();
+    }
+  }
+
+  function getClampedPrintZoom(nextZoom) {
+    const minZoom = getPrintModeMinZoom();
+    const maxZoom = map.getMaxZoom?.() ?? 24;
+    return Math.max(minZoom, Math.min(maxZoom, nextZoom));
+  }
+
+  function getPrintModeMinZoom() {
+    const baseMinZoom = printModeState.active && printModeState.prevMinZoom !== null
+      ? printModeState.prevMinZoom
+      : (map.getMinZoom?.() ?? 0);
+    const mapRect = map.getContainer().getBoundingClientRect();
+    const { anchorPx } = getPrintFrameLayout();
+    const anchorY = Math.max(0, Math.min(mapRect.height, anchorPx[1] - mapRect.top));
+    const distTop = Math.max(1, anchorY);
+    const distBottom = Math.max(1, mapRect.height - anchorY);
+    const anchorLngLat = getPrintFrameAnchorLngLat();
+    const latRad = Math.max(-85.05112878, Math.min(85.05112878, anchorLngLat.lat)) * Math.PI / 180;
+    const mercatorY = (1 - Math.log(Math.tan(Math.PI / 4 + latRad / 2)) / Math.PI) / 2;
+    const eps = 1e-6;
+    const minWorldFromTop = distTop / Math.max(mercatorY, eps);
+    const minWorldFromBottom = distBottom / Math.max(1 - mercatorY, eps);
+    const requiredWorldSize = Math.max(minWorldFromTop, minWorldFromBottom, 256 * Math.pow(2, baseMinZoom));
+    const verticalLimitMinZoom = Math.log2(requiredWorldSize / 256);
+    return Math.max(baseMinZoom, verticalLimitMinZoom);
+  }
+
+  function getPrintFrameAnchorLngLat() {
+    const mapRect = map.getContainer().getBoundingClientRect();
+    const { anchorPx } = getPrintFrameLayout();
+    const anchorX = anchorPx[0] - mapRect.left;
+    const anchorY = anchorPx[1] - mapRect.top;
+    return map.unproject([anchorX, anchorY]);
+  }
+
+  function getPrintFrameAnchorClientPx() {
+    const { anchorPx } = getPrintFrameLayout();
+    return { x: anchorPx[0], y: anchorPx[1] };
+  }
+
+  function enablePrintCenterZoom() {
+    const container = map.getContainer();
+    printModeState.scrollZoomWasEnabled = map.scrollZoom?.isEnabled?.() ?? null;
+    printModeState.doubleClickZoomWasEnabled = map.doubleClickZoom?.isEnabled?.() ?? null;
+    printModeState.touchZoomRotateWasEnabled = map.touchZoomRotate?.isEnabled?.() ?? null;
+
+    if (map.scrollZoom?.disable) map.scrollZoom.disable();
+    if (map.doubleClickZoom?.disable) map.doubleClickZoom.disable();
+
+    printModeState.wheelHandler = (e) => {
+      e.preventDefault();
+      e.stopPropagation();
+      const currentZoom = map.getZoom();
+      const wheelStep = e.deltaMode === 1 ? 0.18 : 0.12;
+      const zoomDelta = -Math.sign(e.deltaY || 0) * wheelStep;
+      if (!zoomDelta) return;
+      const anchor = getPrintFrameAnchorLngLat();
+      map.stop();
+      map.zoomTo(getClampedPrintZoom(currentZoom + zoomDelta), {
+        around: anchor,
+        duration: 0,
+        essential: true,
+      });
+    };
+
+    printModeState.dblClickHandler = (e) => {
+      e.preventDefault();
+      e.stopPropagation();
+      const anchor = getPrintFrameAnchorLngLat();
+      map.stop();
+      map.zoomTo(getClampedPrintZoom(map.getZoom() + 1), {
+        around: anchor,
+        duration: 120,
+        essential: true,
+      });
+    };
+
+    container.addEventListener('wheel', printModeState.wheelHandler, { passive: false });
+    container.addEventListener('dblclick', printModeState.dblClickHandler);
+  }
+
+  function disablePrintCenterZoom() {
+    const container = map.getContainer();
+    if (printModeState.wheelHandler) {
+      container.removeEventListener('wheel', printModeState.wheelHandler);
+      printModeState.wheelHandler = null;
+    }
+    if (printModeState.dblClickHandler) {
+      container.removeEventListener('dblclick', printModeState.dblClickHandler);
+      printModeState.dblClickHandler = null;
+    }
+
+    if (map.scrollZoom?.enable && printModeState.scrollZoomWasEnabled) map.scrollZoom.enable();
+    if (map.doubleClickZoom?.enable && printModeState.doubleClickZoomWasEnabled) map.doubleClickZoom.enable();
+    if (map.touchZoomRotate?.enable && printModeState.touchZoomRotateWasEnabled) map.touchZoomRotate.enable();
+  }
+
+  function enablePrintCenterRotate() {
+    const container = map.getContainer();
+    if (map.dragRotate?.disable) map.dragRotate.disable();
+
+    printModeState.rotateMouseDownHandler = (e) => {
+      const isRotateDrag = e.button === 2 || (e.button === 0 && (e.ctrlKey || e.metaKey));
+      if (!isRotateDrag) return;
+      const anchorClient = getPrintFrameAnchorClientPx();
+      printModeState.isRotating = true;
+      printModeState.suppressContextMenuOnce = e.button === 2;
+      printModeState.rotateStartBearing = map.getBearing();
+      printModeState.rotateStartAngle = Math.atan2(e.clientY - anchorClient.y, e.clientX - anchorClient.x);
+      e.preventDefault();
+      e.stopPropagation();
+    };
+
+    printModeState.rotateMouseMoveHandler = (e) => {
+      if (!printModeState.isRotating) return;
+      const anchorClient = getPrintFrameAnchorClientPx();
+      const currentAngle = Math.atan2(e.clientY - anchorClient.y, e.clientX - anchorClient.x);
+      const deltaDeg = (currentAngle - printModeState.rotateStartAngle) * 180 / Math.PI;
+      const anchor = getPrintFrameAnchorLngLat();
+      map.stop();
+      map.rotateTo(printModeState.rotateStartBearing - deltaDeg, {
+        around: anchor,
+        duration: 0,
+        essential: true,
+      });
+      e.preventDefault();
+      e.stopPropagation();
+    };
+
+    printModeState.rotateMouseUpHandler = () => {
+      printModeState.isRotating = false;
+      setTimeout(() => { printModeState.suppressContextMenuOnce = false; }, 0);
+    };
+
+    printModeState.rotateContextMenuHandler = (e) => {
+      if (!printModeState.suppressContextMenuOnce) return;
+      e.preventDefault();
+      e.stopPropagation();
+      printModeState.suppressContextMenuOnce = false;
+    };
+
+    container.addEventListener('mousedown', printModeState.rotateMouseDownHandler);
+    window.addEventListener('mousemove', printModeState.rotateMouseMoveHandler);
+    window.addEventListener('mouseup', printModeState.rotateMouseUpHandler);
+    container.addEventListener('contextmenu', printModeState.rotateContextMenuHandler);
+  }
+
+  function disablePrintCenterRotate() {
+    const container = map.getContainer();
+    if (printModeState.rotateMouseDownHandler) {
+      container.removeEventListener('mousedown', printModeState.rotateMouseDownHandler);
+      printModeState.rotateMouseDownHandler = null;
+    }
+    if (printModeState.rotateMouseMoveHandler) {
+      window.removeEventListener('mousemove', printModeState.rotateMouseMoveHandler);
+      printModeState.rotateMouseMoveHandler = null;
+    }
+    if (printModeState.rotateMouseUpHandler) {
+      window.removeEventListener('mouseup', printModeState.rotateMouseUpHandler);
+      printModeState.rotateMouseUpHandler = null;
+    }
+    if (printModeState.rotateContextMenuHandler) {
+      container.removeEventListener('contextmenu', printModeState.rotateContextMenuHandler);
+      printModeState.rotateContextMenuHandler = null;
+    }
+    printModeState.isRotating = false;
+    printModeState.suppressContextMenuOnce = false;
+
+    if (!printModeState.usedDragRotateFallback && map.dragRotate?.enable && printModeState.dragRotateWasEnabled) {
+      map.dragRotate.enable();
+    }
+  }
+
+  async function enterPrintMode() {
+    if (printModeState.active) return;
+    printModeState.active = true;
+    printModeState.prevTerrainEnabled = terrain3dCard?.classList.contains('active') ?? false;
+    printModeState.prevBuildingEnabled = building3dCard?.classList.contains('active') ?? false;
+    printModeState.prevProjectionType = map.getProjection?.()?.type ?? null;
+    printModeState.prevRenderWorldCopies = map.getRenderWorldCopies?.() ?? null;
+    printModeState.prevMinZoom = map.getMinZoom?.() ?? null;
+
+    lockPrintPitchControls();
+    if (printModeState.prevProjectionType !== 'mercator') map.setProjection({ type: 'mercator' });
+    if (map.setRenderWorldCopies) map.setRenderWorldCopies(true);
+    if (map.setMinZoom) map.setMinZoom(getPrintModeMinZoom());
+    enablePrintCenterZoom();
+    enablePrintCenterRotate();
+    map.easeTo({ pitch: 0, duration: 500, essential: true });
+
+    if (printModeState.prevTerrainEnabled) setTerrain3dEnabled(false);
+    if (printModeState.prevBuildingEnabled) await setBuilding3dEnabled(false);
+  }
+
+  async function exitPrintMode() {
+    if (!printModeState.active) return;
+    printModeState.active = false;
+
+    disablePrintCenterRotate();
+    disablePrintCenterZoom();
+    unlockPrintPitchControls();
+    if (printModeState.prevProjectionType && printModeState.prevProjectionType !== 'mercator') {
+      map.setProjection({ type: printModeState.prevProjectionType });
+    }
+    if (map.setRenderWorldCopies && printModeState.prevRenderWorldCopies !== null) {
+      map.setRenderWorldCopies(printModeState.prevRenderWorldCopies);
+    }
+    if (map.setMinZoom && printModeState.prevMinZoom !== null) {
+      map.setMinZoom(printModeState.prevMinZoom);
+    }
+    setTerrain3dEnabled(!!printModeState.prevTerrainEnabled);
+    await setBuilding3dEnabled(!!printModeState.prevBuildingEnabled);
+  }
+
+  async function syncFrameVisibility() {
     if (isPrintPanelVisible()) {
+      await enterPrintMode();
       frameOverlay.classList.add('visible');
-      updatePrintFrame();
-      updateInfo();
+      schedulePrintFrameRefresh();
     } else {
       frameOverlay.classList.remove('visible');
+      await exitPrintMode();
     }
   }
 
   // panel-print の active クラス変化を監視
   const printPanel = document.getElementById('panel-print');
   if (printPanel) {
-    new MutationObserver(syncFrameVisibility)
+    new MutationObserver(() => { void syncFrameVisibility(); })
       .observe(printPanel, { attributes: true, attributeFilter: ['class'] });
   }
 
   // サイドバーパネルの sb-hidden クラス変化を監視（パネルを閉じたときに印刷モード解除）
   const sbPanel = document.getElementById('sidebar-panel');
   if (sbPanel) {
-    new MutationObserver(syncFrameVisibility)
+    new MutationObserver(() => { void syncFrameVisibility(); })
       .observe(sbPanel, { attributes: true, attributeFilter: ['class'] });
   }
+
+  document.querySelectorAll('.sidebar-nav-btn').forEach(btn => {
+    btn.addEventListener('click', () => { void syncFrameVisibility(); });
+  });
+  document.querySelectorAll('.sidebar-close-btn').forEach(btn => {
+    btn.addEventListener('click', () => { void syncFrameVisibility(); });
+  });
 
   // マップ移動・ズームでフレームを更新
   map.on('move', updatePrintFrame);
   map.on('zoom', updatePrintFrame);
-  window.addEventListener('resize', updatePrintFrame);
+  window.addEventListener('resize', schedulePrintFrameRefresh);
+  new ResizeObserver(schedulePrintFrameRefresh).observe(frameOverlay);
+  new ResizeObserver(schedulePrintFrameRefresh).observe(map.getContainer());
 
   // 設定変更時の更新
   [selPaper, selOrientation, selScale].forEach(el => {
-    el.addEventListener('change', () => { updatePrintFrame(); updateInfo(); });
+    el.addEventListener('change', schedulePrintFrameRefresh);
   });
   selDpi.addEventListener('change', updateInfo);
 
@@ -9563,6 +9837,7 @@ document.getElementById('import-decide-btn').addEventListener('click', () => {
   }
 
   exportBtn.addEventListener('click', execExport);
+  void syncFrameVisibility();
   updateInfo();
 })();
 
