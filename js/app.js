@@ -9359,11 +9359,7 @@ document.getElementById('import-decide-btn').addEventListener('click', () => {
   const selDpi         = document.getElementById('print-dpi');
   const infoEl         = document.getElementById('print-info');
   const frameOverlay   = document.getElementById('print-frame-overlay');
-  const pfTop          = document.getElementById('pf-top');
-  const pfBottom       = document.getElementById('pf-bottom');
-  const pfLeft         = document.getElementById('pf-left');
-  const pfRight        = document.getElementById('pf-right');
-  const pfBox          = document.getElementById('pf-box');
+  const frameSvg       = document.getElementById('print-frame-svg');
 
   if (!exportBtn || !frameOverlay) return;
 
@@ -9381,7 +9377,7 @@ document.getElementById('import-decide-btn').addEventListener('click', () => {
     return Math.log2(156543.03392 * Math.cos(lat * Math.PI / 180) * dpi / (0.0254 * scale));
   }
 
-  // 地図上の印刷範囲フレームをピクセル単位で更新
+  // 地図上の印刷範囲フレームを SVG で描画（開発用切り取りツールと同方式）
   function updatePrintFrame() {
     if (!frameOverlay.classList.contains('visible')) return;
     const [pw_mm, ph_mm] = getPaperDim();
@@ -9394,23 +9390,21 @@ document.getElementById('import-decide-btn').addEventListener('click', () => {
     // overlay 要素自身の幅・高さ（position:fixed; left:sidebar-w; right:0 のため、サイドバー除外済み）
     const ovW = frameOverlay.offsetWidth;
     const ovH = frameOverlay.offsetHeight;
-    const l  = Math.max(0, Math.round((ovW - fW) / 2));
-    const t  = Math.max(0, Math.round((ovH - fH) / 2));
+    const x = Math.max(0, Math.round((ovW - fW) / 2));
+    const y = Math.max(0, Math.round((ovH - fH) / 2));
     const bW = Math.round(Math.min(fW, ovW));
     const bH = Math.round(Math.min(fH, ovH));
-    pfTop.style.height    = t + 'px';
-    pfBottom.style.height = t + 'px';
-    // 左右マスクはフレームの上下端の範囲のみ（コーナーは top/bottom が担うため重複させない）
-    pfLeft.style.top    = t + 'px';
-    pfLeft.style.height = bH + 'px';
-    pfLeft.style.width  = l + 'px';
-    pfRight.style.top    = t + 'px';
-    pfRight.style.height = bH + 'px';
-    pfRight.style.width  = l + 'px';
-    pfBox.style.left   = l + 'px';
-    pfBox.style.top    = t + 'px';
-    pfBox.style.width  = bW + 'px';
-    pfBox.style.height = bH + 'px';
+    // SVG hole-mask: 全面 rect に穴を開けて均一なマスクを実現
+    frameSvg.innerHTML = `
+      <defs>
+        <mask id="pf-hole">
+          <rect width="100%" height="100%" fill="white"/>
+          <rect x="${x}" y="${y}" width="${bW}" height="${bH}" fill="black"/>
+        </mask>
+      </defs>
+      <rect width="100%" height="100%" fill="rgba(0,0,0,0.38)" mask="url(#pf-hole)"/>
+      <rect x="${x}" y="${y}" width="${bW}" height="${bH}"
+            fill="none" stroke="rgba(255,255,255,0.9)" stroke-width="2"/>`;
   }
 
   // 出力サイズ情報を更新

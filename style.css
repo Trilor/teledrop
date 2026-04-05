@@ -3651,19 +3651,6 @@ label.setting-label {
   display: none;
 }
 #print-frame-overlay.visible { display: block; }
-.pf-mask {
-  position: absolute;
-  background: rgba(0, 0, 0, 0.38);
-}
-#pf-top    { top: 0; left: 0; right: 0; }
-#pf-bottom { bottom: 0; left: 0; right: 0; }
-#pf-left   { left: 0; }
-#pf-right  { right: 0; }
-#pf-box {
-  position: absolute;
-  outline: 2px solid rgba(255, 255, 255, 0.9);
-  box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.45);
-}
 
 /* パネル内の情報テキスト */
 .print-panel-info {
