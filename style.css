@@ -5142,12 +5142,7 @@ h1, h2, h3, h4,
 }
 
 /* ---- MapLibre コントロール: 丸ボタン ---- */
-.maplibregl-ctrl-zoom-in,
-.maplibregl-ctrl-zoom-out,
-.maplibregl-ctrl-compass,
-.maplibregl-ctrl-geolocate {
-  border-radius: 50% !important;
-}
+/* グループの overflow:hidden が角丸クリッピングを担うため個別設定不要 */
 .maplibregl-ctrl-group {
   border-radius: var(--control-radius) !important;
   border: var(--control-border) !important;
