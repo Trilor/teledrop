@@ -1316,17 +1316,6 @@ body {
   transition: filter 0.2s;
 }
 
-/* ON時: ラベル左端にチェックマークを表示 */
-.layer-2col-row .bm-card-label::before {
-  content: '';
-  display: inline-block;
-  width: 10px;
-  margin-right: 3px;
-  flex-shrink: 0;
-}
-.layer-2col-row .bm-card.active .bm-card-label::before {
-  content: '✓';
-}
 
 /* OFF時: カード下プルダウンをグレーアウト */
 .layer-card-wrapper:has(.bm-card:not(.active)) .custom-select-wrap.layer-card-select > .cascade-btn {
