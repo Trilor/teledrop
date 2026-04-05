@@ -5081,6 +5081,8 @@ async function _applyDeckTile3D(tilesetUrl) {
           _subLayerProps: {
             scenegraph: { _lighting: 'flat' },
           },
+          // PLATEAU は楕円体高(WGS84)で記録されているため地形（ジオイド高ベース）とずれる
+          // onTileLoad でタイル中心の terrain 標高との差分を補正する
           onTilesetLoad: (tileset) => {
             const waitUntilLoaded = () => {
               if (tileset.isLoaded) { hideMapLoading(); return; }
@@ -5088,12 +5090,18 @@ async function _applyDeckTile3D(tilesetUrl) {
             };
             requestAnimationFrame(waitUntilLoaded);
           },
-          // PLATEAU は楕円体高のため地形とずれる → onTileLoad で高度補正
           onTileLoad: (tile) => {
-            if (tile.content?.cartographicOrigin) {
-              const o = tile.content.cartographicOrigin;
-              tile.content.cartographicOrigin = new Float64Array([o[0], o[1], o[2] - 40]);
-            }
+            if (!tile.content?.cartographicOrigin) return;
+            const o = tile.content.cartographicOrigin;
+            // タイル中心の経緯度で MapLibre terrain の標高を取得
+            const lngDeg = o[0] * (180 / Math.PI);
+            const latDeg = o[1] * (180 / Math.PI);
+            const terrainEle = map.queryTerrainElevation([lngDeg, latDeg]) ?? 0;
+            // 楕円体高とジオイド高の差 ≒ ジオイド高（EGM96）
+            // 日本周辺は概ね 30〜50m。terrain の標高と楕円体高の差を補正値とする
+            // cartographicOrigin の z はラジアン球面上の高さではなくメートル単位の楕円体高
+            const geoidOffset = o[2] - terrainEle;
+            tile.content.cartographicOrigin = new Float64Array([o[0], o[1], o[2] - geoidOffset]);
           },
         }),
       ],
