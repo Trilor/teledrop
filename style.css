@@ -5060,6 +5060,7 @@ input[type=range].cr-range::-moz-range-thumb {
   box-shadow: var(--control-shadow) !important;
   border-radius: var(--control-radius) !important;
   padding: 0 var(--chevron-pad-r) 0 8px;
+  font-size: var(--font-sm);
   line-height: 1.1;
   font-weight: 600;
   cursor: pointer;
