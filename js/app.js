@@ -4970,65 +4970,50 @@ async function _autoShowPlateauByPosition(lod) {
   }
   const center = map.getCenter();
 
-  // ① 逆ジオコーディング
-  let geo;
   try {
-    geo = await _reverseGeocode(center.lng, center.lat);
-  } catch (e) {
-    console.error('逆ジオコーダー失敗:', e);
-    _updatePlateauAreaLabel('位置取得エラー');
-    return;
-  }
-  if (!geo?.muniCd) {
-    _updatePlateauAreaLabel('対象地域外');
-    return;
-  }
-  const muniCd = String(geo.muniCd).padStart(5, '0');
-
-  // 同じ市区町村・LODなら再ロード不要
-  if (muniCd === _plateauCurrentCityCode && lod === _plateauCurrentLod) return;
-
-  // ② PLATEAU データ取得
-  let cache;
-  try {
-    cache = await _fetchPlateauDatasets();
-  } catch (e) {
-    console.error('PLATEAU API 失敗:', e);
-    _updatePlateauAreaLabel('PLATEAUデータ取得エラー');
-    return;
-  }
-  const datasets = lod === 2 ? cache.lod2 : cache.lod3;
-
-  // ③ city_code マッチング
-  // PLATEAU API の city_code は 5 桁文字列（例 "13101"）
-  // 政令指定都市の区コードは下1桁が 1-9（例 "01101" = 札幌市中央区）
-  // PLATEAU が市単位のデータしか持たない場合は下1桁を0にした市コード（例 "01100"）で照合
-  let entry = datasets.find(d => String(d.city_code) === muniCd)
-            ?? datasets.find(d => String(d.city_code) === muniCd.slice(0, 4) + '0');
-
-  if (!entry) {
-    if (_plateauCurrentCityCode !== null) {
-      _deckOverlay?.setProps({ layers: [] });
-      _plateauCurrentCityCode = null;
-      _plateauCurrentLod      = null;
+    // ① 逆ジオコーディング
+    const geo = await _reverseGeocode(center.lng, center.lat);
+    if (!geo?.muniCd) {
+      _updatePlateauAreaLabel('対象地域外');
+      return;
     }
-    _updatePlateauAreaLabel(`データなし（LOD${lod}）`);
-    updatePlateauAttribution();
-    return;
-  }
+    const muniCd = String(geo.muniCd).padStart(5, '0');
 
-  // ④ Tile3DLayer 表示
-  _plateauCurrentCityCode = muniCd;
-  _plateauCurrentLod      = lod;
-  const label = entry.ward ? `${entry.city} ${entry.ward}` : entry.city;
-  _updatePlateauAreaLabel(`${entry.pref} ${label}`);
-  try {
+    // 同じ市区町村・LODなら再ロード不要
+    if (muniCd === _plateauCurrentCityCode && lod === _plateauCurrentLod) return;
+
+    // ② PLATEAU データ取得
+    const cache = await _fetchPlateauDatasets();
+    const datasets = lod === 2 ? cache.lod2 : cache.lod3;
+
+    // ③ city_code マッチング
+    // 完全一致 → 政令市の区コード末尾を 0 に変換して市コードで照合
+    const entry = datasets.find(d => String(d.city_code) === muniCd)
+               ?? datasets.find(d => String(d.city_code) === muniCd.slice(0, 4) + '0');
+
+    if (!entry) {
+      if (_plateauCurrentCityCode !== null) {
+        _deckOverlay?.setProps({ layers: [] });
+        _plateauCurrentCityCode = null;
+        _plateauCurrentLod      = null;
+      }
+      _updatePlateauAreaLabel(`データなし（LOD${lod}）`);
+      updatePlateauAttribution();
+      return;
+    }
+
+    // ④ Tile3DLayer 表示
+    _plateauCurrentCityCode = muniCd;
+    _plateauCurrentLod      = lod;
+    const label = entry.ward ? `${entry.city} ${entry.ward}` : entry.city;
+    _updatePlateauAreaLabel(`${entry.pref} ${label}`);
     await _applyDeckTile3D(entry.url);
+    updatePlateauAttribution();
+
   } catch (e) {
-    console.error('Tile3DLayer 表示失敗:', e);
-    _updatePlateauAreaLabel('3D Tiles 表示エラー');
+    console.error('PLATEAU 自動取得失敗:', e);
+    _updatePlateauAreaLabel('取得エラー: ' + (e?.message ?? e));
   }
-  updatePlateauAttribution();
 }
 
 // LOD2/LOD3 モードに切り替えたときにエリアラベルを表示して位置から検索
