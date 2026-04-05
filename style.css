@@ -115,7 +115,7 @@
   --control-radius: 10px;
   --control-shadow: none;
   --control-hover-bg: var(--primary-light);
-  --control-edge-gap: 8px;
+  --control-edge-gap: 10px;
   --control-stack-gap: 8px;
   --control-icon-btn-size: 29px;
   --control-icon-radius: var(--control-radius);
@@ -3264,30 +3264,10 @@ label.setting-label {
   background-image: none !important;
 }
 
-/* 独自の出典コントロール */
-#custom-attrib-control {
-  position: fixed;
-  right: var(--control-edge-gap);
-  bottom: var(--control-edge-gap);
-  z-index: 20;
-  opacity: 0;
-  pointer-events: none;
-  transition: opacity 0.12s ease;
-}
-body.map-overlays-ready #custom-attrib-control {
-  opacity: 1;
-  pointer-events: auto;
-}
-#custom-attrib-toggle {
-  border: var(--control-border);
-  border-radius: var(--control-radius);
-  box-shadow: var(--control-shadow);
-}
 #custom-attrib-toggle:hover {
   background: var(--control-hover-bg);
   color: var(--control-text-hover);
 }
-#custom-attrib-toggle svg { width: 14px; height: 14px; }
 #custom-attrib-panel {
   position: fixed;
   left: calc(var(--sidebar-w, 0px) + var(--control-edge-gap));
@@ -3917,9 +3897,6 @@ body.map-overlays-ready #scale-ctrl-container {
     bottom: calc(54px + env(safe-area-inset-bottom, 0px) + var(--control-edge-gap));
   }
 
-  #custom-attrib-control {
-    bottom: calc(54px + env(safe-area-inset-bottom, 0px) + var(--control-edge-gap));
-  }
   #custom-attrib-panel {
     left: var(--control-edge-gap);
     right: calc(var(--control-icon-btn-size) + var(--control-edge-gap) + var(--control-stack-gap));

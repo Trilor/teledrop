@@ -146,39 +146,60 @@ function getCustomAttributionInner() {
   return document.getElementById('custom-attrib-inner');
 }
 
-function setupCustomAttribution() {
-  const control = document.getElementById('custom-attrib-control');
-  const panel = document.getElementById('custom-attrib-panel');
-  const toggle = document.getElementById('custom-attrib-toggle');
-  if (!control || !panel || !toggle) return;
+class CustomAttributionControl {
+  onAdd() {
+    // ボタン
+    this._toggle = document.createElement('button');
+    this._toggle.type = 'button';
+    this._toggle.id = 'custom-attrib-toggle';
+    this._toggle.setAttribute('aria-label', '出典を表示');
+    this._toggle.setAttribute('aria-expanded', 'false');
+    this._toggle.innerHTML = `<svg viewBox="0 0 16 16" aria-hidden="true" focusable="false" width="14" height="14">
+      <circle cx="8" cy="8" r="5.25" fill="none" stroke="currentColor" stroke-width="1.5"/>
+      <circle cx="8" cy="4.6" r="0.9" fill="currentColor" stroke="none"/>
+      <path d="M8 7v4" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/>
+    </svg>`;
 
-  const syncSidebarWidth = () => {
-    const mobile = window.matchMedia('(max-width: 768px)').matches;
-    const sidebar = document.getElementById('sidebar');
-    const sidebarWidth = (!mobile && sidebar) ? sidebar.offsetWidth : 0;
-    document.documentElement.style.setProperty('--sidebar-w', `${sidebarWidth}px`);
-  };
+    // 出典パネル（body直下に固定配置）
+    this._panel = document.createElement('div');
+    this._panel.id = 'custom-attrib-panel';
+    this._panel.hidden = true;
+    this._inner = document.createElement('div');
+    this._inner.id = 'custom-attrib-inner';
+    this._panel.appendChild(this._inner);
+    document.body.appendChild(this._panel);
 
-  const setOpen = (open) => {
-    panel.hidden = !open;
-    toggle.setAttribute('aria-expanded', open ? 'true' : 'false');
-  };
+    // MapLibreコントロールのwrapperに入れる
+    this._container = document.createElement('div');
+    this._container.className = 'maplibregl-ctrl maplibregl-ctrl-group';
+    this._container.setAttribute('aria-live', 'polite');
+    this._container.appendChild(this._toggle);
 
-  window.addEventListener('resize', syncSidebarWidth);
-  toggle.addEventListener('click', (e) => {
-    e.preventDefault();
-    e.stopPropagation();
-    setOpen(panel.hidden);
-  });
-  control.addEventListener('click', (e) => e.stopPropagation());
-  map.on('click', () => { if (!panel.hidden) setOpen(false); });
+    this._toggle.addEventListener('click', (e) => {
+      e.preventDefault();
+      e.stopPropagation();
+      this._setOpen(this._panel.hidden);
+    });
+    this._container.addEventListener('click', (e) => e.stopPropagation());
+    map.on('click', () => { if (!this._panel.hidden) this._setOpen(false); });
 
-  syncSidebarWidth();
-  setOpen(false);
-  document.body.classList.add('map-overlays-ready');
+    document.body.classList.add('map-overlays-ready');
+    return this._container;
+  }
+
+  _setOpen(open) {
+    this._panel.hidden = !open;
+    this._toggle.setAttribute('aria-expanded', open ? 'true' : 'false');
+  }
+
+  onRemove() {
+    this._container.remove();
+    this._panel.remove();
+  }
 }
 
-setupCustomAttribution();
+const _customAttribControl = new CustomAttributionControl();
+map.addControl(_customAttribControl, 'bottom-right');
 
 /*
   ========================================================
@@ -5993,10 +6014,12 @@ function updateSidebarWidth() {
   const sidebar = document.getElementById('sidebar');
   const w = sidebar ? sidebar.offsetWidth : 296;
   document.documentElement.style.setProperty('--sidebar-w', w + 'px');
-  // MapLibre が top-right コンテナにインラインスタイルで top/right を書き込むため CSS 変数で上書き
+  // MapLibre が top-right / bottom-right にインラインスタイルで位置を書き込むため上書き
   const gap = getComputedStyle(document.documentElement).getPropertyValue('--control-edge-gap').trim();
   const topRight = document.querySelector('.maplibregl-ctrl-top-right');
   if (topRight) { topRight.style.top = gap; topRight.style.right = gap; }
+  const bottomRight = document.querySelector('.maplibregl-ctrl-bottom-right');
+  if (bottomRight) { bottomRight.style.bottom = gap; bottomRight.style.right = gap; }
 }
 
 document.querySelectorAll('.sidebar-nav-btn').forEach(btn => {
