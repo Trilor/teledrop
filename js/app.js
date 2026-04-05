@@ -6014,12 +6014,6 @@ function updateSidebarWidth() {
   const sidebar = document.getElementById('sidebar');
   const w = sidebar ? sidebar.offsetWidth : 296;
   document.documentElement.style.setProperty('--sidebar-w', w + 'px');
-  // MapLibre が top-right / bottom-right にインラインスタイルで位置を書き込むため上書き
-  const gap = getComputedStyle(document.documentElement).getPropertyValue('--control-edge-gap').trim();
-  const topRight = document.querySelector('.maplibregl-ctrl-top-right');
-  if (topRight) { topRight.style.top = gap; topRight.style.right = gap; }
-  const bottomRight = document.querySelector('.maplibregl-ctrl-bottom-right');
-  if (bottomRight) { bottomRight.style.bottom = gap; bottomRight.style.right = gap; }
 }
 
 document.querySelectorAll('.sidebar-nav-btn').forEach(btn => {
