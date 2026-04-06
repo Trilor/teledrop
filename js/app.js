@@ -630,7 +630,7 @@ map.on('load', async () => {
     tiles: [CS_RELIEF_URL],
     tileSize: 512,
     minzoom: 5,
-    maxzoom: 16,
+    maxzoom: 15, // DEM5A 上限に合わせる（z16+ はオーバーズーム）
     attribution: '',
   });
 
