@@ -136,14 +136,13 @@ const map = new maplibregl.Map({
 });
 
 // 出典表示（customAttribution で固定表示、都道府県別CS出典は updateRegionalAttribution で追記）
+// 磁北線出典は updateMagneticAttribution() で動的に切り替え
 map.addControl(new maplibregl.AttributionControl({
   compact: true,
   customAttribution:
     '<a href="https://www.geospatial.jp/ckan/dataset/qchizu_94dem_99gsi" target="_blank" rel="noopener">Q地図1mDEM</a>' +
     '/<a href="https://maps.gsi.go.jp/development/ichiran.html#dem" target="_blank" rel="noopener">地理院DEM5A</a>' +
     '/<a href="https://maps.gsi.go.jp/development/ichiran.html#dem" target="_blank" rel="noopener">地理院DEM10B</a>' +
-    'を加工して作成 | ' +
-    '<a href="https://www.ngdc.noaa.gov/geomag/WMM/" target="_blank" rel="noopener">WMM/NOAA</a>' +
     'を加工して作成',
 }), 'bottom-right');
 
@@ -718,6 +717,9 @@ map.on('load', async () => {
     },
   });
   updateMagneticNorth();
+
+  // 磁北線出典の初期表示
+  updateMagneticAttribution();
 
   // 都道府県別CS出典の動的更新 — タイル読み込み完了を待たず即時反映するため moveend を使用
   map.on('moveend', updateRegionalAttribution);
@@ -4067,6 +4069,28 @@ function updatePlateauAttribution() {
     : '';
 }
 
+// 磁北線モデル別の出典情報
+const MAGNETIC_ATTRIBUTIONS = {
+  wmm2020: '<a href="https://www.ngdc.noaa.gov/geomag/WMM/" target="_blank" rel="noopener">WMM2020/NOAA</a>を加工して作成',
+  wmm2025: '<a href="https://www.ngdc.noaa.gov/geomag/WMM/" target="_blank" rel="noopener">WMM2025/NOAA</a>を加工して作成',
+  gsi2020: '<a href="https://vldb.gsi.go.jp/sokuchi/geomag/menu_04/index.html" target="_blank" rel="noopener">国土地理院 地磁気値(2020.0年値)</a>を加工して作成',
+};
+
+/** 磁北線の出典表示を選択中モデルに合わせて更新する */
+function updateMagneticAttribution() {
+  let attrEl = document.getElementById('magnetic-attr');
+  if (!attrEl) {
+    const attrInner = document.querySelector('.maplibregl-ctrl-attrib-inner');
+    if (!attrInner) return;
+    attrEl = document.createElement('span');
+    attrEl.id = 'magnetic-attr';
+    attrInner.appendChild(attrEl);
+  }
+  const isOn  = document.getElementById('magnetic-card')?.classList.contains('active') ?? false;
+  const model = document.getElementById('sel-magnetic-model')?.value ?? 'wmm2025';
+  attrEl.innerHTML = isOn ? ' | ' + (MAGNETIC_ATTRIBUTIONS[model] ?? '') : '';
+}
+
 // ---- CS立体図 オーバーレイ制御 ----
 // 0.5m モードはズーム17以上で地域CSを表示し、ズーム17未満は1mに自動フォールバック
 let currentOverlay = 'none'; // 選択中のオーバーレイキー（'none' = オーバーレイなし）
@@ -5805,6 +5829,7 @@ magneticCard.addEventListener('click', (e) => {
   if (map.getLayer('magnetic-north-layer')) {
     map.setLayoutProperty('magnetic-north-layer', 'visibility', isActive ? 'visible' : 'none');
   }
+  updateMagneticAttribution();
 });
 
 // ---- 磁北線 モデルセレクト ----
@@ -5812,6 +5837,7 @@ selMagneticModel.addEventListener('change', async () => {
   await setDeclinationModel(selMagneticModel.value);
   _globalMagneticLines = null; // グローバル磁北線キャッシュをクリア
   updateMagneticNorth();
+  updateMagneticAttribution();
 });
 // 初期モデルをロード（wmm2025 がデフォルト）
 setDeclinationModel(selMagneticModel.value);
