@@ -4888,8 +4888,8 @@ document.getElementById('sr-autofit-btn')?.addEventListener('click', autoFitSlop
 
 // ---- 色別曲率 デュアルレンジスライダー ----
 // CS立体図の曲率レイヤー（L2/L4）と同じスケールに合わせたデフォルト範囲
-let cvMin = -0.25;
-let cvMax =  0.25;
+let cvMin = -0.05;
+let cvMax =  0.05;
 
 function refreshCurvatureReliefTrackLayout() {
   const cvCtrls = document.getElementById('curvature-relief-controls');
@@ -4910,15 +4910,15 @@ function syncCurvatureReliefUI() {
   const maxInput  = document.getElementById('cv-max-input');
   if (!minSlider || !maxSlider) return;
 
-  minSlider.min = maxSlider.min = '-0.5';
-  minSlider.max = maxSlider.max = '0.5';
-  cvMin = Math.max(-0.5, Math.min(cvMin, 0.5));
-  cvMax = Math.max(-0.5, Math.min(cvMax, 0.5));
+  minSlider.min = maxSlider.min = '-0.1';
+  minSlider.max = maxSlider.max = '0.1';
+  cvMin = Math.max(-0.1, Math.min(cvMin, 0.1));
+  cvMax = Math.max(-0.1, Math.min(cvMax, 0.1));
 
   minSlider.value = cvMin;
   maxSlider.value = cvMax;
-  if (minInput) minInput.value = cvMin.toFixed(2);
-  if (maxInput) maxInput.value = cvMax.toFixed(2);
+  if (minInput) minInput.value = cvMin.toFixed(3);
+  if (maxInput) maxInput.value = cvMax.toFixed(3);
 }
 
 function updateCurvatureGradientTrack() {
@@ -5030,13 +5030,13 @@ function updateCurvatureReliefSource() {
 
   const applyMinInput = () => {
     const v = parseFloat(minInput.value);
-    if (isNaN(v)) { minInput.value = cvMin.toFixed(2); return; }
+    if (isNaN(v)) { minInput.value = cvMin.toFixed(3); return; }
     cvMin = Math.min(v, cvMax);
     updateCurvatureReliefSource();
   };
   const applyMaxInput = () => {
     const v = parseFloat(maxInput.value);
-    if (isNaN(v)) { maxInput.value = cvMax.toFixed(2); return; }
+    if (isNaN(v)) { maxInput.value = cvMax.toFixed(3); return; }
     cvMax = Math.max(v, cvMin);
     updateCurvatureReliefSource();
   };
@@ -5201,12 +5201,12 @@ function autoFitCurvatureRelief() {
 
   if (!isFinite(globalMin) || !isFinite(globalMax)) return;
 
-  const step = 0.01;
+  const step = 0.001;
   // 余白 10% を加えてスライダー上限内に収める
   const margin = Math.max((globalMax - globalMin) * 0.1, step);
-  cvMin = Math.max(-0.5, Math.round((globalMin - margin) / step) * step);
-  cvMax = Math.min( 0.5, Math.round((globalMax + margin) / step) * step);
-  if (cvMax <= cvMin) cvMax = Math.min(0.5, cvMin + step);
+  cvMin = Math.max(-0.1, Math.round((globalMin - margin) / step) * step);
+  cvMax = Math.min( 0.1, Math.round((globalMax + margin) / step) * step);
+  if (cvMax <= cvMin) cvMax = Math.min(0.1, cvMin + step);
 
   updateCurvatureReliefSource();
 }
