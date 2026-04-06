@@ -38,7 +38,7 @@ import {
   QCHIZU_DEM_BASE, QCHIZU_PROXY_BASE, DEM5A_BASE, DEM1A_BASE,
   // LAKEDEPTH_BASE, LAKEDEPTH_STANDARD_BASE, // 湖水深タイルは廃止（2026-03-23）
   TERRAIN_URL, CS_RELIEF_URL,
-  REGIONAL_CS_LAYERS,
+  REGIONAL_CS_LAYERS, REGIONAL_RRIM_LAYERS,
   INITIAL_CENTER, INITIAL_ZOOM, INITIAL_PITCH, INITIAL_BEARING,
   TERRAIN_EXAGGERATION, OMAP_INITIAL_OPACITY, CS_INITIAL_OPACITY,
   EASE_DURATION, FIT_BOUNDS_PAD, FIT_BOUNDS_PAD_SIDEBAR, SIDEBAR_DEFAULT_WIDTH,
@@ -657,7 +657,8 @@ map.on('load', async () => {
   // 都道府県別CS立体図（0.5m）のソース・レイヤーを動的追加
   // ソースの minzoom を 17 に下げることで、ズーム17でも表示可能にする
   // （z=17 では地域DEMが無い場合でも Q地図 DEM にフォールバックして描画）
-  REGIONAL_CS_LAYERS.forEach(layer => {
+  // 地域別CS・RRIM共通のソース/レイヤー追加関数
+  function _addRegionalLayer(layer) {
     const srcCfg = {
       type: 'raster',
       tiles: [layer.tileUrl],
@@ -665,27 +666,21 @@ map.on('load', async () => {
       minzoom: Math.min(layer.minzoom, 17),
       maxzoom: layer.maxzoom,
       bounds: layer.bounds,
-      attribution: '', // 動的表示に切り替えるため MapLibre の自動収集は無効化
+      attribution: '',
     };
     if (layer.scheme) srcCfg.scheme = layer.scheme;
     map.addSource(layer.sourceId, srcCfg);
-
     map.addLayer({
-
       id: layer.layerId,
       type: 'raster',
       source: layer.sourceId,
-      layout: {
-        visibility: 'none',
-      },
-      paint: {
-        'raster-opacity': 1.0,
-        'raster-fade-duration': 150,
-      }
-
-      ,
+      layout: { visibility: 'none' },
+      paint: { 'raster-opacity': 1.0, 'raster-fade-duration': 150 },
     });
-  });
+  }
+
+  REGIONAL_CS_LAYERS.forEach(_addRegionalLayer);
+  REGIONAL_RRIM_LAYERS.forEach(_addRegionalLayer);
 
   // 磁北線 GeoJSON ソース＋レイヤー
   map.addSource('magnetic-north', {
@@ -4125,7 +4120,17 @@ function updateCsVisibility() {
     if (map.getLayer(layer.layerId)) {
       map.setLayoutProperty(layer.layerId, 'visibility', show05m ? 'visible' : 'none');
       if (show05m) {
-        // 表示時にスライダーの現在値を反映（初期値 1.0 のままになるのを防ぐ）
+        map.setPaintProperty(layer.layerId, 'raster-opacity', parseFloat(sliderCs.value));
+      }
+    }
+  });
+
+  // 赤色立体図: rrim 選択時 z>=17 で地域DEMレイヤーを重ねる
+  const showRrim05m = showRrimRelief && z >= 17;
+  REGIONAL_RRIM_LAYERS.forEach(layer => {
+    if (map.getLayer(layer.layerId)) {
+      map.setLayoutProperty(layer.layerId, 'visibility', showRrim05m ? 'visible' : 'none');
+      if (showRrim05m) {
         map.setPaintProperty(layer.layerId, 'raster-opacity', parseFloat(sliderCs.value));
       }
     }
@@ -4878,6 +4883,11 @@ sliderCs.addEventListener('input', () => {
   }
   if (currentOverlay === 'rrim' && map.getLayer('rrim-relief-layer')) {
     map.setPaintProperty('rrim-relief-layer', 'raster-opacity', v);
+  }
+  if (currentOverlay === 'rrim') {
+    REGIONAL_RRIM_LAYERS.forEach(layer => {
+      if (map.getLayer(layer.layerId)) map.setPaintProperty(layer.layerId, 'raster-opacity', v);
+    });
   }
   });
 
