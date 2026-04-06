@@ -635,21 +635,12 @@ map.on('load', async () => {
   });
 
   map.addLayer({
-
     id: 'cs-relief-layer',
     type: 'raster',
     source: 'cs-relief',
     layout: { visibility: 'none' },
-    paint: {
-      'raster-opacity': CS_INITIAL_OPACITY,
-      // // 乗算（Multiply）の代替：白浮きを防ぎコントラストを強調する
-      // 'raster-contrast': 0.2,
-      // 'raster-brightness-max': 0.8,
-      // 'raster-fade-duration': 150,
-    }
-
-    ,
-  });
+    paint: { 'raster-opacity': CS_INITIAL_OPACITY },
+  }, map.getLayer('contour-regular-dem1a') ? 'contour-regular-dem1a' : undefined);
 
   /*
       ========================================================
