@@ -924,12 +924,14 @@ maplibregl.addProtocol('dem2rrim', async (params, abortController) => {
     }
 
     // ── ④ MPI 計算（全GPU、CPU往復なし） ──
-    // tf.roll(tensor, -r*dir, axis) で方向 dir × r ステップ先の標高をシフト取得。
-    // buffer >= radius なので中央タイル領域でロールの折り返しは発生しない。
+    // tf.roll は TF.js 4.x に存在しないため、tf.slice で「r ステップ先の中央領域」を切り出して代用。
+    // buffer >= radius なので境界折り返しは発生しない。
     const demTensor = tf.tensor2d(mergedHeights, [mergedSize, mergedSize]);
     const validMask = demTensor.notEqual(-99999);
     // nodata を 0 埋め（隣接nodata域の MPI への影響を最小化）
     const demFilled = tf.tidy(() => tf.where(validMask, demTensor, tf.zerosLike(demTensor)));
+    // 中央タイル領域の基準スライス [buffer, buffer] サイズ [tileSize, tileSize]
+    const demCenter = tf.tidy(() => demFilled.slice([buffer, buffer], [tileSize, tileSize]));
 
     let mpiSum = null;
     for (const [dirY, dirX] of _RRIM_DIRS) {
@@ -937,13 +939,13 @@ maplibregl.addProtocol('dem2rrim', async (params, abortController) => {
       const distUnit = Math.sqrt((dirX * pixelLength) ** 2 + (dirY * pixelLength) ** 2);
       let maxTan = null;
       for (let r = 1; r <= radius; r++) {
-        // r ステップ先の標高 - 中心標高) / 実距離 = 接線勾配
-        const tangent = tf.tidy(() => {
-          let s = demFilled;
-          if (dirY !== 0) s = tf.roll(s, -r * dirY, 0);
-          if (dirX !== 0) s = tf.roll(s, -r * dirX, 1);
-          return s.sub(demFilled).div(r * distUnit);
-        });
+        // r ステップ先の領域を slice で切り出す（buffer のおかげで範囲外にならない）
+        const offY = buffer + r * dirY;
+        const offX = buffer + r * dirX;
+        const tangent = tf.tidy(() =>
+          demFilled.slice([offY, offX], [tileSize, tileSize])
+            .sub(demCenter).div(r * distUnit)
+        );
         if (maxTan === null) {
           maxTan = tangent;
         } else {
@@ -1013,7 +1015,7 @@ maplibregl.addProtocol('dem2rrim', async (params, abortController) => {
         .reshape([tileSize, tileSize, 1]);
       return tf.concat([tf.stack([rOut, gOut, bOut], -1), alphaT], -1);
     });
-    [demTensor, validMask, demFilled, mpiTensor].forEach(t => t.dispose());
+    [demTensor, validMask, demFilled, demCenter, mpiTensor].forEach(t => t.dispose());
 
     // ── ⑥ 出力 ──
     const outCanvas = new OffscreenCanvas(tileSize, tileSize);
