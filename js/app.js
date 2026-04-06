@@ -34,6 +34,7 @@
 
    ================================================================ */
 
+import { getDeclination, setDeclinationModel } from './magneticDeclination.js';
 import {
   QCHIZU_DEM_BASE, QCHIZU_PROXY_BASE, DEM5A_BASE, DEM1A_BASE,
   // LAKEDEPTH_BASE, LAKEDEPTH_STANDARD_BASE, // 湖水深タイルは廃止（2026-03-23）
@@ -3796,7 +3797,7 @@ function buildGlobalMagneticLines() {
     const northPts = [[lng0, 0]];
     let lng = lng0, lat = 0;
     for (let s = 0; s < 120; s++) {
-      const decl = geomag.field(Math.min(89, Math.max(-89, lat)), lng).declination;
+      const decl = getDeclination(lat, lng);
       const next = turf.destination(turf.point([lng, lat]), GLOBAL_MAG_STEP_KM, decl, { units: 'kilometers' });
       lng = next.geometry.coordinates[0];
       lat = next.geometry.coordinates[1];
@@ -3808,7 +3809,7 @@ function buildGlobalMagneticLines() {
     const southPts = [[lng0, 0]];
     lng = lng0; lat = 0;
     for (let s = 0; s < 100; s++) {
-      const decl    = geomag.field(Math.min(89, Math.max(-89, lat)), lng).declination;
+      const decl    = getDeclination(lat, lng);
       const bearing = (decl + 180 + 360) % 360;
       const next    = turf.destination(turf.point([lng, lat]), GLOBAL_MAG_STEP_KM, bearing, { units: 'kilometers' });
       lng = next.geometry.coordinates[0];
@@ -3915,12 +3916,8 @@ function updateMagneticNorth() {
   // 磁北線の基準点（refLat, center.lng）で偏角 θ を求め、
   // 線に垂直な方向の間隔が intervalM になるよう経度グリッド間隔を補正する。
   // 東西方向の実間隔は interval / cosθ に広げる必要がある。
-  const declCenter = geomag.field(
-    Math.max(-89.9, Math.min(89.9, center.lat)), center.lng
-  ).declination;
-  const declAtBase = geomag.field(
-    Math.max(-89.9, Math.min(89.9, refLat)), center.lng
-  ).declination;
+  const declCenter = getDeclination(center.lat, center.lng);
+  const declAtBase = getDeclination(refLat, center.lng);
   const latDiffKm   = Math.abs(refLat - center.lat) * EQ_KM_PER_DEG;
   const cosLat      = Math.max(0.01, Math.cos(center.lat * Math.PI / 180));
   const cosTheta    = Math.max(0.01, Math.abs(Math.cos(declAtBase * Math.PI / 180)));
@@ -3946,7 +3943,7 @@ function updateMagneticNorth() {
     let lat = startCoords[1];
     for (let s = 0; s < MAX_STEPS; s++) {
       // 現在地点の偏角を WMM で再計算（緯度を ±89.9° にクランプして極付近の発散を防ぐ）
-      const decl    = geomag.field(Math.max(-89.9, Math.min(89.9, lat)), lng).declination;
+      const decl    = getDeclination(lat, lng);
       const bearing = towardNorth ? decl : (decl + 180 + 360) % 360;
       const next    = turf.destination(turf.point([lng, lat]), stepKm, bearing, { units: 'kilometers' });
       lng = next.geometry.coordinates[0];
@@ -5799,6 +5796,7 @@ selContourInterval.addEventListener('change', () => {
 // ---- 磁北線 タイルカード ----
 const magneticCard = document.getElementById('magnetic-card');
 const selMagneticCombined = document.getElementById('sel-magnetic-combined');
+const selMagneticModel    = document.getElementById('sel-magnetic-model');
 
 // ---- 磁北線カード クリックでトグル ----
 magneticCard.addEventListener('click', (e) => {
@@ -5808,6 +5806,15 @@ magneticCard.addEventListener('click', (e) => {
     map.setLayoutProperty('magnetic-north-layer', 'visibility', isActive ? 'visible' : 'none');
   }
 });
+
+// ---- 磁北線 モデルセレクト ----
+selMagneticModel.addEventListener('change', async () => {
+  await setDeclinationModel(selMagneticModel.value);
+  _globalMagneticLines = null; // グローバル磁北線キャッシュをクリア
+  updateMagneticNorth();
+});
+// 初期モデルをロード（wmm2025 がデフォルト）
+setDeclinationModel(selMagneticModel.value);
 
 // ---- 磁北線 間隔セレクト ----
 selMagneticCombined.addEventListener('change', () => {
@@ -8842,7 +8849,7 @@ function _initImgInteraction() {
       _updateHitbox();
       // ドラッグ終了後に磁気偏角キャッシュを更新
       if (importState.center) {
-        try { importState.cachedDecl = geomag.field(importState.center.lat, importState.center.lng).declination ?? 0; } catch (e) {}
+        try { importState.cachedDecl = getDeclination(importState.center.lat, importState.center.lng) ?? 0; } catch (e) {}
       }
       if (importState.isPlacingFixedPoint && importState.pendingFixedPoint) {
         _commitPendingFixedPoint();
@@ -8961,7 +8968,7 @@ function _updateImportPreview() {
   const [wM, hM] = _importCalcSizeM();
   const rotOffset = parseFloat(document.getElementById('import-rotation')?.value ?? '0');
   let decl = 0;
-  try { decl = geomag.field(c.lat, c.lng).declination ?? 0; } catch (e) {}
+  try { decl = getDeclination(c.lat, c.lng) ?? 0; } catch (e) {}
   importState.cachedDecl = decl; // ドラッグ用キャッシュを更新
   // 用紙サイズ・縮尺変更時はスケールをリセットしてベース座標を再構築
   importState.scaleVal        = 100;
